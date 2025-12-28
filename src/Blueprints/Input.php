@@ -6,7 +6,7 @@ namespace BrainCore\Blueprints;
 
 use BrainCore\Architectures\BlueprintArchitecture;
 
-class Context extends BlueprintArchitecture
+class Input extends BlueprintArchitecture
 {
     /**
      * @param  non-empty-string|null  $id
@@ -23,6 +23,6 @@ class Context extends BlueprintArchitecture
      */
     protected static function defaultElement(): string
     {
-        return 'context';
+        return 'input';
     }
 }

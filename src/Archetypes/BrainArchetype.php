@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace BrainCore\Archetypes;
 
+use BrainCore\Archetypes\Traits\ContextTrait;
+use BrainCore\Archetypes\Traits\InputTrait;
+use BrainCore\Archetypes\Traits\InstructionsTrait;
 use BrainCore\Archetypes\Traits\MetasTrait;
 use BrainCore\Archetypes\Traits\StyleTrait;
 use BrainCore\Archetypes\Traits\PurposeTrait;
@@ -17,6 +20,9 @@ use BrainCore\Archetypes\Traits\ExtractAttributesTrait;
 abstract class BrainArchetype extends ArchetypeArchitecture
 {
     use MetasTrait;
+    use InputTrait;
+    use InstructionsTrait;
+    use ContextTrait;
     use StyleTrait;
     use PurposeTrait;
     use ResponseTrait;
@@ -46,5 +52,26 @@ abstract class BrainArchetype extends ArchetypeArchitecture
         $varName = $agent . '_BRAIN_MODEL';
         $model = $this->var($varName, 'opus');
         $this->setMeta('model', $model);
+    }
+
+    /**
+     * Handle the architecture logic.
+     *
+     * @return void
+     */
+    protected function handle(): void
+    {
+        $this->defineRules();
+        $this->defineGuidelines();
+    }
+
+    protected function defineRules(): void
+    {
+
+    }
+
+    protected function defineGuidelines(): void
+    {
+
     }
 }

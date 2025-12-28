@@ -17,12 +17,7 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Defines the task:async command protocol for executing vector tasks via multi-agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"), loads task context, and executes with flexible modes, user approval gates, and vector memory integration.')]
 class TaskAsyncInclude extends IncludeArchetype
 {
-    /**
-     * Handle the architecture logic.
-     *
-     * @return void
-     */
-    protected function handle(): void
+    protected function defineRules(): void
     {
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
         $this->rule('entry-point-blocking')->critical()
@@ -96,7 +91,10 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('Each programming subtask = separate agent invocation. One agent, one file change. NO multi-file edits in single delegation.')
             ->why('Atomic changes enable precise tracking, easier rollback, clear accountability.')
             ->onViolation('Split into multiple Task() calls. One agent per file modification.');
+    }
 
+    protected function defineGuidelines(): void
+    {
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))

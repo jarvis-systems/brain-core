@@ -72,7 +72,11 @@ abstract class BlueprintArchitecture extends ArchitectureAbstract
             $text = implode(" ", $text);
         }
 
-        $this->text = $text;
+        if ($this->text) {
+            $this->text .= PHP_EOL . $text;
+        } else {
+            $this->text = $text;
+        }
 
         return $this;
     }
