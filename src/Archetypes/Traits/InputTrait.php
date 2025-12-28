@@ -15,7 +15,7 @@ trait InputTrait
      * @param  string|array  $text
      * @return \BrainCore\Blueprints\Input
      */
-    public function input(string|array $text): Input
+    public function globalInput(string|array $text): Input
     {
         return $this->findOrCreateChild(Input::class)
             ->text(is_array($text) ? MD::fromArray($text) : $text);
