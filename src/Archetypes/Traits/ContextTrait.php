@@ -15,7 +15,7 @@ trait ContextTrait
      * @param  string|array  $text
      * @return \BrainCore\Blueprints\Context
      */
-    public function context(string|array $text): Context
+    public function globalContext(string|array $text): Context
     {
         return $this->findOrCreateChild(Context::class)
             ->text(is_array($text) ? MD::fromArray($text) : $text);
