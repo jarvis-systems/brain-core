@@ -10,6 +10,7 @@ use Attribute;
 class Meta
 {
     /**
+     * @param  non-empty-string|list<string>  $name
      * @param  non-empty-string|list<string>  $text
      */
     public function __construct(
