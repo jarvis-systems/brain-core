@@ -25,7 +25,14 @@ trait ExtractMetaAttributesTrait
                 $this->metas()->meta($metaInstance->name)
                     ->text($metaInstance->getText());
             }
-            $this->setMeta([$metaInstance->name => $metaInstance->getText()]);
+            if (is_string($metaInstance->name)) {
+                $this->setMeta([$metaInstance->name => $metaInstance->getText()]);
+            } else {
+                [$agent, $name] = array_values($metaInstance->name);
+                if ($agent === $this->var('AGENT')) {
+                    $this->setMeta([$name => $metaInstance->getText()]);
+                }
+            }
         }
     }
 }

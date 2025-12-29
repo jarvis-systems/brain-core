@@ -50,8 +50,10 @@ abstract class BrainArchetype extends ArchetypeArchitecture
     {
         $agent = $this->var('AGENT_CONST', 'CLAUDE');
         $varName = $agent . '_BRAIN_MODEL';
-        $model = $this->var($varName, 'opus');
-        $this->setMeta('model', $model);
+        $model = $this->var($varName);
+        if ($model) {
+            $this->setMeta('model', $model);
+        }
     }
 
     /**

@@ -13,7 +13,7 @@ class Meta
      * @param  non-empty-string|list<string>  $text
      */
     public function __construct(
-        public string $name,
+        public string|array $name,
         public string|array $text,
     ) {
     }

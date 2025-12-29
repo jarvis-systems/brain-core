@@ -37,7 +37,7 @@ trait BrainIncludesTrait
         // === BRAIN ORCHESTRATION (Brain-specific) ===
         $this->include(CoreInclude::class);                             // Foundation + meta
         $this->include(PreActionValidationInclude::class);              // Pre-action safety gate
-        if ($this->var('AGENT') === 'claude') {
+        if ($this->var('AGENT') === 'claude' || $this->var('AGENT') === 'opencode') {
             $this->include(DelegationProtocolsInclude::class);          // Delegation protocols
         }
         $this->include(ResponseValidationInclude::class);               // Agent response validation
