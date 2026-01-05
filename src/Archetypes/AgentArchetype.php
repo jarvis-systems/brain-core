@@ -48,6 +48,7 @@ abstract class AgentArchetype extends ArchetypeArchitecture
         $upperCaseAgent = strtoupper((string) $agent);
         $varName = $upperCaseAgent . '_MASTER_MODEL';
         $className = Str::of(static::class)->snake()->upper()->explode('\\')->last();
+        $className = trim(trim($className), '_');
         $model = $this->var($className . '_MODEL', $this->var('MASTER_MODEL', $this->var($varName)));
         if ($model) {
             $this->setMeta('model', $model);
