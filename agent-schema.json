@@ -50,6 +50,9 @@
         },
         "prompt": {
           "type": "string"
+        },
+        "\\$_default_client": {
+          "type": "string"
         }
       },
       "additionalProperties": true,
