@@ -70,6 +70,11 @@ class ConvertCommand extends Command
                 }
                 continue;
             }
+            $classBasename = class_basename($class);
+            $envName = Str::of($classBasename)->snake()->upper()->toString() . '_DISABLE';
+            if (Brain::getEnv($envName)) {
+                continue;
+            }
 
             $fromEmptyStart = microtime(true);
 
@@ -83,7 +88,6 @@ class ConvertCommand extends Command
             $timings['fromEmpty'] += (microtime(true) - $fromEmptyStart) * 1000;
 
             $otherStart = microtime(true);
-            $classBasename = class_basename($class);
             $timings['other'] += (microtime(true) - $otherStart) * 1000;
             $defaultData = [
                 'id' => Str::snake($classBasename, '-'),
