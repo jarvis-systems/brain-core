@@ -42,10 +42,10 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
     ) {
         if (!isset(self::$eventListenersRegistered[static::class])) {
             static::on('created', function () {
-                $this->init();
                 if (method_exists($this, 'extractAttributes')) {
                     $this->extractAttributes();
                 }
+                $this->init();
                 $this->handle();
             });
             self::$eventListenersRegistered[static::class] = true;
