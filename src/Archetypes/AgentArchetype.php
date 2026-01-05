@@ -15,6 +15,7 @@ use BrainCore\Architectures\ArchetypeArchitecture;
 use BrainCore\Attributes\Meta;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Tools\TaskTool;
+use Illuminate\Support\Str;
 
 abstract class AgentArchetype extends ArchetypeArchitecture
 {
@@ -46,7 +47,8 @@ abstract class AgentArchetype extends ArchetypeArchitecture
         $agent = $this->var('AGENT', 'claude');
         $upperCaseAgent = strtoupper((string) $agent);
         $varName = $upperCaseAgent . '_MASTER_MODEL';
-        $model = $this->var($varName);
+        $className = Str::of(static::class)->snake()->upper()->explode('\\')->last();
+        $model = $this->var($className . '_MODEL', $this->var('MASTER_MODEL', $this->var($varName)));
         if ($model) {
             $this->setMeta('model', $model);
         }

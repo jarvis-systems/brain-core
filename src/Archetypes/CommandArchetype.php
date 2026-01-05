@@ -12,6 +12,7 @@ use BrainCore\Archetypes\Traits\GuidelinesTrait;
 use BrainCore\Architectures\ArchetypeArchitecture;
 use BrainCore\Archetypes\Traits\ExtractAttributesTrait;
 use BrainCore\Attributes\Meta;
+use Illuminate\Support\Str;
 use Symfony\Component\VarExporter\VarExporter;
 
 abstract class CommandArchetype extends ArchetypeArchitecture
@@ -31,6 +32,18 @@ abstract class CommandArchetype extends ArchetypeArchitecture
     protected static function defaultElement(): string
     {
         return 'command';
+    }
+
+    protected function init(): void
+    {
+        $agent = $this->var('AGENT', 'claude');
+        $upperCaseAgent = strtoupper((string) $agent);
+        $varName = $upperCaseAgent . '_COMMAND_MODEL';
+        $className = Str::of(static::class)->snake()->upper()->explode('\\')->last();
+        $model = $this->var($className . '_MODEL', $this->var('COMMAND_MODEL', $this->var($varName)));
+        if ($model) {
+            $this->setMeta('model', $model);
+        }
     }
 
     /**
