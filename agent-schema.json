@@ -47,8 +47,12 @@
         },
         "noMcp": {
           "type": "boolean"
+        },
+        "prompt": {
+          "type": "string"
         }
       },
+      "additionalProperties": true,
       "required": []
     },
     "name": {
