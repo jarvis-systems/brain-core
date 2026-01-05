@@ -62,10 +62,7 @@
       "type": "string"
     },
     "args": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "type": "array"
     },
     "description": {
       "type": "string"
