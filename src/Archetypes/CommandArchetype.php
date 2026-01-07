@@ -46,6 +46,26 @@ abstract class CommandArchetype extends ArchetypeArchitecture
         }
     }
 
+    protected function finalize(): void
+    {
+        $className = Str::of(static::class)->snake()->upper()->explode('\\')->last();
+        $className = trim(trim($className), '_');
+
+        $i = 0;
+        while ($ironRule = $this->var($className . '_IRON_RULE_' . $i)) {
+            $this->rule('iron-rule-' . $i)
+                ->text($ironRule);
+            $i++;
+        }
+
+        $i = 0;
+        while ($ironRule = $this->var($className . '_GUIDELINE_' . $i)) {
+            $this->guideline('iron-rule-' . $i)
+                ->text($ironRule);
+            $i++;
+        }
+    }
+
     /**
      * Get command ID.
      *

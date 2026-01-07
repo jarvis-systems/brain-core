@@ -56,6 +56,23 @@ abstract class BrainArchetype extends ArchetypeArchitecture
         }
     }
 
+    protected function finalize(): void
+    {
+        $i = 0;
+        while ($ironRule = $this->var('BRAIN_IRON_RULE_' . $i)) {
+            $this->rule('iron-rule-' . $i)
+                ->text($ironRule);
+            $i++;
+        }
+
+        $i = 0;
+        while ($ironRule = $this->var('BRAIN_GUIDELINE_' . $i)) {
+            $this->guideline('iron-rule-' . $i)
+                ->text($ironRule);
+            $i++;
+        }
+    }
+
     /**
      * Handle the architecture logic.
      *

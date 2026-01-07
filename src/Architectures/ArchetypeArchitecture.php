@@ -47,6 +47,7 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
                 }
                 $this->init();
                 $this->handle();
+                $this->finalize();
             });
             self::$eventListenersRegistered[static::class] = true;
         }
@@ -58,6 +59,16 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
      * @return void
      */
     protected function init(): void
+    {
+
+    }
+
+    /**
+     * Finalize architecture.
+     *
+     * @return void
+     */
+    protected function finalize(): void
     {
 
     }
