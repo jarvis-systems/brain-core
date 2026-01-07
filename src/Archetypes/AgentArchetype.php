@@ -63,6 +63,7 @@ abstract class AgentArchetype extends ArchetypeArchitecture
         $i = 0;
         while ($ironRule = $this->var($className . '_IRON_RULE_' . $i)) {
             $this->rule('iron-rule-' . $i)
+                ->critical()
                 ->text($ironRule);
             $i++;
         }
