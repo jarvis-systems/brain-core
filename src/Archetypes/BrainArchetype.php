@@ -60,7 +60,7 @@ abstract class BrainArchetype extends ArchetypeArchitecture
     {
         $i = 0;
         while ($ironRule = $this->var('BRAIN_IRON_RULE_' . $i)) {
-            $this->rule('iron-rule-' . $i)
+            $this->rule('special-rule-' . $i)
                 ->critical()
                 ->text($ironRule);
             $i++;
@@ -68,7 +68,7 @@ abstract class BrainArchetype extends ArchetypeArchitecture
 
         $i = 0;
         while ($ironRule = $this->var('BRAIN_GUIDELINE_' . $i)) {
-            $this->guideline('iron-rule-' . $i)
+            $this->guideline('special-guideline-' . $i)
                 ->text($ironRule);
             $i++;
         }
