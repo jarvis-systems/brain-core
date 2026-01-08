@@ -14,6 +14,7 @@ abstract class IncludeArchetype extends BrainArchetype
             ->replace("BrainNode\\", '')
             ->replace("\\", '_')
             ->snake()
+            ->replace("__", '_')
             ->upper()
             ->trim()
             ->trim('_')

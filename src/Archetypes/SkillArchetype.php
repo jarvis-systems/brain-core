@@ -38,6 +38,7 @@ abstract class SkillArchetype extends ArchetypeArchitecture
             ->replace("BrainNode\\Skills\\", '')
             ->replace("\\", '_')
             ->snake()
+            ->replace("__", '_')
             ->upper()
             ->trim()
             ->trim('_')

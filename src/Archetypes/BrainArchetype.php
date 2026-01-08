@@ -64,6 +64,7 @@ abstract class BrainArchetype extends ArchetypeArchitecture
             ->replace("BrainNode\\", '')
             ->replace("\\", '_')
             ->snake()
+            ->replace("__", '_')
             ->upper()
             ->trim()
             ->trim('_')

@@ -61,6 +61,7 @@ abstract class AgentArchetype extends ArchetypeArchitecture
             ->replace("BrainNode\\Agents\\", '')
             ->replace("\\", '_')
             ->snake()
+            ->replace("__", '_')
             ->upper()
             ->trim()
             ->trim('_')

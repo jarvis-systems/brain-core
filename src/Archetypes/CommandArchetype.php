@@ -52,6 +52,7 @@ abstract class CommandArchetype extends ArchetypeArchitecture
             ->replace("BrainNode\\Commands\\", '')
             ->replace("\\", '_')
             ->snake()
+            ->replace("__", '_')
             ->upper()
             ->trim()
             ->trim('_')
