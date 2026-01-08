@@ -48,23 +48,16 @@ abstract class CommandArchetype extends ArchetypeArchitecture
 
     protected function finalize(): void
     {
-        $className = Str::of(static::class)->snake()->upper()->explode('\\')->last();
-        $className = trim(trim($className), '_');
+        $className = Str::of(static::class)
+            ->replace("BrainNode\\Commands\\", '')
+            ->replace("\\", '_')
+            ->snake()
+            ->upper()
+            ->trim()
+            ->trim('_')
+            ->toString();
 
-        $i = 0;
-        while ($ironRule = $this->var($className . '_IRON_RULE_' . $i)) {
-            $this->rule('special-rule-' . $i)
-                ->critical()
-                ->text($ironRule);
-            $i++;
-        }
-
-        $i = 0;
-        while ($ironRule = $this->var($className . '_GUIDELINE_' . $i)) {
-            $this->guideline('special-guideline-' . $i)
-                ->text($ironRule);
-            $i++;
-        }
+        $this->loadEnvInstructions($className);
     }
 
     /**

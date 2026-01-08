@@ -73,6 +73,28 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
 
     }
 
+    protected function loadEnvInstructions(string $namePrefix): void
+    {
+        if (method_exists($this, 'rule')) {
+            $i = 0;
+            while ($ironRule = $this->var($namePrefix . '_RULE_' . $i)) {
+                $this->rule('special-rule-' . $i)
+                    ->critical()
+                    ->text($ironRule);
+                $i++;
+            }
+        }
+
+        if (method_exists($this, 'guideline')) {
+            $i = 0;
+            while ($ironRule = $this->var($namePrefix . '_GUIDELINE_' . $i)) {
+                $this->guideline('special-guideline-'.$i)
+                    ->text($ironRule);
+                $i++;
+            }
+        }
+    }
+
     /**
      * @param  ArchetypeArchitecture|class-string<ArchetypeArchitecture>  $class
      * @return static

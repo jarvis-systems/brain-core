@@ -17,6 +17,7 @@ use BrainCore\Archetypes\Traits\DeterminismTrait;
 use BrainCore\Architectures\ArchetypeArchitecture;
 use BrainCore\Archetypes\Traits\ExtractAttributesTrait;
 use BrainNode\Brain;
+use Illuminate\Support\Str;
 
 abstract class BrainArchetype extends ArchetypeArchitecture
 {
@@ -59,22 +60,16 @@ abstract class BrainArchetype extends ArchetypeArchitecture
 
     protected function finalize(): void
     {
-        if (static::class === Brain::class) {
-            $i = 0;
-            while ($ironRule = $this->var('BRAIN_IRON_RULE_' . $i)) {
-                $this->rule('special-rule-' . $i)
-                    ->critical()
-                    ->text($ironRule);
-                $i++;
-            }
+        $className = Str::of(static::class)
+            ->replace("BrainNode\\", '')
+            ->replace("\\", '_')
+            ->snake()
+            ->upper()
+            ->trim()
+            ->trim('_')
+            ->toString();
 
-            $i = 0;
-            while ($ironRule = $this->var('BRAIN_GUIDELINE_' . $i)) {
-                $this->guideline('special-guideline-' . $i)
-                    ->text($ironRule);
-                $i++;
-            }
-        }
+        $this->loadEnvInstructions($className);
     }
 
     /**

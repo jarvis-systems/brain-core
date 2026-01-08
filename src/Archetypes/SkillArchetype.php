@@ -11,6 +11,7 @@ use BrainCore\Archetypes\Traits\MetasTrait;
 use BrainCore\Archetypes\Traits\PurposeTrait;
 use BrainCore\Archetypes\Traits\ResponseTrait;
 use BrainCore\Architectures\ArchetypeArchitecture;
+use Illuminate\Support\Str;
 
 abstract class SkillArchetype extends ArchetypeArchitecture
 {
@@ -29,5 +30,19 @@ abstract class SkillArchetype extends ArchetypeArchitecture
     protected static function defaultElement(): string
     {
         return 'skill';
+    }
+
+    protected function finalize(): void
+    {
+        $className = Str::of(static::class)
+            ->replace("BrainNode\\Skills\\", '')
+            ->replace("\\", '_')
+            ->snake()
+            ->upper()
+            ->trim()
+            ->trim('_')
+            ->toString();
+
+        $this->loadEnvInstructions($className);
     }
 }
