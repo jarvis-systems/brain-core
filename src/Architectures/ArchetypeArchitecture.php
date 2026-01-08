@@ -78,7 +78,7 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
         if (method_exists($this, 'rule')) {
             $i = 0;
             while ($ironRule = $this->var($namePrefix . '_RULE_' . $i)) {
-                $this->rule('special-rule-' . $i)
+                $this->rule('Special User CRITICAL rule #' . $i)
                     ->critical()
                     ->text($ironRule);
                 $i++;
@@ -88,7 +88,7 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
         if (method_exists($this, 'guideline')) {
             $i = 0;
             while ($ironRule = $this->var($namePrefix . '_GUIDELINE_' . $i)) {
-                $this->guideline('special-guideline-'.$i)
+                $this->guideline('Special User CRITICAL guideline #'.$i)
                     ->text($ironRule);
                 $i++;
             }
