@@ -56,7 +56,7 @@ class CoreInclude extends IncludeArchetype
             ->example('brain is globally installed CLI tool with shebang, executable directly')->key('reason');
 
         $this->style()
-            ->language($this->var('LANGUAGE'))
+            ->language($this->var('LANGUAGE', 'en-US'))
             ->tone('Analytical, methodical, clear, and direct')
             ->brevity('Medium')
             ->formatting('Strict XML formatting without markdown')
