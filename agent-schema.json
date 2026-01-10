@@ -108,6 +108,7 @@
       "description": "Arguments passed to the command. Accessible via $args.0, $args.1, etc.",
       "items": {
         "oneOf": [
+          { "type": "null" },
           { "type": "string" },
           { "type": "number" },
           { "type": "boolean" },
