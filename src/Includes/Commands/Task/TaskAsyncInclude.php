@@ -61,6 +61,11 @@ class TaskAsyncInclude extends IncludeArchetype
             ->why('Prevents ignoring critical information already provided by user in conversation')
             ->onViolation('Review conversation history before proceeding with task analysis.');
 
+        $this->rule('session-recovery-via-history')->high()
+            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can RESUME execution WITHOUT changing status (already in_progress). Treat vector memory findings from crashed session with caution - previous context is lost. Execution stage is unknown - may need to verify what was completed.')
+            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous work may be incomplete.')
+            ->onViolation('Check status_history before blocking. If to:null found, proceed with recovery mode.');
+
         $this->rule('vector-task-id-required')->critical()
             ->text('$TASK_ID MUST be a valid vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest /do:async for text-based tasks.')
             ->why('This command is exclusively for vector task execution. Text descriptions belong to /do:async.')
@@ -115,6 +120,28 @@ class TaskAsyncInclude extends IncludeArchetype
                 Operator::report('Vector task #$VECTOR_TASK_ID not found'),
                 'Suggest: Check task ID with '.VectorTaskMcp::method('task_list'),
                 'ABORT command',
+            ]))
+            ->phase(Operator::if('$VECTOR_TASK.status === "in_progress"', [
+                'Check status_history for session crash indicator',
+                Store::as('LAST_HISTORY_ENTRY', '{last element of $VECTOR_TASK.status_history array}'),
+                Operator::if('$LAST_HISTORY_ENTRY.to === null', [
+                    Operator::output([
+                        '⚠️ SESSION RECOVERY MODE',
+                        'Task #{$VECTOR_TASK_ID} was in_progress but session crashed (status_history.to = null)',
+                        'Resuming execution without status change.',
+                        'WARNING: Previous execution stage unknown. Will verify what was completed via vector memory.',
+                        'NOTE: Memory findings from crashed session should be verified against codebase.',
+                    ]),
+                    Store::as('IS_SESSION_RECOVERY', 'true'),
+                ]),
+                Operator::if('$LAST_HISTORY_ENTRY.to !== null', [
+                    Operator::output([
+                        '=== EXECUTION BLOCKED ===',
+                        'Task #{$VECTOR_TASK_ID} is currently in_progress by another session.',
+                        'Wait for completion or manually reset status if session crashed without history update.',
+                    ]),
+                    'ABORT execution',
+                ]),
             ]))
             ->phase(Operator::if('$VECTOR_TASK.status === "completed"', [
                 Operator::report('Vector task #$VECTOR_TASK_ID already completed'),
@@ -188,6 +215,15 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->guideline('phase3-material-gathering')
             ->goal('Collect materials via agents. Brain permitted: brain docs (index only, few tokens). ALL file reading → delegate to agents.')
             ->example()
+            ->phase(Operator::if('$IS_SESSION_RECOVERY === true', [
+                'SESSION RECOVERY: Verify what was completed in crashed session',
+                VectorMemoryMcp::call('search_memories',
+                    '{query: "task #{$VECTOR_TASK_ID} progress execution", limit: 5, category: "code-solution,tool-usage"}'),
+                Store::as('CRASHED_SESSION_FINDINGS', '{memory findings from crashed session}'),
+                'WARNING: Verify findings against actual codebase - crashed session may have partial/incomplete changes',
+                TaskTool::agent('explore', 'Verify crashed session changes for task #{$VECTOR_TASK_ID}. Check files mentioned in memory findings: {$CRASHED_SESSION_FINDINGS}. Report: what was completed, what is incomplete, any conflicts.'),
+                Store::as('RECOVERY_VERIFICATION', '{verified state from codebase}'),
+            ]))
             ->phase(Operator::forEach('scan_target in $REQUIREMENTS_PLAN.scan_targets', [
                 TaskTool::agent('explore', 'Extract context from {scan_target}. Store findings to vector memory.'),
                 Store::as('GATHERED_MATERIALS[{target}]', 'Agent-extracted context'),
@@ -340,6 +376,7 @@ class TaskAsyncInclude extends IncludeArchetype
                 'Execute: mcp__vector-memory__search_memories(query: "{relevant}", limit: 5)',
                 'Review: Analyze results for patterns, solutions, learnings',
                 'Apply: Incorporate insights into approach',
+                'CAUTION: If $IS_SESSION_RECOVERY=true, memory findings may be from crashed session - verify against actual codebase before trusting',
             ])
             ->phase('DURING TASK:')
             ->do([

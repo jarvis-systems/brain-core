@@ -16,7 +16,6 @@ use BrainCore\Archetypes\Traits\GuidelinesTrait;
 use BrainCore\Archetypes\Traits\DeterminismTrait;
 use BrainCore\Architectures\ArchetypeArchitecture;
 use BrainCore\Archetypes\Traits\ExtractAttributesTrait;
-use BrainNode\Brain;
 use Illuminate\Support\Str;
 
 abstract class BrainArchetype extends ArchetypeArchitecture

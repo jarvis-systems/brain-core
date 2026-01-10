@@ -13,6 +13,11 @@ class XmlBuilder
     private static array $cache = [];
 
     /**
+     * Track seen rule IDs to prevent duplicates
+     */
+    private array $seenRuleIds = [];
+
+    /**
      * @param  array<string, mixed>  $structure
      */
     public function __construct(
@@ -68,6 +73,19 @@ class XmlBuilder
             : [];
         $single = (bool) ($cleanNode['single'] ?? false);
 
+        // Flatten purpose+guidelines: extract guidelines from purpose and render as siblings
+        $extractedGuidelines = null;
+        if ($element === 'purpose') {
+            foreach ($children as $idx => $child) {
+                if (is_array($child) && ($child['element'] ?? '') === 'guidelines') {
+                    $extractedGuidelines = $child;
+                    unset($children[$idx]);
+                    $children = array_values($children); // Re-index
+                    break;
+                }
+            }
+        }
+
         if ($single && $this->isEmptyContent($text, $children)) {
             return '<' . $element . $attributes . '/>';
         }
@@ -75,7 +93,12 @@ class XmlBuilder
         if ($this->hasInlineText($text, $children)) {
             $str = '<' . $element . $attributes . '>';
             $str .= $this->escape((string) $text);
-            return $str . '</' . $element . '>';
+            $str .= '</' . $element . '>';
+            // Append extracted guidelines after purpose
+            if ($extractedGuidelines !== null) {
+                $str .= "\n" . $this->renderNode($extractedGuidelines, false, $i + 1);
+            }
+            return $str;
         }
 
         $lines = [];
@@ -124,6 +147,17 @@ class XmlBuilder
                 $iron_rules_exists = true;
             }
 
+            // Deduplicate rules by ID (skip if already seen)
+            if (isset($child['element']) && $child['element'] === 'rule') {
+                $ruleId = $child['id'] ?? null;
+                if ($ruleId !== null) {
+                    if (isset($this->seenRuleIds[$ruleId])) {
+                        continue; // Skip duplicate rule
+                    }
+                    $this->seenRuleIds[$ruleId] = true;
+                }
+            }
+
             if ($firstChildRendered && $isRoot && $element === 'system') {
                 $lines[] = '';
             }
@@ -161,9 +195,14 @@ class XmlBuilder
         }
 
         if ($examples) {
-            $lines[] = MD::fromArray([
-                'Examples' => $examples
-            ], $sccNext);
+            // Render examples directly without "## Examples" header for compactness
+            foreach ($examples as $key => $example) {
+                if (is_string($key) && !is_numeric($key)) {
+                    $lines[] = "- {$key}: {$example}";
+                } else {
+                    $lines[] = "- {$example}";
+                }
+            }
         }
 
         if (
@@ -174,6 +213,11 @@ class XmlBuilder
             $lines[] = '';
         } elseif (! isset(static::$cache['iron_rules_exists'])) {
             $lines[] = '</' . $element . '>';
+        }
+
+        // Append extracted guidelines after purpose closing tag
+        if ($element === 'purpose' && $extractedGuidelines !== null) {
+            $lines[] = $this->renderNode($extractedGuidelines, false, $i + 1);
         }
 
         return implode("\n", $lines);

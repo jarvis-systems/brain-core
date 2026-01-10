@@ -61,6 +61,11 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('Allows safe re-runs without side effects.')
             ->onViolation('Check existing tasks before creating. Skip duplicates.');
 
+        $this->rule('session-recovery-via-history')->high()
+            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can continue validation WITHOUT changing status. Treat any vector memory findings from crashed session with caution - previous context is lost.')
+            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous session context is incomplete.')
+            ->onViolation('Check status_history before blocking. If to:null found, proceed with caution warning.');
+
         $this->rule('no-direct-fixes-functional')->critical()
             ->text('VALIDATION command NEVER fixes FUNCTIONAL issues directly. Code logic, architecture, functionality issues MUST become tasks.')
             ->why('Traceability and audit trail. Code changes must be tracked via task system.')
@@ -126,7 +131,7 @@ class TaskValidateInclude extends IncludeArchetype
                 'Suggest: Check task ID with '.VectorTaskMcp::method('task_list'),
                 'ABORT command',
             ]))
-            ->phase(Operator::if('$VECTOR_TASK.status NOT IN ["completed", "tested", "validated"]', [
+            ->phase(Operator::if('$VECTOR_TASK.status NOT IN ["completed", "tested", "validated", "in_progress"]', [
                 Operator::output([
                     '=== VALIDATION BLOCKED ===',
                     'Task #$VECTOR_TASK_ID has status: {$VECTOR_TASK.status}',
@@ -134,6 +139,27 @@ class TaskValidateInclude extends IncludeArchetype
                     'Run /task:async $VECTOR_TASK_ID to complete first.',
                 ]),
                 'ABORT validation',
+            ]))
+            ->phase(Operator::if('$VECTOR_TASK.status === "in_progress"', [
+                Operator::note('Check status_history for session crash indicator'),
+                Store::as('LAST_HISTORY_ENTRY', '{last element of $VECTOR_TASK.status_history array}'),
+                Operator::if('$LAST_HISTORY_ENTRY.to === null', [
+                    Store::as('IS_SESSION_RECOVERY', 'true'),
+                    Operator::output([
+                        '⚠️ SESSION RECOVERY DETECTED',
+                        'Task #{$VECTOR_TASK_ID} was in_progress but session crashed (status_history.to = null)',
+                        'Continuing validation without status change.',
+                        'NOTE: Previous session vector memory findings should be treated with caution.',
+                    ]),
+                ]),
+                Operator::if('$LAST_HISTORY_ENTRY.to !== null', [
+                    Operator::output([
+                        '=== VALIDATION BLOCKED ===',
+                        'Task #{$VECTOR_TASK_ID} is currently in_progress by another session.',
+                        'Wait for completion or use /task:async to take over.',
+                    ]),
+                    'ABORT validation',
+                ]),
             ]))
             ->phase(Operator::note('CRITICAL: Set TASK_PARENT_ID to the CURRENTLY validated task ID IMMEDIATELY after loading. This ensures fix tasks become children of the task being validated, NOT grandchildren.'))
             ->phase(Store::as('TASK_PARENT_ID', '{$VECTOR_TASK_ID}'))
@@ -207,6 +233,9 @@ class TaskValidateInclude extends IncludeArchetype
                 '',
                 '=== PHASE 2: DEEP CONTEXT GATHERING ===',
                 'Delegating to VectorMaster for deep memory research...',
+            ]))
+            ->phase(Operator::if('$IS_SESSION_RECOVERY === true', [
+                Operator::note('CAUTION: This is a session recovery. Vector memory findings from the crashed session should be treated with skepticism - previous context is incomplete. Verify findings against current codebase state before relying on them.'),
             ]))
             ->phase('SELECT vector-master from $AVAILABLE_AGENTS')
             ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
