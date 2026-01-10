@@ -71,8 +71,17 @@ class ConvertCommand extends Command
                 continue;
             }
             $classBasename = class_basename($class);
-            $envName = Str::of($classBasename)->snake()->upper()->toString() . '_DISABLE';
-            if (Brain::getEnv($envName)) {
+            $className = Str::of($class)
+                ->replace("BrainNode\\", '')
+                ->replace("\\", '_')
+                ->snake()
+                ->replace("__", '_')
+                ->upper()
+                ->trim()
+                ->trim('_')
+                ->toString();
+
+            if (Brain::getEnv($className . '_DISABLE')) {
                 continue;
             }
 
