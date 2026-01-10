@@ -1,75 +1,404 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Brain Agent Configuration",
+  "description": "Configuration schema for Brain AI agent YAML files with advanced DSL support.\n\n## Variable Syntax\n\n### Variable References\n- `$var` or `{$var}` - Reference a variable\n- `$nested.path.value` - Dot notation for nested access\n- `$array.0` - Array index access\n- `$args.name` - Named argument access (requires args_names mapping)\n- `{$pattern.{$args.0}}` - Nested variable interpolation\n\n### Special Prefixes\n- `@file` - Import file content (supports: .json, .yaml, .yml, .env)\n- `!command` - Execute shell command and use output\n- `>php code` - Evaluate PHP expression\n- `\\$var` - Escaped variable (literal $ character)\n\n### Conditional Operators\n- `{$condition ? true_value : false_value}` - Ternary operator\n- `{$a ?? $b}` - Null coalescing (returns $b if $a is null/undefined)\n- `{$a ?: $b}` - Elvis operator (returns $b if $a is falsy)\n- `key?{$condition}` - Conditional key inclusion\n\n### Operator Chaining\n- `{$a ?? $b ?? $c}` - Chained null coalescing\n- `{$a ?: $b ?: $c}` - Chained elvis\n- `{$a ?? ($b ? x : y)}` - Nested operators\n\n## Built-in Variables\n\n### File and Time\n- `_file` - Current file path\n- `_date` - Current date (YYYY-MM-DD)\n- `_datetime` - Current datetime (ISO 8601)\n- `_time` - Current time (HH:MM:SS)\n- `_timestamp` - Unix timestamp\n\n### Context\n- `_call_name` - Name of the calling command\n- `_default_client` - Default AI client from config\n\n### Paths\n- `_path.brain` - Brain directory path\n- `_path.cli` - CLI directory path\n- `_path.home` - User home directory\n- `_path.cwd` - Current working directory\n\n### System Information\n- `_system.uname` - Full uname string\n- `_system.os` - Operating system name\n- `_system.architecture` - System architecture\n- `_system.processor` - Processor type\n- `_system.hostname` - Machine hostname\n- `_system.name` - System name\n- `_system.release` - System release\n- `_system.version` - System version\n\n### User and Environment\n- `_user_name` - Current username\n- `_php_version` - PHP version\n- `_model` - Default model\n- `_model.general` - General purpose model",
+
+  "$defs": {
+    "ruleArray": {
+      "type": "array",
+      "description": "Array of rule strings to inject into archetype. Rules are constraints that must be followed.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Rule text. Supports variable interpolation."
+      },
+      "examples": [
+        ["Always validate input before processing", "Never expose sensitive data in logs"]
+      ]
+    },
+
+    "guidelineArray": {
+      "type": "array",
+      "description": "Array of guideline strings to inject into archetype. Guidelines are recommended practices.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Guideline text. Supports variable interpolation."
+      },
+      "examples": [
+        ["Prefer explicit over implicit declarations", "Document all public methods"]
+      ]
+    },
+
+    "archetypeInstructions": {
+      "type": "object",
+      "description": "Instructions to inject into a specific archetype (agent, command, skill, or include).",
+      "properties": {
+        "rule": {
+          "$ref": "#/$defs/ruleArray"
+        },
+        "guideline": {
+          "$ref": "#/$defs/guidelineArray"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "nestedArchetypeMap": {
+      "type": "object",
+      "description": "Map of archetype IDs to their instruction sets. Keys must be valid identifiers in snake_case.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {
+          "$ref": "#/$defs/archetypeInstructions"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "variableValue": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" }
+      ],
+      "description": "Environment variable value. Supports string, number, or boolean."
+    }
+  },
+
   "type": "object",
   "properties": {
     "id": {
-      "type": "string"
+      "type": "string",
+      "description": "Unique identifier for this agent configuration. Used for referencing and caching.",
+      "pattern": "^[a-z][a-z0-9-_]*$",
+      "examples": ["my-agent", "task_executor", "web-researcher"]
     },
+
+    "name": {
+      "type": "string",
+      "description": "Display name for the command. Supports variable interpolation (e.g., '{$_call_name} Agent').",
+      "examples": ["Task Executor", "{$project_name} Builder"]
+    },
+
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the agent's purpose. Supports variable interpolation.",
+      "examples": ["Executes tasks with AI assistance", "Builds {$target} for {$platform}"]
+    },
+
     "client": {
       "type": "string",
-      "enum": ["claude", "codex", "gemini", "qwen", "lm-studio", "openrouter", "groq", "opencode"]
+      "enum": ["claude", "codex", "gemini", "qwen", "lm-studio", "openrouter", "groq", "opencode"],
+      "description": "AI client to use for execution. This is the ONLY required field.\n\n- claude: Anthropic Claude (claude-3-opus, claude-3-sonnet, etc.)\n- codex: OpenAI Codex\n- gemini: Google Gemini\n- qwen: Alibaba Qwen\n- lm-studio: Local LM Studio\n- openrouter: OpenRouter API\n- groq: Groq Cloud\n- opencode: OpenCode compatible APIs"
     },
+
+    "aliases": {
+      "type": "array",
+      "description": "Alternative command names that can invoke this agent.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-_]*$"
+      },
+      "uniqueItems": true,
+      "examples": [["exec", "run", "do"]]
+    },
+
+    "args": {
+      "type": "array",
+      "description": "Arguments passed to the command. Accessible via $args.0, $args.1, etc.",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "object" },
+          { "type": "array" }
+        ]
+      },
+      "examples": [["task-name", "--verbose", 42]]
+    },
+
+    "args_names": {
+      "type": "array",
+      "description": "Named aliases for positional arguments. Maps index to name, enabling access via $args.name alongside $args.0. Each name corresponds to the argument at the same index.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Argument name in snake_case. Must be valid identifier."
+      },
+      "examples": [
+        ["task_id"],
+        ["task_id", "priority", "tags"]
+      ]
+    },
+
+    "resume": {
+      "type": "string",
+      "description": "Session ID to resume. Continues from a previous execution state.",
+      "examples": ["session_abc123", "{$_last_session}"]
+    },
+
+    "continue": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, continues the last session automatically without specifying session ID."
+    },
+
+    "dump": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, dumps all processed data before execution for debugging purposes."
+    },
+
     "params": {
       "type": "object",
+      "description": "Parameters controlling AI execution behavior.",
       "properties": {
         "ask": {
-          "type": "string"
+          "type": "string",
+          "description": "Input prompt template for user. Displayed before execution to gather input. Supports variable interpolation.",
+          "examples": ["What would you like me to do?", "Describe the {$task_type} to execute:"]
         },
-        "model": {
-          "type": "string"
-        },
-        "yolo": {
-          "type": "boolean"
-        },
-        "json": {
-          "type": "boolean"
-        },
-        "serialize": {
-          "type": "boolean"
-        },
-        "system": {
-          "type": "string"
-        },
-        "systemAppend": {
-          "type": "string"
-        },
-        "schema": {
-          "type": "object"
-        },
-        "dump": {
-          "type": "boolean"
-        },
-        "resume": {
-          "type": "string"
-        },
-        "continue": {
-          "type": "boolean"
-        },
-        "noMcp": {
-          "type": "boolean"
-        },
+
         "prompt": {
-          "type": "string"
+          "type": "string",
+          "description": "Direct prompt text to send to the AI. Supports variable interpolation and file imports (@file.txt).",
+          "examples": ["Analyze this code: {$code}", "@prompts/analyze.txt"]
         },
-        "\\$_default_client": {
-          "type": "string"
+
+        "json": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable JSON output mode. AI will respond with valid JSON only."
+        },
+
+        "serialize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Serialize the output for storage or transmission."
+        },
+
+        "yolo": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip safety checks and confirmations. Use with caution in production."
+        },
+
+        "model": {
+          "type": "string",
+          "description": "Override the default model for this execution. Model availability depends on client.",
+          "examples": ["claude-3-opus-20240229", "gpt-4-turbo", "gemini-pro"]
+        },
+
+        "system": {
+          "type": "string",
+          "description": "Complete system prompt override. Replaces default system instructions.",
+          "examples": ["You are a code reviewer.", "@system-prompts/reviewer.txt"]
+        },
+
+        "systemAppend": {
+          "type": "string",
+          "description": "Append text to the default system prompt. Use for adding context without replacing defaults.",
+          "examples": ["Focus on security vulnerabilities.", "The codebase uses Laravel 11."]
+        },
+
+        "schema": {
+          "type": "object",
+          "description": "JSON Schema for structured output validation. AI response must conform to this schema.",
+          "examples": [
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["success", "error"] },
+                "message": { "type": "string" }
+              },
+              "required": ["status"]
+            }
+          ]
+        },
+
+        "dump": {
+          "type": "boolean",
+          "default": false,
+          "description": "Debug dump within params context."
+        },
+
+        "resume": {
+          "type": "string",
+          "description": "Resume session ID within params context."
+        },
+
+        "continue": {
+          "type": "boolean",
+          "default": false,
+          "description": "Continue last session within params context."
+        },
+
+        "noMcp": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable MCP (Model Context Protocol) servers for this execution."
         }
       },
-      "additionalProperties": true,
-      "required": []
+      "additionalProperties": true
     },
-    "name": {
-      "type": "string"
-    },
-    "args": {
-      "type": "array"
-    },
-    "description": {
-      "type": "string"
-    },
+
     "env": {
-      "type": "object"
+      "type": "object",
+      "description": "Environment variables to set during execution. All values are converted to strings.",
+      "additionalProperties": {
+        "$ref": "#/$defs/variableValue"
+      },
+      "examples": [
+        {
+          "DEBUG": true,
+          "API_KEY": "{$_env.API_KEY}",
+          "TIMEOUT": 30
+        }
+      ]
+    },
+
+    "brain": {
+      "type": "object",
+      "description": "Instructions to inject directly into Brain (main orchestrator). No nesting - rules and guidelines apply globally.",
+      "properties": {
+        "rule": {
+          "$ref": "#/$defs/ruleArray"
+        },
+        "guideline": {
+          "$ref": "#/$defs/guidelineArray"
+        }
+      },
+      "additionalProperties": false,
+      "examples": [
+        {
+          "rule": ["Always validate user input", "Log all critical operations"],
+          "guideline": ["Prefer delegation to specialized agents"]
+        }
+      ]
+    },
+
+    "agents": {
+      "$ref": "#/$defs/nestedArchetypeMap",
+      "description": "Instructions to inject into specific agents. Keys are agent IDs in snake_case (e.g., explore_master).",
+      "examples": [
+        {
+          "explore_master": {
+            "rule": ["Search only in src/ directory"],
+            "guideline": ["Prioritize PHP files over others"]
+          },
+          "commit_master": {
+            "rule": ["Always run tests before committing"]
+          }
+        }
+      ]
+    },
+
+    "commands": {
+      "$ref": "#/$defs/nestedArchetypeMap",
+      "description": "Instructions to inject into specific commands. Keys are command IDs in snake_case (e.g., task_validate_command).\n\nTransforms to environment variables:\n- `commands.task_validate_command.rule[0]` -> `TASK_VALIDATE_COMMAND_RULE_0`\n- `commands.task_validate_command.guideline[0]` -> `TASK_VALIDATE_COMMAND_GUIDELINE_0`",
+      "examples": [
+        {
+          "task_validate_command": {
+            "rule": ["Validate all task inputs", "Check for circular dependencies"],
+            "guideline": ["Provide helpful error messages"]
+          }
+        }
+      ]
+    },
+
+    "skills": {
+      "$ref": "#/$defs/nestedArchetypeMap",
+      "description": "Instructions to inject into specific skills. Keys are skill IDs in snake_case.",
+      "examples": [
+        {
+          "git_skill": {
+            "rule": ["Never force push to main branch"],
+            "guideline": ["Use conventional commit messages"]
+          }
+        }
+      ]
+    },
+
+    "includes": {
+      "$ref": "#/$defs/nestedArchetypeMap",
+      "description": "Instructions to inject into specific includes. Keys are include IDs in snake_case.",
+      "examples": [
+        {
+          "core_constraints": {
+            "guideline": ["Apply stricter validation in production"]
+          }
+        }
+      ]
     }
   },
-  "required": ["client"]
+
+  "required": ["client"],
+
+  "additionalProperties": true,
+
+  "examples": [
+    {
+      "id": "task-executor",
+      "name": "Task Executor",
+      "description": "Executes development tasks with AI assistance",
+      "client": "claude",
+      "aliases": ["exec", "run"],
+      "params": {
+        "model": "claude-3-sonnet-20240229",
+        "ask": "What task would you like to execute?",
+        "yolo": false
+      },
+      "env": {
+        "DEBUG": true,
+        "MAX_RETRIES": 3
+      },
+      "brain": {
+        "rule": ["Always explain your reasoning"],
+        "guideline": ["Break complex tasks into subtasks"]
+      },
+      "agents": {
+        "explore_master": {
+          "guideline": ["Focus on test files when debugging"]
+        }
+      },
+      "commands": {
+        "task_validate_command": {
+          "rule": ["Validate all inputs thoroughly"]
+        }
+      }
+    },
+    {
+      "client": "claude",
+      "params": {
+        "prompt": "Analyze this: {$args.0}",
+        "json": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "analysis": { "type": "string" },
+            "score": { "type": "number" }
+          }
+        }
+      }
+    },
+    {
+      "client": "{$_default_client ?: claude}",
+      "params": {
+        "system": "@system-prompts/{$mode}.txt",
+        "prompt": "{$debug ? 'DEBUG: ' : ''}{$query}"
+      },
+      "env": {
+        "MODE": "{$mode ?? production}"
+      }
+    },
+    {
+      "client": "claude",
+      "args": [null, "medium"],
+      "args_names": ["task_id", "priority"],
+      "params": {
+        "prompt": "Process task {$args.task_id} with priority {$args.priority}"
+      }
+    }
+  ]
 }
