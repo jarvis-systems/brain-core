@@ -10,12 +10,16 @@ use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
-use BrainCore\Compilation\Tools\TaskTool;
+use BrainCore\Compilation\Tools\EditTool;
+use BrainCore\Compilation\Tools\GlobTool;
+use BrainCore\Compilation\Tools\GrepTool;
+use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Compilation\Tools\WriteTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Comprehensive vector task validation with parallel agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"), validates completed tasks against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent - can be run multiple times. Best for: validating vector task work quality.')]
-class TaskValidateInclude extends IncludeArchetype
+#[Purpose('Direct synchronous vector task validation without agent delegation. Accepts task ID reference (formats: "15", "#15", "task 15"), validates completed tasks against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent. Best for: validation requiring direct execution without parallel agents.')]
+class TaskValidateSyncInclude extends IncludeArchetype
 {
     /**
      * Handle the architecture logic.
@@ -26,15 +30,20 @@ class TaskValidateInclude extends IncludeArchetype
     {
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
         $this->rule('entry-point-blocking')->critical()
-            ->text('ON RECEIVING input: Your FIRST output MUST be "=== TASK:VALIDATE ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except brain list:masters), code generation, file analysis.')
+            ->text('ON RECEIVING input: Your FIRST output MUST be "=== TASK:VALIDATE-SYNC ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except brain docs), code generation, file analysis.')
             ->why('Without explicit entry point, Brain skips workflow and executes directly. Entry point forces workflow compliance.')
-            ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== TASK:VALIDATE ACTIVATED ===" and restart from Phase 0.');
+            ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== TASK:VALIDATE-SYNC ACTIVATED ===" and restart from Phase 0.');
 
         // Iron Rules - Zero Tolerance
         $this->rule('validation-only-no-execution')->critical()
-            ->text('VALIDATION command validates EXISTING work. NEVER implement, fix, or create code directly. Only validate and CREATE TASKS for issues found.')
-            ->why('Validation is read-only audit. Execution belongs to task:async.')
+            ->text('VALIDATION command validates EXISTING work. NEVER implement, fix, or create functional code directly. Only validate and CREATE TASKS for functional issues found.')
+            ->why('Validation is read-only audit. Execution belongs to task:async or task:sync.')
             ->onViolation('Abort any implementation. Create task instead of fixing directly.');
+
+        $this->rule('no-delegation')->critical()
+            ->text('SYNC validation executes directly. NO Task() delegation to agents. Use ONLY direct tools: Read, Edit, Write, Glob, Grep, Bash.')
+            ->why('Sync mode is for direct execution without agent overhead.')
+            ->onViolation('Remove Task() calls. Execute directly.');
 
         $this->rule('vector-task-id-required')->critical()
             ->text('$RAW_INPUT MUST contain a vector task ID reference. Valid base formats: "15", "#15", "task 15", "task:15", "task-15". Optional flags (-y, --yes) may follow the ID. Examples: "63 -y", "#15 --yes", "task 42 -y". Extract ID first, then check for flags.')
@@ -42,24 +51,14 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('STOP. Report: "Invalid task ID. Use /do:validate for text-based validation or provide valid task ID."');
 
         $this->rule('validatable-status-required')->critical()
-            ->text('ONLY tasks with status "completed", "tested", or "validated" can be validated. Pending/in_progress/stopped tasks MUST first be completed via task:async.')
+            ->text('ONLY tasks with status "completed", "tested", or "validated" can be validated. Pending/in_progress/stopped tasks MUST first be completed via task:async or task:sync.')
             ->why('Validation audits finished work. Incomplete work cannot be validated.')
-            ->onViolation('Report: "Task #{id} has status {status}. Complete via /task:async first."');
+            ->onViolation('Report: "Task #{id} has status {status}. Complete via /task:async or /task:sync first."');
 
         $this->rule('auto-approval-flag')->critical()
             ->text('If $RAW_INPUT contains "-y" flag, auto-approve validation scope (skip user confirmation prompt at Phase 1).')
             ->why('Flag -y enables automated/scripted execution without manual approval.')
             ->onViolation('Check for -y flag before waiting for user approval.');
-
-        $this->rule('simple-validation-heuristic')->high()
-            ->text('Detect simple tasks early: estimate ≤ 4h AND priority != "critical" AND no architecture/security tags AND subtasks.count ≤ 2. Store as $SIMPLE_VALIDATION flag in Phase 0.')
-            ->why('Simple tasks need lighter validation (2-3 agents). Complex tasks need full parallel orchestration (5 agents).')
-            ->onViolation('Check estimate, priority, tags, subtasks in Phase 0. Set $SIMPLE_VALIDATION accordingly.');
-
-        $this->rule('parallel-agent-orchestration')->high()
-            ->text('Validation phases use parallel agent orchestration SCALED to complexity: SIMPLE = 2-3 agents (completeness + tests), COMPLEX = 5 agents (full coverage).')
-            ->why('Parallel validation reduces time. Agent count scales with task complexity.')
-            ->onViolation('Check $SIMPLE_VALIDATION flag. Restructure agent batch accordingly.');
 
         $this->rule('idempotent-validation')->high()
             ->text('Validation is IDEMPOTENT. Running multiple times produces same result (no duplicate tasks, no repeated fixes).')
@@ -77,9 +76,9 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('Create task for the functional issue instead of fixing directly.');
 
         $this->rule('cosmetic-auto-fix')->critical()
-            ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed by parallel agents immediately WITHOUT creating tasks. After auto-fix, restart validation from Phase 0.')
+            ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed immediately using direct tools (Read/Edit/Write) WITHOUT creating tasks. After auto-fix, restart validation from Phase 0.')
             ->why('Cosmetic fixes are trivial, low-risk, and do not require task tracking. Immediate fix saves time and keeps task queue clean.')
-            ->onViolation('Launch parallel agents to fix cosmetic issues. DO NOT create tasks for cosmetic issues.');
+            ->onViolation('Fix cosmetic issues directly. DO NOT create tasks for cosmetic issues.');
 
         $this->rule('vector-memory-mandatory')->high()
             ->text('ALL validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate tasks.')
@@ -101,11 +100,6 @@ class TaskValidateInclude extends IncludeArchetype
             ->text('Each phase MUST end with its output block before next phase begins. Phase N output MUST appear before "=== PHASE N+1 ===" header.')
             ->why('Output markers confirm phase completion. Missing output = incomplete phase.')
             ->onViolation('Complete current phase output before starting next phase.');
-
-        $this->rule('no-parallel-phases')->critical()
-            ->text('FORBIDDEN: Executing multiple phases simultaneously. Only Phase 4 allows parallel AGENTS within the phase. Phase-level parallelism is NEVER allowed.')
-            ->why('Phase parallelism causes race conditions on shared variables.')
-            ->onViolation('Serialize phase execution. Wait for phase completion before starting next.');
 
         $this->rule('output-status-conditional')->critical()
             ->text('Output status depends on validation outcome: 1) PASSED + no tasks created → "validated", 2) Tasks created for fixes → "pending". Status "validated" means work is COMPLETE and verified.')
@@ -133,7 +127,7 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase(Store::as('VECTOR_TASK', '{task object with title, content, status, parent_id, priority, tags}'))
             ->phase(Operator::if('$VECTOR_TASK not found', [
                 Operator::report('Vector task #$VECTOR_TASK_ID not found'),
-                'Suggest: Check task ID with '.VectorTaskMcp::method('task_list'),
+                'Suggest: Check task ID with ' . VectorTaskMcp::method('task_list'),
                 'ABORT command',
             ]))
             ->phase(Operator::if('$VECTOR_TASK.status NOT IN ["completed", "tested", "validated", "in_progress"]', [
@@ -141,7 +135,7 @@ class TaskValidateInclude extends IncludeArchetype
                     '=== VALIDATION BLOCKED ===',
                     'Task #$VECTOR_TASK_ID has status: {$VECTOR_TASK.status}',
                     'Only tasks with status completed/tested/validated can be validated.',
-                    'Run /task:async $VECTOR_TASK_ID to complete first.',
+                    'Run /task:async or /task:sync $VECTOR_TASK_ID to complete first.',
                 ]),
                 'ABORT validation',
             ]))
@@ -178,42 +172,32 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID, limit: 50}'))
             ->phase(Store::as('SUBTASKS', '{list of subtasks}'))
             ->phase(Store::as('TASK_DESCRIPTION', '{$VECTOR_TASK.title + $VECTOR_TASK.content}'))
-            ->phase(Operator::note('Calculate SIMPLE_VALIDATION flag based on task characteristics'))
-            ->phase(Store::as('SIMPLE_VALIDATION', '{true IF: $VECTOR_TASK.estimate <= 4 AND $VECTOR_TASK.priority != "critical" AND $VECTOR_TASK.tags NOT contains ["architecture", "security", "breaking-change"] AND $SUBTASKS.count <= 2}'))
             ->phase(Operator::output([
-                '=== TASK:VALIDATE ACTIVATED ===',
+                '=== TASK:VALIDATE-SYNC ACTIVATED ===',
                 '',
                 '=== PHASE 0: VECTOR TASK LOADED ===',
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
                 'Status: {$VECTOR_TASK.status} | Priority: {$VECTOR_TASK.priority}',
                 'Parent context: {$PARENT_TASK_CONTEXT.title or "none"}',
                 'Subtasks: {$SUBTASKS.count}',
-                'Simple validation mode: {$SIMPLE_VALIDATION}',
                 'Fix tasks parent_id will be: $TASK_PARENT_ID (THIS task)',
             ]));
 
-        // Phase 1: Agent Discovery and Validation Scope Preview
+        // Phase 1: Validation Scope Preview + Approval
         $this->guideline('phase1-context-preview')
-            ->goal('Discover available agents and present validation scope for approval')
+            ->goal('Present validation scope for approval (sync mode, no agents)')
             ->example()
             ->phase(Operator::output([
                 '',
                 '=== PHASE 1: VALIDATION PREVIEW ===',
             ]))
-            ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'Get available agents with capabilities'))
-            ->phase(Store::as('AVAILABLE_AGENTS', '{agent_id: description mapping}'))
             ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from $TASK_DESCRIPTION}'),
                 'Get documentation INDEX preview'))
             ->phase(Store::as('DOCS_PREVIEW', 'Documentation files available'))
             ->phase(Operator::output([
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
-                'Available agents: {$AVAILABLE_AGENTS.count}',
                 'Documentation files: {$DOCS_PREVIEW.count}',
-                '',
-                'Validation will delegate to agents:',
-                '1. VectorMaster - deep memory research for context',
-                '2. DocumentationMaster - requirements extraction',
-                '3. Selected agents - parallel validation (5 aspects)',
+                'Validation mode: SYNC (direct tools, no agents)',
             ]))
             ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
                 Operator::output([
@@ -230,37 +214,34 @@ class TaskValidateInclude extends IncludeArchetype
             ]))
             ->phase('After approval (manual or auto) - set task in_progress (validation IS execution)')
             ->phase(VectorTaskMcp::call('task_update',
-                '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Validation started after approval", append_comment: true}'))
-            ->phase(Operator::output(['📋 Vector task #{$VECTOR_TASK_ID} started (validation phase)']));
+                '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Sync validation started after approval", append_comment: true}'))
+            ->phase(Operator::output(['📋 Vector task #{$VECTOR_TASK_ID} started (sync validation phase)']));
 
-        // Phase 2: Deep Context Gathering via VectorMaster Agent
+        // Phase 2: Deep Context Gathering (sync)
         $this->guideline('phase2-context-gathering')
-            ->goal('Delegate deep memory research to VectorMaster agent')
+            ->goal('Gather deep context via vector memory searches (no agents)')
             ->example()
             ->phase(Operator::output([
                 '',
                 '=== PHASE 2: DEEP CONTEXT GATHERING ===',
-                'Delegating to VectorMaster for deep memory research...',
             ]))
             ->phase(Operator::if('$IS_SESSION_RECOVERY === true', [
-                Operator::note('CAUTION: This is a session recovery. Vector memory findings from the crashed session should be treated with skepticism - previous context is incomplete. Verify findings against current codebase state before relying on them.'),
+                Operator::note('CAUTION: Session recovery. Memory findings from crashed session should be verified against current codebase.'),
             ]))
-            ->phase('SELECT vector-master from $AVAILABLE_AGENTS')
-            ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
-            ->phase(TaskTool::agent('{$CONTEXT_AGENT}',
-                'DEEP MEMORY RESEARCH for validation of task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Multi-probe search: implementation patterns, requirements, architecture decisions, past validations, bug fixes 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return: {implementations: [...], requirements: [...], patterns: [...], past_validations: [...], key_insights: [...]}. Store consolidated context.'))
-            ->phase(Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'))
+            ->phase(VectorMemoryMcp::call('search_memories',
+                '{query: "validation context {$TASK_DESCRIPTION}", limit: 5, category: "code-solution,architecture,bug-fix"}'))
+            ->phase(Store::as('MEMORY_CONTEXT', '{memory findings for validation}'))
             ->phase(VectorTaskMcp::call('task_list', '{query: "$TASK_DESCRIPTION", limit: 10}'))
             ->phase(Store::as('RELATED_TASKS', 'Related vector tasks'))
             ->phase(Operator::output([
-                'Context gathered via {$CONTEXT_AGENT}:',
-                '- Memory insights: {$MEMORY_CONTEXT.key_insights.count}',
+                'Context gathered:',
+                '- Memory insights: {$MEMORY_CONTEXT.count}',
                 '- Related tasks: {$RELATED_TASKS.count}',
             ]));
 
-        // Phase 3: Documentation Requirements Extraction
+        // Phase 3: Documentation Requirements Extraction (sync)
         $this->guideline('phase3-documentation-extraction')
-            ->goal('Extract ALL requirements from .docs/ via DocumentationMaster')
+            ->goal('Extract ALL requirements from .docs/ using direct tools')
             ->example()
             ->phase(Operator::output([
                 '',
@@ -269,9 +250,10 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from $TASK_DESCRIPTION}'), 'Get documentation INDEX'))
             ->phase(Store::as('DOCS_INDEX', 'Documentation file paths'))
             ->phase(Operator::if('$DOCS_INDEX not empty', [
-                TaskTool::agent('documentation-master',
-                    'Extract ALL requirements, acceptance criteria, constraints, and specifications from documentation files: {$DOCS_INDEX paths}. Return structured list: [{requirement_id, description, acceptance_criteria, related_files, priority}]. Store to vector memory.'),
-                Store::as('DOCUMENTATION_REQUIREMENTS', '{structured requirements list}'),
+                Operator::forEach('doc in $DOCS_INDEX', [
+                    ReadTool::call('{doc.path}'),
+                ]),
+                Store::as('DOCUMENTATION_REQUIREMENTS', '{structured requirements list extracted from docs}'),
             ]))
             ->phase(Operator::if('$DOCS_INDEX empty', [
                 Store::as('DOCUMENTATION_REQUIREMENTS', '[]'),
@@ -282,70 +264,23 @@ class TaskValidateInclude extends IncludeArchetype
                 '{requirements summary}',
             ]));
 
-        // Phase 4: Dynamic Agent Selection and Parallel Validation
-        $this->guideline('phase4-parallel-validation')
-            ->goal('Select best agents from $AVAILABLE_AGENTS and launch parallel validation (scaled to complexity)')
+        // Phase 4: Direct Validation (sync)
+        $this->guideline('phase4-direct-validation')
+            ->goal('Validate requirements and code consistency using direct tools')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 4: PARALLEL VALIDATION ===',
+                '=== PHASE 4: DIRECT VALIDATION ===',
             ]))
-            ->phase(Operator::if('$SIMPLE_VALIDATION === true', [
-                Operator::note('SIMPLE mode: 2 agents (completeness + tests) - sufficient for low-complexity tasks'),
-                'AGENT SELECTION (SIMPLE): Select agents for core validation:',
-                Operator::do([
-                    'ASPECT 1 - COMPLETENESS: Select agent for requirements verification',
-                    'ASPECT 2 - TEST COVERAGE: Select agent for test analysis',
-                ]),
-                Store::as('SELECTED_AGENTS', '{completeness: agent_id, tests: agent_id}'),
-                Operator::output([
-                    'Simple validation mode: 2 agents selected',
-                    '{$SELECTED_AGENTS mapping}',
-                    '',
-                    'Launching validation agents in parallel...',
-                ]),
-                'PARALLEL BATCH (SIMPLE): Launch 2 agents',
-                Operator::do([
-                    TaskTool::agent('{$SELECTED_AGENTS.completeness}',
-                        'COMPLETENESS CHECK: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for requirements 2) Scan codebase for implementation evidence 3) Map requirements to code 4) Return: [{requirement_id, status: implemented|partial|missing, evidence: file:line}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.tests}',
-                        'TEST COVERAGE CHECK: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Discover related test files 2) Analyze coverage gaps 3) Run tests if possible 4) Return: [{test_file, coverage_status, missing_scenarios}]. Store findings.'),
-                ]),
-            ]))
-            ->phase(Operator::if('$SIMPLE_VALIDATION === false', [
-                Operator::note('COMPLEX mode: 5 agents (full coverage) - comprehensive validation for critical/large tasks'),
-                'AGENT SELECTION (COMPLEX): Analyze $AVAILABLE_AGENTS descriptions and select BEST agent for each validation aspect:',
-                Operator::do([
-                    'ASPECT 1 - COMPLETENESS: Select agent best suited for requirements verification (vector-master for memory research, explore for codebase)',
-                    'ASPECT 2 - CODE CONSISTENCY: Select agent for code pattern analysis (explore for codebase scanning)',
-                    'ASPECT 3 - TEST COVERAGE: Select agent for test analysis (explore for test file discovery)',
-                    'ASPECT 4 - DOCUMENTATION SYNC: Select agent for documentation analysis (documentation-master if docs-focused, explore otherwise)',
-                    'ASPECT 5 - DEPENDENCIES: Select agent for dependency analysis (explore for import scanning)',
-                ]),
-                Store::as('SELECTED_AGENTS', '{aspect: agent_id mapping based on $AVAILABLE_AGENTS}'),
-                Operator::output([
-                    'Complex validation mode: 5 agents selected',
-                    '{$SELECTED_AGENTS mapping}',
-                    '',
-                    'Launching validation agents in parallel...',
-                ]),
-                'PARALLEL BATCH (COMPLEX): Launch selected agents simultaneously with DEEP RESEARCH tasks',
-                Operator::do([
-                    TaskTool::agent('{$SELECTED_AGENTS.completeness}',
-                        'DEEP RESEARCH - COMPLETENESS: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for past implementations and requirements 2) Scan codebase for implementation evidence 3) Map each requirement from {$DOCUMENTATION_REQUIREMENTS} to code 4) Return: [{requirement_id, status: implemented|partial|missing, evidence: file:line, memory_refs: [...]}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.consistency}',
-                        'DEEP RESEARCH - CODE CONSISTENCY: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for project coding standards 2) Scan related files for pattern violations 3) Check naming, architecture, style consistency 4) Return: [{file, issue_type, severity, description, suggestion}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.tests}',
-                        'DEEP RESEARCH - TEST COVERAGE: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for test patterns 2) Discover all related test files 3) Analyze coverage gaps 4) Run tests if possible 5) Return: [{test_file, coverage_status, missing_scenarios}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.docs}',
-                        'DEEP RESEARCH - DOCUMENTATION SYNC: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for documentation standards 2) Compare code vs documentation 3) Check docblocks, README, API docs 4) Return: [{doc_type, sync_status, gaps}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.deps}',
-                        'DEEP RESEARCH - DEPENDENCIES: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for dependency issues 2) Scan imports and dependencies 3) Check for broken/unused/circular refs 4) Return: [{file, dependency_issue, severity}]. Store findings.'),
-                ]),
-            ]))
-            ->phase(Store::as('VALIDATION_BATCH', '{results from all agents}'))
+            ->phase('Identify relevant files and patterns based on $TASK_DESCRIPTION and $DOCUMENTATION_REQUIREMENTS')
+            ->phase(GlobTool::describe('Discover related files using patterns derived from requirements'))
+            ->phase(GrepTool::describe('Search for implementation evidence and known patterns'))
+            ->phase(ReadTool::describe('Read identified files to confirm implementation and consistency'))
+            ->phase(Store::as('VALIDATION_FINDINGS', '{requirements mapping, code issues, tests, docs sync}'))
             ->phase(Operator::output([
-                'Batch complete: {$SELECTED_AGENTS.count} validation checks finished',
+                'Direct validation completed.',
+                'Files reviewed: {count}',
+                'Findings captured for aggregation.',
             ]));
 
         // Phase 5: Results Aggregation and Analysis
@@ -356,8 +291,8 @@ class TaskValidateInclude extends IncludeArchetype
                 '',
                 '=== PHASE 5: RESULTS AGGREGATION ===',
             ]))
-            ->phase('Merge results from all validation agents')
-            ->phase(Store::as('ALL_ISSUES', '{merged issues from all agents}'))
+            ->phase('Merge results from direct validation findings')
+            ->phase(Store::as('ALL_ISSUES', '{merged issues from validation findings}'))
             ->phase('Categorize FUNCTIONAL issues (require tasks):')
             ->phase(Store::as('CRITICAL_ISSUES', '{issues with severity: critical - code logic, security, architecture}'))
             ->phase(Store::as('MAJOR_ISSUES', '{issues with severity: major - functionality, tests, dependencies}'))
@@ -377,9 +312,9 @@ class TaskValidateInclude extends IncludeArchetype
                 'Functional issues total: {$FUNCTIONAL_ISSUES_COUNT}',
             ]));
 
-        // Phase 5.5: Cosmetic Auto-Fix (NO TASKS - immediate parallel agent fix)
+        // Phase 5.5: Cosmetic Auto-Fix (NO TASKS - immediate direct fix)
         $this->guideline('phase5-5-cosmetic-autofix')
-            ->goal('Auto-fix cosmetic issues via parallel agents WITHOUT creating tasks, then restart validation if only cosmetic issues exist')
+            ->goal('Auto-fix cosmetic issues directly WITHOUT creating tasks, then restart validation if only cosmetic issues exist')
             ->example()
             ->phase(Operator::if('$COSMETIC_ISSUES.count > 0', [
                 Operator::output([
@@ -388,18 +323,13 @@ class TaskValidateInclude extends IncludeArchetype
                     'Found {$COSMETIC_ISSUES.count} cosmetic issues (whitespace, formatting, typos)',
                     'Auto-fixing without creating tasks...',
                 ]),
-                'Group cosmetic issues by file for parallel processing',
+                'Group cosmetic issues by file for processing',
                 Store::as('COSMETIC_FILE_GROUPS', '{group $COSMETIC_ISSUES by file path}'),
-                'Launch parallel agents to fix cosmetic issues (max 5 agents)',
-                Operator::do([
-                    TaskTool::agent('explore',
-                        'FIX COSMETIC ISSUES ONLY in files: {$COSMETIC_FILE_GROUP_1}. Issues to fix: {issues list}. ONLY fix: whitespace, indentation, trailing spaces, extra empty lines, documentation typos, comment formatting. DO NOT modify any code logic, function signatures, or functionality. Return: {files_fixed: [...], changes_made: [...]}'),
-                    TaskTool::agent('explore',
-                        'FIX COSMETIC ISSUES ONLY in files: {$COSMETIC_FILE_GROUP_2}. Issues to fix: {issues list}. ONLY fix: whitespace, indentation, trailing spaces, extra empty lines, documentation typos, comment formatting. DO NOT modify any code logic, function signatures, or functionality. Return: {files_fixed: [...], changes_made: [...]}'),
-                    TaskTool::agent('explore',
-                        'FIX COSMETIC ISSUES ONLY in files: {$COSMETIC_FILE_GROUP_3}. Issues to fix: {issues list}. ONLY fix: whitespace, indentation, trailing spaces, extra empty lines, documentation typos, comment formatting. DO NOT modify any code logic, function signatures, or functionality. Return: {files_fixed: [...], changes_made: [...]}'),
+                Operator::forEach('file in $COSMETIC_FILE_GROUPS', [
+                    ReadTool::call('{file.path}'),
+                    EditTool::call('{file.path}', '{old_string}', '{new_string}'),
                 ]),
-                Store::as('COSMETIC_FIX_RESULTS', '{results from cosmetic fix agents}'),
+                Store::as('COSMETIC_FIX_RESULTS', '{results from direct fixes}'),
                 Operator::output([
                     'Cosmetic fixes applied: {$COSMETIC_FIX_RESULTS.total_fixed} issues in {$COSMETIC_FIX_RESULTS.files_count} files',
                 ]),
@@ -481,7 +411,7 @@ class TaskValidateInclude extends IncludeArchetype
                     [
                         VectorTaskMcp::call('task_create', '{
                         title: "Validation fixes: task #{$VECTOR_TASK_ID}",
-                        content: "Consolidated validation findings for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}.\\n\\nTotal estimate: {$TOTAL_ESTIMATE}h\\n\\n## Critical Issues ({$CRITICAL_ISSUES.count})\\n{FOR each issue: - [{issue.severity}] {issue.description}\\n  File: {issue.file}:{issue.line}\\n  Type: {issue.type}\\n  Suggestion: {issue.suggestion}\\n  Memory refs: {issue.memory_refs}\\n}\\n\\n## Major Issues ({$MAJOR_ISSUES.count})\\n{FOR each issue: - [{issue.severity}] {issue.description}\\n  File: {issue.file}:{issue.line}\\n  Type: {issue.type}\\n  Suggestion: {issue.suggestion}\\n  Memory refs: {issue.memory_refs}\\n}\\n\\n## Minor Issues ({$MINOR_ISSUES.count})\\n{FOR each issue: - [{issue.severity}] {issue.description}\\n  File: {issue.file}:{issue.line}\\n  Type: {issue.type}\\n  Suggestion: {issue.suggestion}\\n  Memory refs: {issue.memory_refs}\\n}\\n\\n## Missing Requirements ({$MISSING_REQUIREMENTS.count})\\n{FOR each req: - {req.description}\\n  Acceptance criteria: {req.acceptance_criteria}\\n  Related files: {req.related_files}\\n  Priority: {req.priority}\\n}\\n\\n## Context References\\n- Parent task: #{$VECTOR_TASK_ID}\\n- Memory IDs: {$MEMORY_CONTEXT.memory_ids}\\n- Related tasks: {$RELATED_TASKS.ids}\\n- Documentation: {$DOCS_INDEX.paths}\\n- Validation agents used: {$SELECTED_AGENTS}",
+                        content: "Consolidated validation findings for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}.\n\nTotal estimate: {$TOTAL_ESTIMATE}h\n\n## Critical Issues ({$CRITICAL_ISSUES.count})\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Type: {issue.type}\n  Suggestion: {issue.suggestion}\n  Memory refs: {issue.memory_refs}\n}\n\n## Major Issues ({$MAJOR_ISSUES.count})\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Type: {issue.type}\n  Suggestion: {issue.suggestion}\n  Memory refs: {issue.memory_refs}\n}\n\n## Minor Issues ({$MINOR_ISSUES.count})\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Type: {issue.type}\n  Suggestion: {issue.suggestion}\n  Memory refs: {issue.memory_refs}\n}\n\n## Missing Requirements ({$MISSING_REQUIREMENTS.count})\n{FOR each req: - {req.description}\n  Acceptance criteria: {req.acceptance_criteria}\n  Related files: {req.related_files}\n  Priority: {req.priority}\n}\n\n## Context References\n- Parent task: #{$VECTOR_TASK_ID}\n- Memory IDs: {$MEMORY_CONTEXT.memory_ids}\n- Related tasks: {$RELATED_TASKS.ids}\n- Documentation: {$DOCS_INDEX.paths}",
                         priority: "{$CRITICAL_ISSUES.count > 0 ? high : medium}",
                         estimate: $TOTAL_ESTIMATE,
                         tags: ["validation-fix", "consolidated"],
@@ -505,7 +435,7 @@ class TaskValidateInclude extends IncludeArchetype
                     Operator::if('NOT exists similar in $EXISTING_FIX_TASKS', [
                         VectorTaskMcp::call('task_create', '{
                             title: "Validation fixes batch {batch_index}/{$NUM_BATCHES}: task #{$VECTOR_TASK_ID}",
-                            content: "Validation batch {batch_index} of {$NUM_BATCHES} for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}.\\n\\nBatch estimate: {$BATCH_ESTIMATE}h\\nBatch composition: {$BATCH_CRITICAL} critical, {$BATCH_MAJOR} major, {$BATCH_MISSING} missing reqs\\n\\n## Issues in this batch\\n{FOR each issue in $BATCH_ISSUES:\\n### [{issue.severity}] {issue.title}\\n- File: {issue.file}:{issue.line}\\n- Type: {issue.type}\\n- Description: {issue.description}\\n- Suggestion: {issue.suggestion}\\n- Evidence: {issue.evidence}\\n- Memory refs: {issue.memory_refs}\\n}\\n\\n## Full Context References\\n- Parent task: #{$VECTOR_TASK_ID}\\n- Memory IDs: {$MEMORY_CONTEXT.memory_ids}\\n- Related tasks: {$RELATED_TASKS.ids}\\n- Documentation: {$DOCS_INDEX.paths}\\n- Total batches: {$NUM_BATCHES} ({$TOTAL_ESTIMATE}h total)\\n- Validation agents: {$SELECTED_AGENTS}",
+                            content: "Validation batch {batch_index} of {$NUM_BATCHES} for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}.\n\nBatch estimate: {$BATCH_ESTIMATE}h\nBatch composition: {$BATCH_CRITICAL} critical, {$BATCH_MAJOR} major, {$BATCH_MISSING} missing reqs\n\n## Issues in this batch\n{FOR each issue in $BATCH_ISSUES:\n### [{issue.severity}] {issue.title}\n- File: {issue.file}:{issue.line}\n- Type: {issue.type}\n- Description: {issue.description}\n- Suggestion: {issue.suggestion}\n- Evidence: {issue.evidence}\n- Memory refs: {issue.memory_refs}\n}\n\n## Full Context References\n- Parent task: #{$VECTOR_TASK_ID}\n- Memory IDs: {$MEMORY_CONTEXT.memory_ids}\n- Related tasks: {$RELATED_TASKS.ids}\n- Documentation: {$DOCS_INDEX.paths}\n- Total batches: {$NUM_BATCHES} ({$TOTAL_ESTIMATE}h total)",
                             priority: "{$BATCH_CRITICAL > 0 ? high : medium}",
                             estimate: $BATCH_ESTIMATE,
                             tags: ["validation-fix", "batch-{batch_index}"],
@@ -544,15 +474,15 @@ class TaskValidateInclude extends IncludeArchetype
                 Operator::if('$CRITICAL_ISSUES.count === 0 AND $MISSING_REQUIREMENTS.count === 0', 'PASSED',
                     'NEEDS_WORK')))
             ->phase(VectorMemoryMcp::call('store_memory',
-                '{content: "Validation of task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nStatus: {$VALIDATION_STATUS}\\nCritical: {$CRITICAL_ISSUES.count}\\nMajor: {$MAJOR_ISSUES.count}\\nMinor: {$MINOR_ISSUES.count}\\nTasks created: {$CREATED_TASKS.count}\\n\\nFindings:\\n{summary of key findings}", category: "code-solution", tags: ["validation", "audit", "task:validate"]}'))
+                '{content: "Validation of task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\n\nStatus: {$VALIDATION_STATUS}\nCritical: {$CRITICAL_ISSUES.count}\nMajor: {$MAJOR_ISSUES.count}\nMinor: {$MINOR_ISSUES.count}\nTasks created: {$CREATED_TASKS.count}\n\nFindings:\n{summary of key findings}", category: "code-solution", tags: ["validation", "audit", "task:validate-sync"]}'))
             ->phase(Operator::if('$VALIDATION_STATUS === "PASSED" AND $CREATED_TASKS.count === 0', [
                 VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Validation PASSED. All requirements implemented, no issues found.", append_comment: true}'),
+                    '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Sync validation PASSED. All requirements implemented, no issues found.", append_comment: true}'),
                 Operator::output(['✅ Task #{$VECTOR_TASK_ID} marked as VALIDATED']),
             ]))
             ->phase(Operator::if('$CREATED_TASKS.count > 0', [
                 VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation found issues. Created {$CREATED_TASKS.count} fix tasks: Critical: {$CRITICAL_ISSUES.count}, Major: {$MAJOR_ISSUES.count}, Minor: {$MINOR_ISSUES.count}, Missing: {$MISSING_REQUIREMENTS.count}. Returning to pending - fix tasks must be completed before re-validation.", append_comment: true}'),
+                    '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Sync validation found issues. Created {$CREATED_TASKS.count} fix tasks: Critical: {$CRITICAL_ISSUES.count}, Major: {$MAJOR_ISSUES.count}, Minor: {$MINOR_ISSUES.count}, Missing: {$MISSING_REQUIREMENTS.count}. Returning to pending - fix tasks must be completed before re-validation.", append_comment: true}'),
                 Operator::output(['⏳ Task #{$VECTOR_TASK_ID} returned to PENDING ({$CREATED_TASKS.count} fix tasks required before re-validation)']),
             ]))
             ->phase(Operator::output([
@@ -582,12 +512,12 @@ class TaskValidateInclude extends IncludeArchetype
             ->example()
             ->phase()->if('vector task not found', [
                 'Report: "Vector task #{id} not found"',
-                'Suggest: Check task ID with '.VectorTaskMcp::method('task_list'),
+                'Suggest: Check task ID with ' . VectorTaskMcp::method('task_list'),
                 'Abort validation',
             ])
             ->phase()->if('vector task not in validatable status', [
                 'Report: "Vector task #{id} status is {status}, not completed/tested/validated"',
-                'Suggest: Run /task:async #{id} first',
+                'Suggest: Run /task:async or /task:sync #{id} first',
                 'Abort validation',
             ])
             ->phase()->if('invalid task ID format', [
@@ -599,9 +529,8 @@ class TaskValidateInclude extends IncludeArchetype
                 'Warn: "No documentation in .docs/ for this task"',
                 'Continue with limited validation (code-only checks)',
             ])
-            ->phase()->if('agent validation fails', [
-                'Log: "Validation agent {N} failed: {error}"',
-                'Continue with remaining agents',
+            ->phase()->if('validation fails', [
+                'Log: "Validation failed: {error}"',
                 'Report partial validation in summary',
             ])
             ->phase()->if('task creation fails', [
@@ -612,15 +541,13 @@ class TaskValidateInclude extends IncludeArchetype
 
         // Constraints and Validation
         $this->guideline('constraints')
-            ->text('Validation constraints and limits')
+            ->text('Validation constraints and limits (sync)')
             ->example()
-            ->phase('Max 6 parallel validation agents per batch')
             ->phase('Max 20 tasks created per validation run')
-            ->phase('Validation timeout: 5 minutes per agent')
+            ->phase('Validation timeout: 10 minutes total')
             ->phase(Operator::verify([
                 'vector_task_loaded = true',
                 'validatable_status_verified = true',
-                'parallel_agents_used = true',
                 'documentation_checked = true',
                 'results_stored_to_memory = true',
                 'no_direct_fixes = true',
@@ -628,16 +555,16 @@ class TaskValidateInclude extends IncludeArchetype
 
         // Examples
         $this->guideline('example-simple-validation')
-            ->scenario('Validate completed vector task')
+            ->scenario('Sync validate completed vector task')
             ->example()
             ->phase('input', '"task 15" or "#15" where task #15 is "Implement user login"')
             ->phase('load', 'task_get(15) → title, content, status: completed')
             ->phase('flow',
-                'Task Loading → Context → Docs → Parallel Validation (5 agents) → Aggregate → Create Tasks → Complete')
+                'Task Loading → Context → Docs → Direct Validation → Aggregate → Create Tasks → Complete')
             ->phase('result', 'Validation PASSED → status: validated OR NEEDS_WORK → N fix tasks created');
 
         $this->guideline('example-with-fixes')
-            ->scenario('Validation finds issues')
+            ->scenario('Sync validation finds issues')
             ->example()
             ->phase('input', '"#28" where task #28 has status: completed')
             ->phase('validation', 'Found: 2 critical, 3 major, 1 missing requirement')
@@ -645,23 +572,23 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('result', 'Task #28 status → pending, 1 fix task created as child');
 
         $this->guideline('example-rerun')
-            ->scenario('Re-run validation (idempotent)')
+            ->scenario('Re-run sync validation (idempotent)')
             ->example()
             ->phase('input', '"task 15" (already validated before)')
             ->phase('behavior', 'Skips existing tasks, only creates NEW issues found')
             ->phase('result', 'Same/updated validation report, no duplicate tasks');
 
-        // When to use task:validate vs do:validate
-        $this->guideline('validate-vs-do-validate')
-            ->text('When to use /task:validate vs /do:validate')
+        // When to use task:validate vs task:validate-sync
+        $this->guideline('validate-vs-validate-sync')
+            ->text('When to use /task:validate vs /task:validate-sync')
             ->example()
             ->phase('USE /task:validate',
-                'Validate specific vector task by ID (15, #15, task 15). Best for: systematic task-based workflow, hierarchical task management, fix task creation as children.')
-            ->phase('USE /do:validate',
-                'Validate work by text description ("validate user authentication"). Best for: ad-hoc validation, exploratory validation, no existing vector task.');
+                'Async validation with parallel agents for large/complex tasks.')
+            ->phase('USE /task:validate-sync',
+                'Direct sync validation without agents. Best for smaller or isolated tasks.');
 
         // Response Format
         $this->guideline('response-format')
-            ->text('=== headers | Parallel: agent batch indicators | Tables: validation results | No filler | Created tasks listed | 📋 task ID references');
+            ->text('=== headers | single approval | progress markers | tables for results | Created tasks listed | 📋 task ID references');
     }
 }

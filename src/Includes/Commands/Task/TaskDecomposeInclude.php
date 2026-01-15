@@ -36,14 +36,14 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->onViolation('Group related work into larger subtasks (each 5-8h), mark them [needs-decomposition] for recursive /task:decompose.');
 
         $this->rule('parallel-agent-execution')->critical()
-            ->text('Launch INDEPENDENT research agents in PARALLEL (multiple Task calls in single response)')
-            ->why('Maximizes research coverage, comprehensive decomposition context')
-            ->onViolation('Group independent research, launch ALL simultaneously');
+            ->text('Launch independent research agents in parallel ONLY for complex tasks. SIMPLE tasks may run at most one agent per domain to keep latency low.')
+            ->why('Balances coverage with overhead; parallel agents add value when the parent task is complex enough to justify them.')
+            ->onViolation('If a simple task was marked complex, re-evaluate scope. For complex tasks, group agents thoughtfully and launch simultaneously.');
 
         $this->rule('multi-agent-research')->critical()
-            ->text('Use SPECIALIZED agents: ExploreMaster(code), DocumentationMaster(docs), VectorMaster(memory)')
-            ->why('Each agent has domain expertise. Single agent misses critical decomposition context.')
-            ->onViolation('Delegate to appropriate specialized agent');
+            ->text('Use specialized agents: ExploreMaster(code), DocumentationMaster(docs), VectorMaster(memory) when complexity demands it. SIMPLE tasks may rely on a single VectorMaster lookup.')
+            ->why('Each agent adds context but also cost. Only the necessary mix should run for non-trivial decompositions.')
+            ->onViolation('Delegate to targeted agents based on actual task complexity. Avoid blanket multi-agent blasts for simple work.');
 
         $this->rule('create-only-no-execution')->critical()
             ->text('This command ONLY creates subtasks. NEVER execute any subtask after creation.')
@@ -69,6 +69,11 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->text('NEVER analyze ' . Runtime::BRAIN_DIRECTORY . ' when decomposing code tasks')
             ->why('Brain system internals are not project code')
             ->onViolation('Skip ' . Runtime::BRAIN_DIRECTORY . ' in all exploration');
+
+        $this->rule('simple-decomposition-heuristic')->high()
+            ->text('Detect simple parent tasks (low estimate + simple complexity) so heavy parallel research can be skipped.')
+            ->why('Keeps latency low on trivial decompositions while running full workflows for complex requests.')
+            ->onViolation('If a simple task actually needs deep insight, treat it as complex and rerun the workflow.');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->guideline('input')
@@ -116,6 +121,8 @@ class TaskDecomposeInclude extends IncludeArchetype
                 'Identify domain: backend | frontend | database | api | devops',
                 'Assess complexity: simple | moderate | complex | very-complex',
                 Store::as('TASK_TYPE', '{type, domain, complexity}'),
+                Store::as('SIMPLE_DECOMPOSITION', '{true if $TASK_TYPE.complexity === "simple" AND $PARENT_TASK.estimate <= 4}'),
+                Operator::note('SIMPLE_DECOMPOSITION = {$SIMPLE_DECOMPOSITION}')
             ]);
 
         // ============================================
@@ -123,38 +130,57 @@ class TaskDecomposeInclude extends IncludeArchetype
         // ============================================
 
         $this->guideline('phase2-parallel-research')
-            ->goal('PARALLEL: Deep memory research + documentation analysis')
+            ->goal('PARALLEL: Deep memory research + documentation analysis when complexity demands it')
             ->example()
-            ->phase('BATCH 1 - Memory & Docs (LAUNCH IN PARALLEL):')
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === false', 'BATCH 1 - Memory & Docs (LAUNCH IN PARALLEL):'))
             ->do([
-                VectorMaster::call(
-                    Operator::task([
-                        'DEEP MEMORY RESEARCH for decomposition of: $PARENT_TASK.title',
-                        'Multi-probe search strategy:',
-                        'Probe 1: "task decomposition {domain} patterns strategies" (tool-usage)',
-                        'Probe 2: "$PARENT_TASK.title implementation breakdown structure" (architecture)',
-                        'Probe 3: "{domain} subtask estimation accuracy lessons" (learning)',
-                        'Probe 4: "similar task decomposition mistakes pitfalls" (bug-fix)',
-                        'Probe 5: "{domain} code structure component boundaries" (code-solution)',
-                        'EXTRACT: decomposition patterns, common structures, past estimates, warnings',
-                        'OUTPUT: actionable decomposition insights',
-                    ]),
-                    Operator::output('{memories_found:N,patterns:[],estimates_accuracy:[],warnings:[]}'),
-                    Store::as('MEMORY_INSIGHTS')
-                ),
-                DocumentationMaster::call(
-                    Operator::task([
-                        'DOCUMENTATION RESEARCH for task: $PARENT_TASK.title',
-                        'Search brain docs for: {domain}, {related_concepts}',
-                        'Find: API specs, architecture docs, implementation guides',
-                        'EXTRACT: requirements, constraints, patterns, dependencies',
-                        'OUTPUT: documentation-based decomposition guidance',
-                    ]),
-                    Operator::output('{docs_found:N,requirements:[],patterns:[],constraints:[]}'),
-                    Store::as('DOC_INSIGHTS')
-                ),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', [
+                    VectorMaster::call(
+                        Operator::task([
+                            'DEEP MEMORY RESEARCH for decomposition of: $PARENT_TASK.title',
+                            'Multi-probe search strategy:',
+                            'Probe 1: "task decomposition {domain} patterns strategies" (tool-usage)',
+                            'Probe 2: "$PARENT_TASK.title implementation breakdown structure" (architecture)',
+                            'Probe 3: "{domain} subtask estimation accuracy lessons" (learning)',
+                            'Probe 4: "similar task decomposition mistakes pitfalls" (bug-fix)',
+                            'Probe 5: "{domain} code structure component boundaries" (code-solution)',
+                            'EXTRACT: decomposition patterns, common structures, past estimates, warnings',
+                            'OUTPUT: actionable decomposition insights',
+                        ]),
+                        Operator::output('{memories_found:N,patterns:[],estimates_accuracy:[],warnings:[]}'),
+                        Store::as('MEMORY_INSIGHTS')
+                    ),
+                    DocumentationMaster::call(
+                        Operator::task([
+                            'DOCUMENTATION RESEARCH for task: $PARENT_TASK.title',
+                            'Search brain docs for: {domain}, {related_concepts}',
+                            'Find: API specs, architecture docs, implementation guides',
+                            'EXTRACT: requirements, constraints, patterns, dependencies',
+                            'OUTPUT: documentation-based decomposition guidance',
+                        ]),
+                        Operator::output('{docs_found:N,requirements:[],patterns:[],constraints:[]}'),
+                        Store::as('DOC_INSIGHTS')
+                    ),
+                ]),
+                Operator::if('$SIMPLE_DECOMPOSITION === true', [
+                    Operator::output(['Simple task detected; running lightweight memory check.']),
+                    VectorMaster::call(
+                        Operator::task([
+                            'LIGHT MEMORY CHECK for: $PARENT_TASK.title',
+                            'Probe 1: "$PARENT_TASK.title" (context summary)',
+                            'Probe 2: "{domain} decomposition hints"',
+                            'EXTRACT: key patterns, estimates, warnings',
+                            'OUTPUT: condensed memory summary',
+                        ]),
+                        Operator::output('{memories_found:N,patterns:[],warnings:[]}'),
+                        Store::as('MEMORY_INSIGHTS')
+                    ),
+                    Store::as('DOC_INSIGHTS', '{docs_found:0,requirements:[],patterns:[],constraints:[]}'),
+                    Operator::output(['Documentation research skipped for simple decomposition.']),
+                ]),
             ])
-            ->phase('NOTE: VectorMaster + DocumentationMaster run SIMULTANEOUSLY');
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === false', 'NOTE: VectorMaster + DocumentationMaster run SIMULTANEOUSLY'))
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === true', 'NOTE: Simple decomposition skipped docs research.'));
 
         // ============================================
         // PHASE 3: PARALLEL CODEBASE EXPLORATION (if code task)
@@ -163,10 +189,10 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->guideline('phase3-parallel-code')
             ->goal('PARALLEL: Multi-aspect codebase analysis for code tasks')
             ->example()
-            ->phase('CONDITIONAL: If $TASK_TYPE.type === "code":')
-            ->phase('BATCH 2 - Codebase Analysis (LAUNCH IN PARALLEL):')
+            ->phase(Operator::if('$TASK_TYPE.type === "code"', 'CONDITIONAL: If $TASK_TYPE.type === "code":'))
+            ->phase(Operator::if('$TASK_TYPE.type === "code" AND $SIMPLE_DECOMPOSITION === false', 'BATCH 2 - Codebase Analysis (LAUNCH IN PARALLEL):'))
             ->do([
-                ExploreMaster::call(
+                Operator::if('$TASK_TYPE.type === "code" AND $SIMPLE_DECOMPOSITION === false', ExploreMaster::call(
                     Operator::task([
                         'COMPONENT ANALYSIS for: $PARENT_TASK.title',
                         'Thoroughness: very thorough',
@@ -177,8 +203,8 @@ class TaskDecomposeInclude extends IncludeArchetype
                     ]),
                     Operator::output('{files:N,components:[],boundaries:[],split_points:[]}'),
                     Store::as('CODE_COMPONENTS')
-                ),
-                ExploreMaster::call(
+                )),
+                Operator::if('$TASK_TYPE.type === "code" AND $SIMPLE_DECOMPOSITION === false', ExploreMaster::call(
                     Operator::task([
                         'DEPENDENCY ANALYSIS for: $PARENT_TASK.title',
                         'Thoroughness: thorough',
@@ -189,8 +215,8 @@ class TaskDecomposeInclude extends IncludeArchetype
                     ]),
                     Operator::output('{dependencies:[],coupling:str,independent_areas:[]}'),
                     Store::as('CODE_DEPENDENCIES')
-                ),
-                ExploreMaster::call(
+                )),
+                Operator::if('$TASK_TYPE.type === "code" AND $SIMPLE_DECOMPOSITION === false', ExploreMaster::call(
                     Operator::task([
                         'TEST ANALYSIS for: $PARENT_TASK.title',
                         'Thoroughness: medium',
@@ -201,20 +227,21 @@ class TaskDecomposeInclude extends IncludeArchetype
                     ]),
                     Operator::output('{tests:N,coverage_gaps:[],test_requirements:[]}'),
                     Store::as('CODE_TESTS')
-                ),
+                )),
             ])
-            ->phase('NOTE: All 3 ExploreMaster agents run SIMULTANEOUSLY');
+            ->phase(Operator::if('$TASK_TYPE.type === "code" AND $SIMPLE_DECOMPOSITION === false', 'NOTE: All 3 ExploreMaster agents run SIMULTANEOUSLY'))
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === true', 'NOTE: Simple task skipped code exploration.'));
 
         // ============================================
         // PHASE 4: ADDITIONAL PARALLEL RESEARCH
         // ============================================
 
         $this->guideline('phase4-parallel-additional')
-            ->goal('PARALLEL: Additional targeted research based on task type')
+            ->goal('PARALLEL: Additional targeted research based on task type when needed')
             ->example()
-            ->phase('BATCH 3 - Additional Research (LAUNCH IN PARALLEL):')
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === false', 'BATCH 3 - Additional Research (LAUNCH IN PARALLEL):'))
             ->do([
-                ExploreMaster::call(
+                Operator::if('$SIMPLE_DECOMPOSITION === false', ExploreMaster::call(
                     Operator::task([
                         'COMPLEXITY ASSESSMENT for: $PARENT_TASK.title',
                         'Thoroughness: quick',
@@ -224,9 +251,9 @@ class TaskDecomposeInclude extends IncludeArchetype
                     ]),
                     Operator::output('{complexity:str,hotspots:[],risk_level:str}'),
                     Store::as('COMPLEXITY_ANALYSIS')
-                ),
+                )),
                 Operator::if(
-                    '$TASK_TYPE.domain === "api" OR $TASK_TYPE.domain === "backend"',
+                    '($TASK_TYPE.domain === "api" OR $TASK_TYPE.domain === "backend") AND $SIMPLE_DECOMPOSITION === false',
                     ExploreMaster::call(
                         Operator::task([
                             'API/ROUTE ANALYSIS for: $PARENT_TASK.title',
@@ -240,11 +267,11 @@ class TaskDecomposeInclude extends IncludeArchetype
                     )
                 ),
             ])
-            ->phase('PARALLEL memory searches for specific aspects:')
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === false', 'PARALLEL memory searches for specific aspects:'))
             ->do([
-                VectorMemoryMcp::call('search_memories', '{query: "$PARENT_TASK.domain estimation accuracy", limit: 3, category: "learning"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "$PARENT_TASK.title similar implementation", limit: 3, category: "code-solution"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "$PARENT_TASK.domain common mistakes", limit: 3, category: "bug-fix"}'),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', VectorMemoryMcp::call('search_memories', '{query: "$PARENT_TASK.domain estimation accuracy", limit: 3, category: "learning"}')),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', VectorMemoryMcp::call('search_memories', '{query: "$PARENT_TASK.title similar implementation", limit: 3, category: "code-solution"}')),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', VectorMemoryMcp::call('search_memories', '{query: "$PARENT_TASK.domain common mistakes", limit: 3, category: "bug-fix"}')),
             ]);
 
         // ============================================
@@ -261,21 +288,22 @@ class TaskDecomposeInclude extends IncludeArchetype
                 Store::get('TASK_TYPE'),
                 Store::get('MEMORY_INSIGHTS'),
                 Store::get('DOC_INSIGHTS'),
-                Store::get('CODE_COMPONENTS'),
-                Store::get('CODE_DEPENDENCIES'),
-                Store::get('CODE_TESTS'),
-                Store::get('COMPLEXITY_ANALYSIS'),
-                Store::get('API_ANALYSIS'),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', Store::get('CODE_COMPONENTS')),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', Store::get('CODE_DEPENDENCIES')),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', Store::get('CODE_TESTS')),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', Store::get('COMPLEXITY_ANALYSIS')),
+                Operator::if('$SIMPLE_DECOMPOSITION === false', Store::get('API_ANALYSIS')),
             ])
-            ->phase('SEQUENTIAL THINKING for decomposition strategy:')
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === false', 'SEQUENTIAL THINKING for decomposition strategy:'))
             ->do([
-                SequentialThinkingMcp::call('sequentialthinking', '{
+                Operator::if('$SIMPLE_DECOMPOSITION === false', SequentialThinkingMcp::call('sequentialthinking', '{
                     thought: "Analyzing comprehensive research from 5+ parallel agents for optimal decomposition. Parent: $PARENT_TASK.title. Golden rule: <=5-8h per subtask.",
                     thoughtNumber: 1,
                     totalThoughts: 6,
                     nextThoughtNeeded: true
-                }'),
+                }')),
             ])
+            ->phase(Operator::if('$SIMPLE_DECOMPOSITION === true', 'Simple decomposition: skipping SequentialThinking (already lightweight).'))
             ->phase('DECOMPOSITION ANALYSIS:')
             ->do([
                 'Step 1: Identify natural task boundaries from CODE_COMPONENTS',

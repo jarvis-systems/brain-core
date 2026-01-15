@@ -32,14 +32,14 @@ class TaskAsyncInclude extends IncludeArchetype
             ->onViolation('Abort immediately. Return to approved plan.');
 
         $this->rule('approval-gates-mandatory')->critical()
-            ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates (skip user confirmation prompts).')
-            ->why('Maintains user control and prevents unauthorized execution. Flag -y enables automated/scripted execution.')
-            ->onViolation('STOP. Wait for user approval before continuing (unless $HAS_AUTO_APPROVE is true).');
+            ->text('User approval REQUIRED before execution. DEFAULT: two gates (Requirements and Planning). For SIMPLE_TASK, allow a single combined approval after planning. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates.')
+            ->why('Maintains user control while reducing friction for simple tasks. Flag -y enables automated execution.')
+            ->onViolation('STOP. Wait for required approval before continuing (unless $HAS_AUTO_APPROVE is true).');
 
         $this->rule('atomic-tasks-only')->critical()
-            ->text('Each agent task MUST be small and focused: maximum 1-2 files per agent invocation. NO large multi-file changes.')
-            ->why('Prevents complexity, improves reliability, enables precise tracking')
-            ->onViolation('Break task into smaller pieces. Re-plan with atomic steps.');
+            ->text('Each agent task MUST be small and focused: default 1-2 files per agent invocation. Allow 3-5 files ONLY when the change is a single coherent change set (same feature or refactor). NO broad multi-area changes.')
+            ->why('Balances reliability with overhead: avoid micro-delegation while keeping scope bounded.')
+            ->onViolation('If scope spans unrelated areas, split into smaller coherent steps.');
 
         $this->rule('no-improvisation')->critical()
             ->text('Execute ONLY approved plan steps. NO improvisation, NO "while we\'re here" additions, NO proactive suggestions during execution.')
@@ -72,9 +72,9 @@ class TaskAsyncInclude extends IncludeArchetype
             ->onViolation('STOP. Report: "Invalid task ID. Use /do:async for text-based tasks or provide valid task ID."');
 
         $this->rule('full-workflow-mandatory')->critical()
-            ->text('ALL requests MUST follow complete workflow: Phase 0 (Task Load) → Phase 1 (Discovery) → Phase 2 (Requirements + APPROVAL) → Phase 3 (Gathering) → Phase 4 (Planning + APPROVAL) → Phase 5 (Execution via agents) → Phase 6 (Completion). NEVER skip phases. NEVER execute directly without agent delegation.')
-            ->why('Workflow ensures quality, user control, and proper orchestration. Skipping phases leads to poor results, missed context, and violated user trust.')
-            ->onViolation('STOP. Return to Phase 0. Follow workflow sequentially. Present approval gates. Delegate via Task().');
+            ->text('Workflow REQUIRED with conditional merging: Phase 0 (Task Load) → Phase 1 (Discovery + Requirements) → Phase 2 (Gathering, OPTIONAL) → Phase 3 (Planning + APPROVAL) → Phase 4 (Execution via agents) → Phase 5 (Completion). For SIMPLE_TASK, Phase 2 may be skipped and approval can be a single gate after planning. NEVER execute directly without agent delegation.')
+            ->why('Keeps quality while reducing overhead on simple tasks. Conditional phases avoid unnecessary agent work.')
+            ->onViolation('STOP. Return to Phase 0. Follow workflow sequentially with required approvals. Delegate via Task().');
 
         $this->rule('never-execute-directly')->critical()
             ->text('Brain NEVER executes implementation tasks directly. MUST delegate to agents via Task(). Brain only: analyzes, plans, presents approvals, delegates, validates results.')
@@ -83,9 +83,9 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // Anti-Improvisation: Strict Tool Prohibition
         $this->rule('no-direct-file-tools')->critical()
-            ->text('FORBIDDEN: Brain NEVER calls Glob, Grep, Read, Edit, Write directly. ALL file operations MUST be delegated to agents via Task().')
-            ->why('Direct tool calls are expensive, bypass agent expertise, and violate orchestration model. Each file operation costs tokens that agents handle more efficiently.')
-            ->onViolation('STOP. Remove direct tool call. Delegate to appropriate agent: ExploreMaster (search/read), code agents (edit/write).');
+            ->text('FORBIDDEN: Brain NEVER calls Edit or Write directly. Glob/Grep/Read are allowed ONLY in Phases 0-2 for lightweight triage (scope sizing, quick verification). ALL implementation and deep reading MUST be delegated to agents via Task().')
+            ->why('Balances speed and safety: allow minimal triage without paying agent overhead; keep execution work delegated.')
+            ->onViolation('Remove direct tool call or move it to Phase 0-2; delegate implementation to agents.');
 
         $this->rule('orchestration-only')->critical()
             ->text('Brain role is ORCHESTRATION ONLY. Permitted: Task(), vector MCP, brain CLI (docs, list:masters). Everything else → delegate.')
@@ -93,9 +93,9 @@ class TaskAsyncInclude extends IncludeArchetype
             ->onViolation('Identify task type → Select agent → Delegate via Task().');
 
         $this->rule('one-agent-one-file')->critical()
-            ->text('Each programming subtask = separate agent invocation. One agent, one file change. NO multi-file edits in single delegation.')
-            ->why('Atomic changes enable precise tracking, easier rollback, clear accountability.')
-            ->onViolation('Split into multiple Task() calls. One agent per file modification.');
+            ->text('Each programming subtask = separate agent invocation. Prefer one coherent change set per agent. Multi-file edits are allowed ONLY when tightly related (default 1-2 files, up to 3-5 if same feature/refactor).')
+            ->why('Avoids micro-delegation while keeping accountability and rollback clarity.')
+            ->onViolation('If changes span unrelated areas, split into multiple Task() calls.');
     }
 
     protected function defineGuidelines(): void
@@ -166,9 +166,9 @@ class TaskAsyncInclude extends IncludeArchetype
                 'Comment: {$VECTOR_TASK.comment or "none"}',
             ]));
 
-        // Phase 1: Agent Discovery
-        $this->guideline('phase1-agent-discovery')
-            ->goal('Discover agents leveraging task context + vector memory')
+        // Phase 1: Discovery + Requirements (combined)
+        $this->guideline('phase1-discovery-requirements')
+            ->goal('Discover agents, triage complexity, and define requirements plan')
             ->example()
             ->phase(VectorMemoryMcp::call('search_memories',
                 '{query: "similar: {$TASK_DESCRIPTION}", limit: 5, category: "code-solution,architecture"}'))
@@ -177,15 +177,6 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Store::as('AVAILABLE_AGENTS', 'Agents list'))
             ->phase('Match task to agents: $TASK_DESCRIPTION + $VECTOR_TASK.tags + $PAST_SOLUTIONS')
             ->phase(Store::as('RELEVANT_AGENTS', '[{agent, capability, rationale}, ...]'))
-            ->phase(Operator::output([
-                '=== PHASE 1: AGENT DISCOVERY ===',
-                'Agents: {selected} | Task tags: {$VECTOR_TASK.tags}',
-            ]));
-
-        // Phase 2: Requirements Analysis + Approval Gate
-        $this->guideline('phase2-requirements-analysis-approval')
-            ->goal('Create requirements plan leveraging task context + memory + GET USER APPROVAL + START TASK')
-            ->example()
             ->phase(VectorMemoryMcp::call('search_memories',
                 '{query: "patterns: {task_domain}", limit: 5, category: "learning,architecture"}'))
             ->phase(Store::as('IMPLEMENTATION_PATTERNS', 'Past patterns'))
@@ -193,27 +184,38 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase('Determine needs: scan targets, web research (if non-trivial), docs scan (if architecture-related)')
             ->phase(Store::as('REQUIREMENTS_PLAN',
                 '{scan_targets, web_research, docs_scan, task_comment_insights, memory_learnings}'))
+            ->phase(Store::as('DOCS_SCAN_NEEDED', '{true if $REQUIREMENTS_PLAN.docs_scan}'))
+            ->phase(Store::as('WEB_RESEARCH_NEEDED', '{true if $REQUIREMENTS_PLAN.web_research}'))
+            ->phase(Store::as('SIMPLE_TASK', '{true if scope is small: 1-2 files, no docs/web research, no broad scan}'))
             ->phase(Operator::output([
-                '',
-                '=== PHASE 2: REQUIREMENTS ANALYSIS ===',
-                'Task comment insights: {from $VECTOR_TASK.comment}',
-                'Memory learnings: {key learnings}',
+                '=== PHASE 1: DISCOVERY + REQUIREMENTS ===',
+                'Agents: {selected} | Task tags: {$VECTOR_TASK.tags}',
                 'Scanning: {targets} | Research: {status} | Docs: {status}',
-                '',
-                'APPROVAL CHECKPOINT #1',
-                'approved/yes | no/modifications',
+                'Simple task: {$SIMPLE_TASK}',
             ]))
-            ->phase('WAIT for user approval')
-            ->phase(Operator::verify('User approved'))
-            ->phase(Operator::if('rejected', 'Modify plan → Re-present → WAIT'))
-            ->phase('IMMEDIATELY after approval - set task in_progress (research IS execution)')
-            ->phase(VectorTaskMcp::call('task_update',
-                '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Execution started after requirements approval", append_comment: true}'))
-            ->phase(Operator::output(['Vector task #{$VECTOR_TASK_ID} started (research phase)']));
+            ->phase(Operator::if('$SIMPLE_TASK === false AND $HAS_AUTO_APPROVE === false', [
+                Operator::output([
+                    '',
+                    'APPROVAL CHECKPOINT #1',
+                    'approved/yes | no/modifications',
+                ]),
+                'WAIT for user approval',
+                Operator::verify('User approved'),
+                Operator::if('rejected', 'Modify plan → Re-present → WAIT'),
+                'IMMEDIATELY after approval - set task in_progress (research IS execution)',
+                VectorTaskMcp::call('task_update',
+                    '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Execution started after requirements approval", append_comment: true}'),
+                Store::as('TASK_STARTED', 'true'),
+                Operator::output(['Vector task #{$VECTOR_TASK_ID} started (research phase)']),
+            ]))
+            ->phase(Operator::if('$SIMPLE_TASK === true OR $HAS_AUTO_APPROVE === true', [
+                Operator::output(['Skipping early approval; single approval will occur after planning.']),
+                Store::as('TASK_STARTED', 'false'),
+            ]));
 
-        // Phase 3: Material Gathering with Vector Storage
-        $this->guideline('phase3-material-gathering')
-            ->goal('Collect materials via agents. Brain permitted: brain docs (index only, few tokens). ALL file reading → delegate to agents.')
+        // Phase 2: Material Gathering (optional)
+        $this->guideline('phase2-material-gathering')
+            ->goal('Collect materials via agents when needed. Brain permitted: brain docs (index only, few tokens). ALL implementation reading → delegate to agents.')
             ->example()
             ->phase(Operator::if('$IS_SESSION_RECOVERY === true', [
                 'SESSION RECOVERY: Verify what was completed in crashed session',
@@ -245,14 +247,15 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(VectorMemoryMcp::call('store_memory',
                 '{content: "Context for {$TASK_DESCRIPTION}\\n\\nMaterials: {summary}", category: "tool-usage", tags: ["task-async", "context-gathering"]}'))
             ->phase(Operator::output([
-                '=== PHASE 3: MATERIALS GATHERED ===',
+                '=== PHASE 2: MATERIALS GATHERED ===',
                 'Materials: {count} | Docs: {status} | Web: {status}',
                 'Context stored to vector memory',
             ]));
 
-        // Phase 4: Execution Planning with Vector Memory + Approval Gate
-        $this->guideline('phase4-execution-planning-approval')
+        // Phase 3: Execution Planning with Vector Memory + Approval Gate
+        $this->guideline('phase3-execution-planning-approval')
             ->goal('Create atomic plan leveraging past execution patterns, analyze dependencies, and GET USER APPROVAL')
+
             ->example()
             ->phase(VectorMemoryMcp::call('search_memories',
                 '{query: "execution approach for {task_type}", limit: 5, category: "code-solution"}'))

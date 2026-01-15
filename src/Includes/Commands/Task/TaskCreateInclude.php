@@ -59,10 +59,15 @@ class TaskCreateInclude extends IncludeArchetype
             ->why('Comments preserve critical context for future execution. Without links, executor loses valuable research done during creation.')
             ->onViolation('Add comment with: Memory refs (IDs from PRIOR_WORK), File refs (paths from CODEBASE_CONTEXT), Related tasks (from EXISTING_TASKS).');
 
+        $this->rule('simple-task-heuristics')->high()
+            ->text('FLAG simple tasks early: short descriptions (<140 chars) without architecture/API hints or broad scope keywords ("architecture", "integration", "multi-module").')
+            ->why('Lightweight tasks can skip heavy agent orchestration, reducing latency.')
+            ->onViolation('When a task seems simple but exceeds scope hints, keep research thorough.');
+
         $this->rule('deep-research-mandatory')->critical()
-            ->text('MUST perform comprehensive research BEFORE formulating task: existing tasks, vector memory, codebase (if code-related), documentation.')
-            ->why('Quality task creation requires full context. Skipping research leads to duplicate tasks, missed dependencies, and poor estimates.')
-            ->onViolation('STOP. Execute ALL research steps (existing tasks, memory, codebase exploration) before proceeding to analysis.');
+            ->text('MUST perform comprehensive research BEFORE formulating task unless $SIMPLE_TASK is true. Simple tasks may limit research to duplicates/memory. OTHER tasks require existing tasks, vector memory, codebase (if code-related), documentation.')
+            ->why('Quality task creation requires full context for complex work while letting simple requests stay fast. Skipping research leads to duplicates, missed dependencies, and poor estimates.')
+            ->onViolation('STOP. Execute required research steps (existing tasks, memory, codebase exploration) before proceeding to analysis.');
 
         $this->rule('check-existing-tasks')->critical()
             ->text('MUST search existing tasks for duplicates or related work before creating new task.')
@@ -70,9 +75,9 @@ class TaskCreateInclude extends IncludeArchetype
             ->onViolation('Execute ' . VectorTaskMcp::call('task_list', '{query: "{objective}", limit: 10}') . ' and analyze results.');
 
         $this->rule('mandatory-agent-delegation')->critical()
-            ->text('ALL research steps (existing tasks, vector memory, codebase, documentation) MUST be delegated to specialized agents. NEVER execute research directly.')
+            ->text('ALL non-trivial research steps (existing tasks, vector memory, codebase, documentation) MUST be delegated to specialized agents. SIMPLE_TASK may limit agent work to duplicates/memory, but anything beyond that requires delegation.')
             ->why('Direct execution consumes command context. Agents have dedicated context for deep research and return concise structured reports.')
-            ->onViolation('STOP. Delegate to: vector-master (tasks/memory), explore (codebase), documentation-master (docs). Never use direct MCP/Glob/Grep calls for research.');
+            ->onViolation('STOP. Delegate to: vector-master (tasks/memory), explore (codebase), documentation-master (docs) when complexity requires it. Never use direct MCP/Glob/Grep for deep research.');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->guideline('input')
