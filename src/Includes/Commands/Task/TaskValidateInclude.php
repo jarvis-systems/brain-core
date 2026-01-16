@@ -233,34 +233,47 @@ class TaskValidateInclude extends IncludeArchetype
                 '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Validation started after approval", append_comment: true}'))
             ->phase(Operator::output(['📋 Vector task #{$VECTOR_TASK_ID} started (validation phase)']));
 
-        // Phase 2: Deep Context Gathering via VectorMaster Agent
+        // Phase 2: Deep Context Gathering via VectorMaster Agent (CONDITIONAL)
         $this->guideline('phase2-context-gathering')
-            ->goal('Delegate deep memory research to VectorMaster agent')
+            ->goal('Delegate deep memory research to VectorMaster agent (COMPLEX only) or do lightweight memory check (SIMPLE)')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 2: DEEP CONTEXT GATHERING ===',
-                'Delegating to VectorMaster for deep memory research...',
+                '=== PHASE 2: CONTEXT GATHERING ===',
             ]))
             ->phase(Operator::if('$IS_SESSION_RECOVERY === true', [
                 Operator::note('CAUTION: This is a session recovery. Vector memory findings from the crashed session should be treated with skepticism - previous context is incomplete. Verify findings against current codebase state before relying on them.'),
             ]))
-            ->phase('SELECT vector-master from $AVAILABLE_AGENTS')
-            ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
-            ->phase(TaskTool::agent('{$CONTEXT_AGENT}',
-                'DEEP MEMORY RESEARCH for validation of task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Multi-probe search: implementation patterns, requirements, architecture decisions, past validations, bug fixes 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return: {implementations: [...], requirements: [...], patterns: [...], past_validations: [...], key_insights: [...]}. Store consolidated context.'))
-            ->phase(Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'))
+            ->phase(Operator::if('$SIMPLE_VALIDATION === true', [
+                Operator::note('SIMPLE mode: Lightweight memory check without agent delegation'),
+                VectorMemoryMcp::call('search_memories', '{query: "$TASK_DESCRIPTION", limit: 5}'),
+                Store::as('MEMORY_CONTEXT', '{direct memory search results}'),
+                Operator::output([
+                    'Simple mode: Direct memory search',
+                    '- Memory insights: {$MEMORY_CONTEXT.count}',
+                ]),
+            ]))
+            ->phase(Operator::if('$SIMPLE_VALIDATION === false', [
+                Operator::note('COMPLEX mode: Full agent delegation for deep research'),
+                'SELECT vector-master from $AVAILABLE_AGENTS',
+                Store::as('CONTEXT_AGENT', '{vector-master agent_id}'),
+                TaskTool::agent('{$CONTEXT_AGENT}',
+                    'DEEP MEMORY RESEARCH for validation of task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Multi-probe search: implementation patterns, requirements, architecture decisions, past validations, bug fixes 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return: {implementations: [...], requirements: [...], patterns: [...], past_validations: [...], key_insights: [...]}. Store consolidated context.'),
+                Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'),
+                Operator::output([
+                    'Context gathered via {$CONTEXT_AGENT}:',
+                    '- Memory insights: {$MEMORY_CONTEXT.key_insights.count}',
+                ]),
+            ]))
             ->phase(VectorTaskMcp::call('task_list', '{query: "$TASK_DESCRIPTION", limit: 10}'))
             ->phase(Store::as('RELATED_TASKS', 'Related vector tasks'))
             ->phase(Operator::output([
-                'Context gathered via {$CONTEXT_AGENT}:',
-                '- Memory insights: {$MEMORY_CONTEXT.key_insights.count}',
                 '- Related tasks: {$RELATED_TASKS.count}',
             ]));
 
-        // Phase 3: Documentation Requirements Extraction
+        // Phase 3: Documentation Requirements Extraction (CONDITIONAL)
         $this->guideline('phase3-documentation-extraction')
-            ->goal('Extract ALL requirements from .docs/ via DocumentationMaster')
+            ->goal('Extract requirements from .docs/ - via agent (COMPLEX) or direct read (SIMPLE)')
             ->example()
             ->phase(Operator::output([
                 '',
@@ -268,18 +281,28 @@ class TaskValidateInclude extends IncludeArchetype
             ]))
             ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from $TASK_DESCRIPTION}'), 'Get documentation INDEX'))
             ->phase(Store::as('DOCS_INDEX', 'Documentation file paths'))
-            ->phase(Operator::if('$DOCS_INDEX not empty', [
-                TaskTool::agent('documentation-master',
-                    'Extract ALL requirements, acceptance criteria, constraints, and specifications from documentation files: {$DOCS_INDEX paths}. Return structured list: [{requirement_id, description, acceptance_criteria, related_files, priority}]. Store to vector memory.'),
-                Store::as('DOCUMENTATION_REQUIREMENTS', '{structured requirements list}'),
-            ]))
             ->phase(Operator::if('$DOCS_INDEX empty', [
                 Store::as('DOCUMENTATION_REQUIREMENTS', '[]'),
                 Operator::output(['WARNING: No documentation found. Validation will be limited.']),
             ]))
-            ->phase(Operator::output([
-                'Requirements extracted: {$DOCUMENTATION_REQUIREMENTS.count}',
-                '{requirements summary}',
+            ->phase(Operator::if('$DOCS_INDEX not empty AND $SIMPLE_VALIDATION === true', [
+                Operator::note('SIMPLE mode: Direct doc read without agent delegation'),
+                'Read documentation files directly using Read tool',
+                Store::as('DOCUMENTATION_REQUIREMENTS', '{extracted requirements from direct read}'),
+                Operator::output([
+                    'Simple mode: Direct documentation read',
+                    'Requirements extracted: {$DOCUMENTATION_REQUIREMENTS.count}',
+                ]),
+            ]))
+            ->phase(Operator::if('$DOCS_INDEX not empty AND $SIMPLE_VALIDATION === false', [
+                Operator::note('COMPLEX mode: Full agent delegation for thorough extraction'),
+                TaskTool::agent('documentation-master',
+                    'Extract ALL requirements, acceptance criteria, constraints, and specifications from documentation files: {$DOCS_INDEX paths}. Return structured list: [{requirement_id, description, acceptance_criteria, related_files, priority}]. Store to vector memory.'),
+                Store::as('DOCUMENTATION_REQUIREMENTS', '{structured requirements list}'),
+                Operator::output([
+                    'Requirements extracted via documentation-master: {$DOCUMENTATION_REQUIREMENTS.count}',
+                    '{requirements summary}',
+                ]),
             ]));
 
         // Phase 4: Dynamic Agent Selection and Parallel Validation
