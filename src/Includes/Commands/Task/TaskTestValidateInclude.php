@@ -14,7 +14,7 @@ use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Comprehensive vector task test validation with parallel agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"). Validates test coverage against documentation requirements, test quality (no bloat, real workflows), test consistency, and completeness. Creates follow-up tasks for gaps. Idempotent - can be run multiple times. Best for: validating test quality of completed vector tasks.')]
+#[Purpose('Comprehensive vector task test validation with TDD support and parallel agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"). TWO MODES: 1) TDD Mode (pending tasks) - writes tests for not-yet-implemented features, sets status "tested" with TDD comment; 2) Post-Implementation Mode (completed/tested/validated tasks) - validates existing test coverage against documentation. Agent fixes gaps inline (no task creation). Idempotent. Best for: TDD workflow and test quality validation.')]
 class TaskTestValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -33,23 +33,28 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== TASK:TEST-VALIDATE ACTIVATED ===" and restart from Phase 0.');
 
         // Iron Rules - Zero Tolerance
-        $this->rule('test-validation-only')->critical()
-            ->text('TEST VALIDATION command validates EXISTING tests. NEVER write tests directly. Only validate and CREATE TASKS for missing/broken tests.')
-            ->why('Validation is read-only audit. Test writing belongs to task:async.')
-            ->onViolation('Abort any test writing. Create task instead.');
+        $this->rule('tdd-or-validation-mode')->critical()
+            ->text('TWO MODES based on task status: 1) TDD MODE (status=pending): Task not implemented yet. Agent WRITES tests for the feature, sets status "tested", adds TDD comment listing created tests. 2) VALIDATION MODE (status=completed/tested/validated): Agent VALIDATES existing tests, FIXES gaps inline. NEVER create separate tasks - agent fixes issues directly.')
+            ->why('TDD mode enables test-first development. Validation mode ensures quality. Both modes fix inline to avoid task overhead.')
+            ->onViolation('Check task status. pending → TDD mode (write tests). completed/tested/validated → validation mode (validate & fix inline).');
 
         // Common rule from trait
         $this->defineVectorTaskIdRequiredRule('/do:test-validate');
 
         $this->rule('testable-status-required')->critical()
-            ->text('ONLY tasks with status "completed", "tested", or "validated" can be test-validated. Pending/in_progress/stopped tasks MUST first be completed via task:async.')
-            ->why('Test validation audits finished work. Incomplete work cannot be test-validated.')
-            ->onViolation('Report: "Task #{id} has status {status}. Complete via /task:async first."');
+            ->text('Tasks with status "pending", "completed", "tested", or "validated" can be test-validated. PENDING = TDD mode (write tests first). COMPLETED/TESTED/VALIDATED = validation mode. in_progress/stopped tasks MUST first be completed or reset.')
+            ->why('Pending enables TDD workflow. Completed+ enables post-implementation validation.')
+            ->onViolation('If status=in_progress/stopped: Report "Task #{id} has status {status}. Complete or reset first."');
 
         $this->rule('output-status-conditional')->critical()
-            ->text('Output status depends on test validation outcome: 1) PASSED + no tasks created → "tested", 2) Tasks created for fixes → "pending". NEVER set "validated" - that status is set ONLY by /task:validate command.')
-            ->why('If fix tasks were created, work is NOT done - task returns to pending queue. Only when test validation passes completely (no issues, no tasks) can status be "tested".')
-            ->onViolation('Check CREATED_TASKS.count: if > 0 → set "pending", if === 0 AND passed → set "tested". NEVER set "completed" or "tested" when fix tasks exist.');
+            ->text('Output status depends on mode and outcome: 1) TDD MODE (was pending): Set status "tested", add TDD comment listing created tests. 2) VALIDATION MODE passed: Set status "tested". 3) VALIDATION MODE gaps found: Agent fixes inline, then sets "tested". NEVER create fix tasks - agent handles everything.')
+            ->why('TDD mode produces tested status with TDD marker. Validation mode fixes inline. No task creation overhead.')
+            ->onViolation('TDD mode → "tested" + TDD comment. Validation mode → fix inline → "tested". NEVER create tasks.');
+
+        $this->rule('no-task-creation')->critical()
+            ->text('FORBIDDEN: Creating fix tasks for test gaps. Agent MUST fix all issues inline. For missing tests - WRITE them. For broken tests - FIX them. For bloated tests - REFACTOR them. All in current session.')
+            ->why('Task creation for test issues is wasteful overhead. Agent has full context and can fix immediately.')
+            ->onViolation('Remove task creation. Fix the issue inline using Edit/Write tools.');
 
         $this->rule('real-workflow-tests-only')->critical()
             ->text('Tests MUST cover REAL workflows end-to-end. Reject bloated tests that test implementation details instead of behavior. Quality over quantity.')
@@ -115,14 +120,23 @@ class TaskTestValidateInclude extends IncludeArchetype
                 'Suggest: Check task ID with ' . VectorTaskMcp::method('task_list'),
                 'ABORT command',
             ]))
-            ->phase(Operator::if('$VECTOR_TASK.status NOT IN ["completed", "tested", "validated", "in_progress"]', [
+            ->phase(Operator::if('$VECTOR_TASK.status NOT IN ["pending", "completed", "tested", "validated", "in_progress"]', [
                 Operator::output([
                     '=== TEST VALIDATION BLOCKED ===',
                     'Task #$VECTOR_TASK_ID has status: {$VECTOR_TASK.status}',
-                    'Only tasks with status completed/tested/validated can be test-validated.',
-                    'Run /task:async $VECTOR_TASK_ID to complete first.',
+                    'Allowed statuses: pending (TDD mode), completed/tested/validated (validation mode).',
+                    'stopped tasks must be reset first.',
                 ]),
                 'ABORT validation',
+            ]))
+            ->phase(Store::as('IS_TDD_MODE', '{$VECTOR_TASK.status === "pending"}'))
+            ->phase(Operator::if('$IS_TDD_MODE === true', [
+                Operator::output([
+                    '',
+                    '🧪 TDD MODE ACTIVATED',
+                    'Task #{$VECTOR_TASK_ID} is pending - will WRITE tests for unimplemented feature.',
+                    'After test creation, task will be set to "tested" with TDD comment.',
+                ]),
             ]))
             ->phase(Store::as('IS_SESSION_RECOVERY', 'false'))
             ->phase(Operator::if('$VECTOR_TASK.status === "in_progress"', [
@@ -185,14 +199,25 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('DOCS_PREVIEW', 'Documentation files available'))
             ->phase(Operator::output([
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
+                'Mode: {$IS_TDD_MODE ? "TDD (write tests)" : "Validation (validate & fix)"}',
                 'Available agents: {$AVAILABLE_AGENTS.count}',
                 'Documentation files: {$DOCS_PREVIEW.count}',
                 'Simple validation mode: {$SIMPLE_TEST_VALIDATION}',
                 '',
-                'Test validation will delegate to agents:',
-                '1. VectorMaster - deep memory research for test context',
-                '2. DocumentationMaster - testable requirements extraction',
-                '3. Selected agents - test discovery + parallel validation (6 aspects, scaled to complexity)',
+                Operator::if('$IS_TDD_MODE === true', [
+                    'TDD workflow will:',
+                    '1. Analyze task requirements from docs + memory',
+                    '2. WRITE tests for the unimplemented feature',
+                    '3. Set status "tested" with TDD comment listing tests',
+                    '4. Task can then be executed via /task:async or /task:sync',
+                ]),
+                Operator::if('$IS_TDD_MODE === false', [
+                    'Validation workflow will delegate to agents:',
+                    '1. VectorMaster - deep memory research for test context',
+                    '2. DocumentationMaster - testable requirements extraction',
+                    '3. Selected agents - test discovery + parallel validation',
+                    '4. FIX all gaps inline (no task creation)',
+                ]),
             ]))
             ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
                 Operator::output([
@@ -275,16 +300,54 @@ class TaskTestValidateInclude extends IncludeArchetype
                 '{test files summary by type}',
             ]));
 
-        // Phase 5: Dynamic Agent Selection and Parallel Test Validation
-        $this->guideline('phase5-parallel-validation')
-            ->goal('Select best agents from $AVAILABLE_AGENTS and launch parallel test validation (scaled to complexity)')
+        // Phase 4.5: TDD TEST CREATION (TDD MODE ONLY)
+        $this->guideline('phase4.5-tdd-test-creation')
+            ->goal('In TDD mode: Write tests for unimplemented feature. Agent creates test files based on requirements.')
             ->example()
-            ->phase(Operator::output([
-                '',
-                '=== PHASE 5: PARALLEL TEST VALIDATION ===',
+            ->phase(Operator::if('$IS_TDD_MODE === true', [
+                Operator::output([
+                    '',
+                    '=== PHASE 4.5: TDD TEST CREATION ===',
+                    '🧪 Writing tests for unimplemented feature...',
+                ]),
+                'SELECT AGENT for test writing from {$AVAILABLE_AGENTS} (prefer agent with Edit/Write capabilities)',
+                Store::as('TDD_AGENT', '{selected agent_id for test writing}'),
+                TaskTool::agent('{$TDD_AGENT}', 'TDD TEST CREATION for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Analyze {$DOCUMENTATION_REQUIREMENTS} - extract ALL testable scenarios 2) Search vector memory for similar test patterns in this project 3) CREATE test files for EACH requirement: unit tests, feature tests, integration tests as appropriate 4) Follow project test conventions from {$DISCOVERED_TESTS} patterns 5) Tests MUST be designed to FAIL initially (feature not implemented yet) 6) Use descriptive test method names (given_when_then pattern) 7) Include edge cases and error scenarios 8) Return: {created_tests: [{test_file, test_class, test_methods: [...], covered_requirements: [...]}], total_tests_created: N}. Store findings to vector memory.'),
+                Store::as('TDD_CREATED_TESTS', '{list of created test files with methods}'),
+                Operator::output([
+                    'TDD tests created via {$TDD_AGENT}:',
+                    '- Test files: {$TDD_CREATED_TESTS.count}',
+                    '- Total test methods: {$TDD_CREATED_TESTS.total_tests_created}',
+                    '- Requirements covered: {$DOCUMENTATION_REQUIREMENTS.count}',
+                ]),
+                Store::as('TDD_TESTS_SUMMARY', '{formatted list of created tests with file paths and method names}'),
             ]))
-            ->phase('AGENT SELECTION: Analyze $AVAILABLE_AGENTS descriptions and select BEST agent for each test validation aspect:')
-            ->phase(Operator::if('$SIMPLE_TEST_VALIDATION === false', [
+            ->phase(Operator::if('$IS_TDD_MODE === false', [
+                Operator::note('SKIP Phase 4.5 - not in TDD mode'),
+            ]));
+
+        // Phase 5: Dynamic Agent Selection and Parallel Test Validation (VALIDATION MODE ONLY)
+        $this->guideline('phase5-parallel-validation')
+            ->goal('In validation mode: Select best agents and launch parallel test validation. In TDD mode: SKIP (tests just created).')
+            ->example()
+            ->phase(Operator::if('$IS_TDD_MODE === true', [
+                Operator::output([
+                    '',
+                    '=== PHASE 5: SKIPPED (TDD MODE) ===',
+                    'Tests were just created. Skipping validation phase.',
+                ]),
+                'SKIP to Phase 6 (completion)',
+            ]))
+            ->phase(Operator::if('$IS_TDD_MODE === false', [
+                Operator::output([
+                    '',
+                    '=== PHASE 5: PARALLEL TEST VALIDATION ===',
+                ]),
+            ]))
+            ->phase(Operator::if('$IS_TDD_MODE === false', [
+                'AGENT SELECTION: Analyze $AVAILABLE_AGENTS descriptions and select BEST agent for each test validation aspect:',
+            ]))
+            ->phase(Operator::if('$IS_TDD_MODE === false AND $SIMPLE_TEST_VALIDATION === false', [
                 Operator::do([
                     'ASPECT 1 - REQUIREMENTS COVERAGE: Select agent for requirements-to-test mapping (vector-master for memory, explore for codebase)',
                     'ASPECT 2 - TEST QUALITY: Select agent for code quality analysis (explore for pattern detection)',
@@ -295,7 +358,7 @@ class TaskTestValidateInclude extends IncludeArchetype
                 ]),
                 Store::as('SELECTED_AGENTS', '{aspect: agent_id mapping based on $AVAILABLE_AGENTS}'),
             ]))
-            ->phase(Operator::if('$SIMPLE_TEST_VALIDATION === true', [
+            ->phase(Operator::if('$IS_TDD_MODE === false AND $SIMPLE_TEST_VALIDATION === true', [
                 Operator::output(['Simple validation: reduced agent set (coverage + execution only)']),
                 Operator::do([
                     'ASPECT 1 - REQUIREMENTS COVERAGE: Select agent for requirements-to-test mapping',
@@ -303,204 +366,89 @@ class TaskTestValidateInclude extends IncludeArchetype
                 ]),
                 Store::as('SELECTED_AGENTS', '{coverage: explore, execution: explore}'),
             ]))
-            ->phase(Operator::output([
-                'Selected agents for test validation:',
-                '{$SELECTED_AGENTS mapping}',
-                '',
-                'Launching test validation agents in parallel...',
+            ->phase(Operator::if('$IS_TDD_MODE === false', [
+                Operator::output([
+                    'Selected agents for test validation:',
+                    '{$SELECTED_AGENTS mapping}',
+                    '',
+                    'Launching test validation agents in parallel...',
+                ]),
             ]))
-            ->phase(Operator::if('$SIMPLE_TEST_VALIDATION === false', [
-                'PARALLEL BATCH: Launch agents with inline cosmetic fix capability',
+            ->phase(Operator::if('$IS_TDD_MODE === false AND $SIMPLE_TEST_VALIDATION === false', [
+                'PARALLEL BATCH: Launch agents with inline FIX capability (no task creation)',
                 Operator::do([
-                    TaskTool::agent('{$SELECTED_AGENTS.coverage}', 'DEEP RESEARCH - REQUIREMENTS COVERAGE for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for past requirement-test mappings 2) Compare {$DOCUMENTATION_REQUIREMENTS} against {$DISCOVERED_TESTS} 3) For each requirement verify test exists. COSMETIC FIX RULE: If you find whitespace/indentation/formatting issues in test files - FIX THEM IMMEDIATELY using Edit tool. Do NOT report cosmetic issues. Return: [{requirement_id, coverage_status: covered|partial|missing, test_file, test_method, gap_description, memory_refs, cosmetic_fixes_applied: N}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.quality}', 'DEEP RESEARCH - TEST QUALITY for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for test quality standards 2) Analyze {$DISCOVERED_TESTS} for bloat indicators 3) Check: excessive mocking, implementation testing, redundant assertions. COSMETIC FIX RULE: If you find whitespace/formatting issues - FIX THEM IMMEDIATELY using Edit tool. Only report FUNCTIONAL bloat. Return: [{test_file, test_method, bloat_type, severity, suggestion, cosmetic_fixes_applied: N}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.workflow}', 'DEEP RESEARCH - WORKFLOW COVERAGE for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for workflow patterns 2) Verify {$DISCOVERED_TESTS} cover complete user workflows 3) Check: happy path, error paths, edge cases. COSMETIC FIX RULE: Fix whitespace/formatting inline. Return: [{workflow, coverage_status, missing_scenarios, cosmetic_fixes_applied: N}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.consistency}', 'DEEP RESEARCH - TEST CONSISTENCY for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for project test conventions 2) Check {$DISCOVERED_TESTS} for consistency 3) Verify: naming, structure, assertions. COSMETIC FIX RULE: Fix whitespace/formatting issues IMMEDIATELY using Edit tool. Only report FUNCTIONAL consistency issues. Return: [{test_file, inconsistency_type, description, suggestion, cosmetic_fixes_applied: N}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.isolation}', 'DEEP RESEARCH - TEST ISOLATION for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for isolation issues 2) Verify {$DISCOVERED_TESTS} are properly isolated 3) Check: shared state, order dependency. COSMETIC FIX RULE: Fix formatting issues inline. Return: [{test_file, isolation_issue, severity, suggestion, cosmetic_fixes_applied: N}]. Store findings.'),
-                    TaskTool::agent('{$SELECTED_AGENTS.execution}', 'DEEP RESEARCH - TEST EXECUTION for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for past test failures 2) Run tests related to task 3) Identify flaky tests. COSMETIC FIX RULE: If you find whitespace issues - FIX THEM IMMEDIATELY. Return: [{test_file, execution_status: pass|fail|flaky, error_message, execution_time, cosmetic_fixes_applied: N}]. Store findings.'),
+                    TaskTool::agent('{$SELECTED_AGENTS.coverage}', 'REQUIREMENTS COVERAGE + FIX for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Compare {$DOCUMENTATION_REQUIREMENTS} against {$DISCOVERED_TESTS} 2) For missing/partial coverage - WRITE the missing tests IMMEDIATELY using Write tool 3) Fix cosmetic issues inline. Return: [{requirement_id, coverage_status: covered|partial|missing, action_taken: none|created|fixed, test_file, test_method, cosmetic_fixes_applied: N}]. Store findings.'),
+                    TaskTool::agent('{$SELECTED_AGENTS.quality}', 'TEST QUALITY + FIX for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Analyze {$DISCOVERED_TESTS} for bloat 2) REFACTOR bloated tests IMMEDIATELY using Edit tool 3) Fix cosmetic issues inline. Return: [{test_file, test_method, bloat_type, action_taken: none|refactored, cosmetic_fixes_applied: N}]. Store findings.'),
+                    TaskTool::agent('{$SELECTED_AGENTS.workflow}', 'WORKFLOW COVERAGE + FIX for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Verify workflows have end-to-end coverage 2) WRITE missing workflow tests IMMEDIATELY 3) Fix cosmetic issues inline. Return: [{workflow, coverage_status, action_taken: none|created, cosmetic_fixes_applied: N}]. Store findings.'),
+                    TaskTool::agent('{$SELECTED_AGENTS.consistency}', 'TEST CONSISTENCY + FIX for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Check test consistency 2) FIX inconsistencies IMMEDIATELY using Edit tool. Return: [{test_file, inconsistency_type, action_taken: none|fixed, cosmetic_fixes_applied: N}]. Store findings.'),
+                    TaskTool::agent('{$SELECTED_AGENTS.isolation}', 'TEST ISOLATION + FIX for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Check test isolation 2) FIX isolation issues IMMEDIATELY using Edit tool. Return: [{test_file, isolation_issue, action_taken: none|fixed, cosmetic_fixes_applied: N}]. Store findings.'),
+                    TaskTool::agent('{$SELECTED_AGENTS.execution}', 'TEST EXECUTION + FIX for task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Run tests 2) FIX failing tests IMMEDIATELY using Edit tool 3) For flaky tests - add stabilization. Return: [{test_file, execution_status: pass|fail|flaky, action_taken: none|fixed, cosmetic_fixes_applied: N}]. Store findings.'),
                 ]),
             ]))
-            ->phase(Operator::if('$SIMPLE_TEST_VALIDATION === true', [
-                'SIMPLE BATCH: Launch reduced agent set with inline cosmetic fix',
+            ->phase(Operator::if('$IS_TDD_MODE === false AND $SIMPLE_TEST_VALIDATION === true', [
+                'SIMPLE BATCH: Launch reduced agent set with inline FIX capability',
                 Operator::do([
-                    TaskTool::agent('{$SELECTED_AGENTS.coverage}', 'REQUIREMENTS COVERAGE for task #{$VECTOR_TASK_ID}: Compare {$DOCUMENTATION_REQUIREMENTS} against {$DISCOVERED_TESTS}. COSMETIC FIX RULE: Fix whitespace/formatting issues IMMEDIATELY using Edit tool. Return: [{requirement_id, coverage_status, test_file, cosmetic_fixes_applied: N}].'),
-                    TaskTool::agent('{$SELECTED_AGENTS.execution}', 'TEST EXECUTION for task #{$VECTOR_TASK_ID}: Run tests. COSMETIC FIX RULE: Fix whitespace issues inline. Return: [{test_file, execution_status, error_message, cosmetic_fixes_applied: N}].'),
+                    TaskTool::agent('{$SELECTED_AGENTS.coverage}', 'REQUIREMENTS COVERAGE + FIX for task #{$VECTOR_TASK_ID}: Compare requirements against tests. WRITE missing tests IMMEDIATELY. Return: [{requirement_id, coverage_status, action_taken, test_file, cosmetic_fixes_applied: N}].'),
+                    TaskTool::agent('{$SELECTED_AGENTS.execution}', 'TEST EXECUTION + FIX for task #{$VECTOR_TASK_ID}: Run tests. FIX failing tests IMMEDIATELY. Return: [{test_file, execution_status, action_taken, cosmetic_fixes_applied: N}].'),
                 ]),
             ]))
-            ->phase(Store::as('VALIDATION_BATCH', '{results from all agents}'))
-            ->phase(Operator::output([
-                'Batch complete: {$SELECTED_AGENTS.count} test validation checks finished',
+            ->phase(Operator::if('$IS_TDD_MODE === false', [
+                Store::as('VALIDATION_BATCH', '{results from all agents}'),
+                Operator::output([
+                    'Batch complete: {$SELECTED_AGENTS.count} test validation + fix agents finished',
+                ]),
             ]));
 
-        // Phase 6: Results Aggregation and Analysis
-        $this->guideline('phase6-results-aggregation')
-            ->goal('Aggregate all test validation results - only FUNCTIONAL issues (cosmetic already fixed by agents inline)')
+        // Phase 6: Results Aggregation and Completion
+        $this->guideline('phase6-completion')
+            ->goal('Aggregate results, update task status to "tested", store summary to memory. TDD mode gets TDD comment.')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 6: RESULTS AGGREGATION ===',
+                '=== PHASE 6: COMPLETION ===',
             ]))
-            ->phase('Merge results from all validation agents (cosmetic issues already fixed inline)')
-            ->phase(Store::as('ALL_TEST_ISSUES', '{merged FUNCTIONAL issues from all agents}'))
-            ->phase(Store::as('TOTAL_COSMETIC_FIXES', '{sum of cosmetic_fixes_applied from all agents}'))
-            ->phase('Categorize FUNCTIONAL test issues (require tasks):')
-            ->phase(Store::as('MISSING_COVERAGE', '{requirements without tests}'))
-            ->phase(Store::as('PARTIAL_COVERAGE', '{requirements with incomplete tests}'))
-            ->phase(Store::as('BLOATED_TESTS', '{tests flagged for bloat - logic issues, over-mocking}'))
-            ->phase(Store::as('MISSING_WORKFLOWS', '{workflows without end-to-end coverage}'))
-            ->phase(Store::as('INCONSISTENT_TESTS', '{tests with consistency issues affecting logic}'))
-            ->phase(Store::as('ISOLATION_ISSUES', '{tests with isolation problems}'))
-            ->phase(Store::as('FAILING_TESTS', '{tests that fail or are flaky}'))
-            ->phase(Store::as('FUNCTIONAL_TEST_ISSUES_COUNT', '{$MISSING_COVERAGE.count + $PARTIAL_COVERAGE.count + $BLOATED_TESTS.count + $MISSING_WORKFLOWS.count + $INCONSISTENT_TESTS.count + $ISOLATION_ISSUES.count + $FAILING_TESTS.count}'))
-            ->phase(Operator::output([
-                'Test validation results:',
-                '- Missing coverage: {$MISSING_COVERAGE.count} requirements',
-                '- Partial coverage: {$PARTIAL_COVERAGE.count} requirements',
-                '- Bloated tests: {$BLOATED_TESTS.count} tests',
-                '- Missing workflows: {$MISSING_WORKFLOWS.count} workflows',
-                '- Inconsistent tests: {$INCONSISTENT_TESTS.count} tests',
-                '- Isolation issues: {$ISOLATION_ISSUES.count} tests',
-                '- Failing/flaky tests: {$FAILING_TESTS.count} tests',
-                '- Cosmetic fixes applied inline: {$TOTAL_COSMETIC_FIXES}',
-                '',
-                'Functional test issues requiring tasks: {$FUNCTIONAL_TEST_ISSUES_COUNT}',
-            ]));
-
-        // Phase 7: Task Creation for FUNCTIONAL Test Gaps Only (Consolidated 5-8h Tasks)
-        $this->guideline('phase7-task-creation')
-            ->goal('Create consolidated tasks (5-8h each) for FUNCTIONAL test gaps with comprehensive context (cosmetic issues already fixed inline)')
-            ->example()
-            ->phase(Operator::output([
-                '',
-                '=== PHASE 7: TASK CREATION (CONSOLIDATED) ===',
-            ]))
-            ->phase(Operator::note('CRITICAL VERIFICATION: Confirm TASK_PARENT_ID before creating any tasks'))
-            ->phase(Operator::verify([
-                '$TASK_PARENT_ID === $VECTOR_TASK_ID',
-                'TASK_PARENT_ID is the ID of the task we are test-validating (NOT its parent)',
-            ]))
-            ->phase(Operator::output([
-                'Fix tasks will have parent_id: $TASK_PARENT_ID (Task #{$VECTOR_TASK_ID})',
-            ]))
-            ->phase('Check existing tasks to avoid duplicates')
-            ->phase(VectorTaskMcp::call('task_list', '{query: "test $TASK_DESCRIPTION", limit: 20}'))
-            ->phase(Store::as('EXISTING_TEST_TASKS', 'Existing test tasks'))
-            ->phase(Operator::note('Phase 7 processes ONLY functional test issues. Cosmetic issues were fixed inline during Phase 5.'))
-            ->phase(Operator::if('$FUNCTIONAL_TEST_ISSUES_COUNT === 0', [
-                Operator::output(['No functional test issues to create tasks for. Proceeding to Phase 8...']),
-                'SKIP to Phase 8',
-            ]))
-            ->phase('CONSOLIDATION STRATEGY: Group FUNCTIONAL test issues into 5-8 hour task batches')
-            ->phase(Operator::do([
-                'Calculate total estimate for FUNCTIONAL test issues only:',
-                '- Missing coverage: ~2h per requirement (tests + assertions)',
-                '- Failing tests: ~1h per test (debug + fix)',
-                '- Bloated tests: ~1.5h per test (refactor + verify)',
-                '- Missing workflows: ~3h per workflow (e2e test suite)',
-                '- Isolation issues: ~1h per test (refactor + verify)',
-                '(Cosmetic issues NOT included - already auto-fixed)',
-                Store::as('TOTAL_ESTIMATE', '{sum of FUNCTIONAL test issue estimates in hours}'),
-            ]))
-            ->phase(Operator::if('$TOTAL_ESTIMATE <= 8', [
-                'ALL issues fit into ONE consolidated task (5-8h range)',
-                Operator::if('$ALL_TEST_ISSUES.count > 0 AND NOT exists similar in $EXISTING_TEST_TASKS', [
-                    VectorTaskMcp::call('task_create', '{
-                        title: "Test fixes: task #{$VECTOR_TASK_ID}",
-                        content: "Consolidated test validation findings for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}.\\n\\nTotal estimate: {$TOTAL_ESTIMATE}h\\n\\n## Missing Coverage ({$MISSING_COVERAGE.count})\\n{FOR each req: - {req.description} | Type: {req.expected_test_type} | File: {req.related_file}:{req.line} | Scenarios: {req.testable_scenarios}}\\n\\n## Failing Tests ({$FAILING_TESTS.count})\\n{FOR each test: - {test.test_file}:{test.test_method} | Error: {test.error_message} | Status: {test.execution_status}}\\n\\n## Bloated Tests ({$BLOATED_TESTS.count})\\n{FOR each test: - {test.test_file}:{test.test_method} | Bloat: {test.bloat_type} | Suggestion: {test.suggestion}}\\n\\n## Missing Workflows ({$MISSING_WORKFLOWS.count})\\n{FOR each wf: - {wf.workflow} | Missing: {wf.missing_scenarios}}\\n\\n## Isolation Issues ({$ISOLATION_ISSUES.count})\\n{FOR each test: - {test.test_file} | Issue: {test.isolation_issue} | Fix: {test.suggestion}}\\n\\n## Context References\\n- Parent task: #{$VECTOR_TASK_ID}\\n- Memory IDs: {$TEST_MEMORY_CONTEXT.memory_ids}\\n- Related tasks: {$RELATED_TEST_TASKS.ids}\\n- Documentation: {$DOCS_INDEX.paths}",
-                        priority: "high",
-                        estimate: $TOTAL_ESTIMATE,
-                        tags: ["test-validation", "consolidated"],
-                        parent_id: $TASK_PARENT_ID
-                    }'),
-                    Store::as('CREATED_TASKS[]', '{task_id}'),
-                    Operator::output(['Created consolidated task: Test fixes ({$TOTAL_ESTIMATE}h, {$ALL_TEST_ISSUES.count} issues)']),
+            ->phase(Operator::if('$IS_TDD_MODE === true', [
+                'TDD MODE COMPLETION: Tests created for unimplemented feature',
+                Store::as('TDD_COMMENT', 'TDD MODE: Tests created before implementation.\\n\\nCreated tests:\\n{$TDD_TESTS_SUMMARY}\\n\\nRequirements covered: {$DOCUMENTATION_REQUIREMENTS.count}\\nTotal test files: {$TDD_CREATED_TESTS.count}\\nTotal test methods: {$TDD_CREATED_TESTS.total_tests_created}\\n\\nNext: Execute /task:async or /task:sync to implement the feature. Tests will initially FAIL (expected TDD behavior).'),
+                VectorMemoryMcp::call('store_memory', '{content: "TDD tests created for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nTests: {$TDD_TESTS_SUMMARY}\\nRequirements covered: {$DOCUMENTATION_REQUIREMENTS.count}", category: "code-solution", tags: ["tdd", "test-creation", "task:test-validate"]}'),
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "$TDD_COMMENT", append_comment: true}'),
+                Operator::output([
+                    '✅ TDD MODE COMPLETE',
+                    'Task #{$VECTOR_TASK_ID} marked as TESTED (TDD)',
+                    '',
+                    'Created tests:',
+                    '{$TDD_TESTS_SUMMARY}',
+                    '',
+                    '📋 Next steps:',
+                    '1. Run /task:async #{$VECTOR_TASK_ID} or /task:sync #{$VECTOR_TASK_ID} to implement',
+                    '2. Tests will FAIL initially (expected TDD behavior)',
+                    '3. After implementation, tests should PASS',
+                    '4. Run /task:test-validate #{$VECTOR_TASK_ID} again for post-implementation validation',
                 ]),
             ]))
-            ->phase(Operator::if('$TOTAL_ESTIMATE > 8', [
-                'Split into multiple 5-8h task batches',
-                Store::as('BATCH_SIZE', '6'),
-                Store::as('NUM_BATCHES', '{ceil($TOTAL_ESTIMATE / 6)}'),
-                'Group issues by priority and type into batches of ~6h each',
-                Operator::forEach('batch_index in range(1, $NUM_BATCHES)', [
-                    Store::as('BATCH_ISSUES', '{slice of issues for this batch, ~6h worth}'),
-                    Store::as('BATCH_ESTIMATE', '{sum of batch issue estimates}'),
-                    Operator::if('NOT exists similar in $EXISTING_TEST_TASKS', [
-                        VectorTaskMcp::call('task_create', '{
-                            title: "Test fixes batch {batch_index}/{$NUM_BATCHES}: task #{$VECTOR_TASK_ID}",
-                            content: "Test validation batch {batch_index} of {$NUM_BATCHES} for task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}.\\n\\nBatch estimate: {$BATCH_ESTIMATE}h\\n\\n## Issues in this batch\\n{FOR each issue in $BATCH_ISSUES:\\n### {issue.type}: {issue.title}\\n- File: {issue.file}:{issue.line}\\n- Description: {issue.description}\\n- Severity: {issue.severity}\\n- Suggestion: {issue.suggestion}\\n- Related memory: {issue.memory_refs}\\n}\\n\\n## Full Context References\\n- Parent task: #{$VECTOR_TASK_ID}\\n- Memory IDs: {$TEST_MEMORY_CONTEXT.memory_ids}\\n- Related tasks: {$RELATED_TEST_TASKS.ids}\\n- Documentation: {$DOCS_INDEX.paths}\\n- Total batches: {$NUM_BATCHES} ({$TOTAL_ESTIMATE}h total)",
-                            priority: "{batch_index === 1 ? high : medium}",
-                            estimate: $BATCH_ESTIMATE,
-                            tags: ["test-validation", "batch-{batch_index}"],
-                            parent_id: $TASK_PARENT_ID
-                        }'),
-                        Store::as('CREATED_TASKS[]', '{task_id}'),
-                        Operator::output(['Created batch {batch_index}/{$NUM_BATCHES}: {$BATCH_ESTIMATE}h']),
-                    ]),
+            ->phase(Operator::if('$IS_TDD_MODE === false', [
+                'VALIDATION MODE COMPLETION: Tests validated and gaps fixed inline',
+                'Aggregate results from validation agents',
+                Store::as('TESTS_CREATED_BY_AGENTS', '{count of tests created by agents during validation}'),
+                Store::as('TESTS_FIXED_BY_AGENTS', '{count of tests fixed by agents during validation}'),
+                Store::as('COSMETIC_FIXES', '{sum of cosmetic_fixes_applied from all agents}'),
+                Store::as('TOTAL_FIXES', '{$TESTS_CREATED_BY_AGENTS + $TESTS_FIXED_BY_AGENTS + $COSMETIC_FIXES}'),
+                VectorMemoryMcp::call('store_memory', '{content: "Test validation of task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nStatus: PASSED (all gaps fixed inline)\\nTests created: {$TESTS_CREATED_BY_AGENTS}\\nTests fixed: {$TESTS_FIXED_BY_AGENTS}\\nCosmetic fixes: {$COSMETIC_FIXES}", category: "code-solution", tags: ["test-validation", "task:test-validate"]}'),
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "Test validation PASSED. All gaps fixed inline by agents.\\n\\nTests created: {$TESTS_CREATED_BY_AGENTS}\\nTests fixed: {$TESTS_FIXED_BY_AGENTS}\\nCosmetic fixes: {$COSMETIC_FIXES}", append_comment: true}'),
+                Operator::output([
+                    '✅ VALIDATION MODE COMPLETE',
+                    'Task #{$VECTOR_TASK_ID} marked as TESTED',
+                    '',
+                    '| Metric | Count |',
+                    '|--------|-------|',
+                    '| Tests created | {$TESTS_CREATED_BY_AGENTS} |',
+                    '| Tests fixed | {$TESTS_FIXED_BY_AGENTS} |',
+                    '| Cosmetic fixes | {$COSMETIC_FIXES} |',
+                    '| Total fixes | {$TOTAL_FIXES} |',
+                    '',
+                    'All test gaps fixed inline by validation agents.',
+                    'Test validation stored to vector memory.',
                 ]),
-            ]))
-            ->phase(Operator::output([
-                'Tasks created: {$CREATED_TASKS.count} (total estimate: {$TOTAL_ESTIMATE}h)',
-            ]));
-
-        // Task Consolidation Rules
-        $this->rule('task-size-5-8h')->high()
-            ->text('Each created task MUST have estimate between 5-8 hours. Never create tasks < 5h (consolidate) or > 8h (split).')
-            ->why('Optimal task size for focused work sessions. Too small = context switching overhead. Too large = hard to track progress.')
-            ->onViolation('Merge small issues into consolidated task OR split large task into 5-8h batches.');
-
-        $this->rule('task-comprehensive-context')->critical()
-            ->text('Each task MUST include: all file:line references, memory IDs, related task IDs, documentation paths, detailed issue descriptions with suggestions.')
-            ->why('Enables full context restoration without re-exploration. Saves agent time on task pickup.')
-            ->onViolation('Add missing context references before creating task.');
-
-        // Phase 8: Test Validation Completion
-        $this->guideline('phase8-completion')
-            ->goal('Complete test validation, update task status, store summary to memory')
-            ->example()
-            ->phase(Operator::output([
-                '',
-                '=== PHASE 8: TEST VALIDATION COMPLETE ===',
-            ]))
-            ->phase(Store::as('COVERAGE_RATE', '{covered_requirements / total_requirements * 100}%'))
-            ->phase(Store::as('TEST_HEALTH_SCORE', '{100 - (bloat_count + isolation_count + failing_count) / total_tests * 100}%'))
-            ->phase(Store::as('VALIDATION_STATUS', Operator::if('$MISSING_COVERAGE.count === 0 AND $FAILING_TESTS.count === 0', 'PASSED', 'NEEDS_WORK')))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Test validation of task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nStatus: {$VALIDATION_STATUS}\\nCoverage rate: {$COVERAGE_RATE}\\nTest health: {$TEST_HEALTH_SCORE}\\n\\nMissing coverage: {$MISSING_COVERAGE.count}\\nFailing tests: {$FAILING_TESTS.count}\\nBloated tests: {$BLOATED_TESTS.count}\\nTasks created: {$CREATED_TASKS.count}\\n\\nKey findings: {summary}", category: "code-solution", tags: ["test-validation", "audit", "task:test-validate"]}'))
-            ->phase(Operator::if('$VALIDATION_STATUS === "PASSED" AND $CREATED_TASKS.count === 0', [
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "Test validation PASSED. All requirements covered, all tests passing, no critical issues.", append_comment: true}'),
-                Operator::output(['✅ Task #{$VECTOR_TASK_ID} marked as TESTED']),
-            ]))
-            ->phase(Operator::if('$CREATED_TASKS.count > 0', [
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Test validation found issues. Coverage: {$COVERAGE_RATE}, Health: {$TEST_HEALTH_SCORE}. Created {$CREATED_TASKS.count} fix tasks. Returning to pending - fix tasks must be completed before re-testing.", append_comment: true}'),
-                Operator::output(['⏳ Task #{$VECTOR_TASK_ID} returned to PENDING ({$CREATED_TASKS.count} fix tasks required before re-testing)']),
-            ]))
-            ->phase(Operator::output([
-                '',
-                '=== TEST VALIDATION REPORT ===',
-                'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
-                'Status: {$VALIDATION_STATUS}',
-                '',
-                '| Metric | Value |',
-                '|--------|-------|',
-                '| Requirements coverage | {$COVERAGE_RATE} |',
-                '| Test health score | {$TEST_HEALTH_SCORE} |',
-                '| Total tests | {$DISCOVERED_TESTS.count} |',
-                '| Passing tests | {passing_count} |',
-                '| Failing/flaky tests | {$FAILING_TESTS.count} |',
-                '',
-                '| Issue Type | Count |',
-                '|------------|-------|',
-                '| Missing coverage | {$MISSING_COVERAGE.count} |',
-                '| Partial coverage | {$PARTIAL_COVERAGE.count} |',
-                '| Bloated tests | {$BLOATED_TESTS.count} |',
-                '| Missing workflows | {$MISSING_WORKFLOWS.count} |',
-                '| Isolation issues | {$ISOLATION_ISSUES.count} |',
-                '| Cosmetic fixes (inline) | {$TOTAL_COSMETIC_FIXES} |',
-                '',
-                'Tasks created: {$CREATED_TASKS.count}',
-                '{IF $TOTAL_COSMETIC_FIXES > 0: "✅ Cosmetic issues fixed inline by validation agents"}',
-                '{IF $CREATED_TASKS.count > 0: "Follow-up tasks: {$CREATED_TASKS}"}',
-                '',
-                'Test validation stored to vector memory.',
             ]));
 
         // Error Handling
@@ -513,8 +461,9 @@ class TaskTestValidateInclude extends IncludeArchetype
                 'Abort validation',
             ])
             ->phase()->if('vector task not in testable status', [
-                'Report: "Vector task #{id} status is {status}, not completed/tested/validated"',
-                'Suggest: Run /task:async #{id} first',
+                'Report: "Vector task #{id} status is {status}"',
+                'Allowed: pending (TDD mode), completed/tested/validated (validation mode)',
+                'Suggest: Run /task:async #{id} first if in_progress/stopped',
                 'Abort validation',
             ])
             ->phase()->if('invalid task ID format', [
@@ -522,30 +471,40 @@ class TaskTestValidateInclude extends IncludeArchetype
                 'Suggest: "Use /do:test-validate for text-based validation"',
                 'Abort command',
             ])
-            ->phase()->if('no documentation found', [
+            ->phase()->if('no documentation found (TDD mode)', [
+                'Warn: "No documentation in .docs/ for TDD test creation"',
+                'Continue with task content as requirements source',
+                'Note: "Tests will be based on task description only"',
+            ])
+            ->phase()->if('no documentation found (validation mode)', [
                 'Warn: "No documentation in .docs/ for this task"',
                 'Continue with test-only validation (existing tests analysis)',
                 'Note: "Cannot verify requirements coverage without documentation"',
             ])
-            ->phase()->if('no tests found', [
+            ->phase()->if('no tests found (TDD mode)', [
+                'Note: "No existing tests - expected for TDD mode"',
+                'Continue with TDD test creation',
+            ])
+            ->phase()->if('no tests found (validation mode)', [
                 'Report: "No tests found for task #{$VECTOR_TASK_ID}"',
-                'Create task: "Write initial tests for {$TASK_DESCRIPTION}"',
+                'Agent MUST WRITE initial tests for {$TASK_DESCRIPTION}',
                 'Continue with documentation requirements analysis',
             ])
             ->phase()->if('test execution fails', [
                 'Log: "Test execution failed: {error}"',
-                'Mark tests as "execution_unknown"',
+                'Agent MUST FIX the issue if possible',
+                'Mark tests as "execution_unknown" if unfixable',
                 'Continue with static analysis',
+            ])
+            ->phase()->if('agent test creation fails (TDD mode)', [
+                'Log: "TDD test creation failed: {error}"',
+                'Report error to user with details',
+                'Suggest manual test creation or retry',
             ])
             ->phase()->if('agent validation fails', [
                 'Log: "Validation agent {N} failed: {error}"',
                 'Continue with remaining agents',
                 'Report partial validation in summary',
-            ])
-            ->phase()->if('task creation fails', [
-                'Log: "Failed to create task: {error}"',
-                'Store issue details to vector memory for manual review',
-                'Continue with remaining tasks',
             ]);
 
         // Test Quality Criteria
@@ -581,51 +540,75 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->text('Test validation constraints and limits')
             ->example()
             ->phase('Max 6 parallel validation agents per batch')
-            ->phase('Max 30 tasks created per validation run')
+            ->phase('TDD mode: Agent creates tests based on requirements')
+            ->phase('Validation mode: Agent fixes issues inline (no task creation)')
             ->phase('Test execution timeout: 5 minutes total')
             ->phase('Bloat threshold: >50% bloated = critical warning')
             ->phase(Operator::verify([
                 'vector_task_loaded = true',
-                'testable_status_verified = true',
-                'parallel_agents_used = true',
+                'testable_status_verified = true (pending OR completed/tested/validated)',
+                'mode_determined = $IS_TDD_MODE',
+                'parallel_agents_used = true (validation mode only)',
                 'documentation_checked = true',
-                'tests_executed = true',
+                'tests_executed_or_created = true',
                 'results_stored_to_memory = true',
+                'no_task_creation = true (fixes inline)',
             ]));
 
-        // Examples
-        $this->guideline('example-vector-task')
-            ->scenario('Test validate completed vector task')
+        // Examples - TDD Mode
+        $this->guideline('example-tdd-mode')
+            ->scenario('TDD: Write tests for pending task')
             ->example()
-            ->phase('input', '"task 15" or "#15" where task #15 is completed')
-            ->phase('load', 'task_get(15) → title, content, status: completed')
-            ->phase('flow', 'Task Loading → Context → Docs → Test Discovery → Parallel Validation (6 agents) → Aggregate → Create Tasks → Complete')
-            ->phase('result', 'Test validation PASSED/NEEDS_WORK, coverage %, N tasks created');
+            ->phase('input', '"task 15" where task #15 has status: pending')
+            ->phase('mode', 'TDD MODE activated (task not yet implemented)')
+            ->phase('flow', 'Task Loading → Context → Docs → Test Discovery → TDD TEST CREATION → Complete')
+            ->phase('result', 'Tests created, Task #15 status → tested, TDD comment added')
+            ->phase('next', 'Run /task:async #15 or /task:sync #15 to implement. Tests will FAIL initially.');
 
-        $this->guideline('example-with-fixes')
-            ->scenario('Test validation finds issues')
+        // Examples - Validation Mode
+        $this->guideline('example-validation-mode')
+            ->scenario('Validation: Validate tests for completed task')
+            ->example()
+            ->phase('input', '"task 15" or "#15" where task #15 has status: completed')
+            ->phase('mode', 'VALIDATION MODE activated (task already implemented)')
+            ->phase('flow', 'Task Loading → Context → Docs → Test Discovery → Parallel Validation (6 agents) → Inline Fixes → Complete')
+            ->phase('result', 'All gaps fixed inline, Task #15 status → tested');
+
+        $this->guideline('example-validation-with-fixes')
+            ->scenario('Validation finds and fixes issues inline')
             ->example()
             ->phase('input', '"#28" where task #28 has status: completed')
             ->phase('validation', 'Found: 2 missing coverage, 1 bloated test, 1 failing')
-            ->phase('tasks', 'Created 1 consolidated fix task (6h estimate)')
-            ->phase('result', 'Task #28 status → pending, 1 fix task created as child');
+            ->phase('action', 'Agents FIX all issues inline (write missing tests, refactor bloat, fix failing)')
+            ->phase('result', 'Task #28 status → tested, all fixes applied directly');
 
         $this->guideline('example-rerun')
             ->scenario('Re-run test validation (idempotent)')
             ->example()
             ->phase('input', '"task 15" (already test-validated before)')
-            ->phase('behavior', 'Skips existing tasks, only creates NEW issues found')
-            ->phase('result', 'Same/updated validation report, no duplicate tasks');
+            ->phase('behavior', 'Checks for new issues, fixes any found inline')
+            ->phase('result', 'Same/updated validation report, no duplicate work');
+
+        // TDD Workflow explanation
+        $this->guideline('tdd-workflow')
+            ->text('Complete TDD workflow with /task:test-validate')
+            ->example()
+            ->phase('Step 1', 'Create task for new feature: /task:create "Add user notifications"')
+            ->phase('Step 2', 'Run TDD test creation: /task:test-validate #15 (status: pending → tested)')
+            ->phase('Step 3', 'Implement feature: /task:async #15 or /task:sync #15 (status: tested → allows execution)')
+            ->phase('Step 4', 'Tests should PASS after implementation')
+            ->phase('Step 5', 'Run post-implementation validation: /task:test-validate #15 (validates & fixes inline)')
+            ->phase('Step 6', 'Run full validation: /task:validate #15 (status: tested → validated)');
 
         // When to use task:test-validate vs do:test-validate
         $this->guideline('test-validate-vs-do-test-validate')
             ->text('When to use /task:test-validate vs /do:test-validate')
             ->example()
-            ->phase('USE /task:test-validate', 'Validate tests for specific vector task by ID (15, #15, task 15). Best for: systematic task-based workflow, hierarchical task management, fix task creation as children.')
-            ->phase('USE /do:test-validate', 'Validate tests by text description ("test-validate user authentication"). Best for: ad-hoc test validation, exploratory validation, no existing vector task.');
+            ->phase('USE /task:test-validate', 'Validate/create tests for specific vector task by ID (15, #15, task 15). Supports TDD mode for pending tasks.')
+            ->phase('USE /do:test-validate', 'Validate tests by text description ("test-validate user authentication"). For ad-hoc validation without existing vector task.');
 
         // Response Format
         $this->guideline('response-format')
-            ->text('=== headers | Parallel: agent batch indicators | Tables: coverage metrics + issue counts | Coverage % | Health score | Created tasks listed | 📋 task ID references');
+            ->text('=== headers | Mode indicator (TDD/Validation) | Tables: coverage metrics + issue counts | Fixes applied inline | 📋 task ID references');
     }
 }

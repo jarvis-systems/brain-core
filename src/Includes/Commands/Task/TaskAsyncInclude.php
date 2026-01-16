@@ -145,6 +145,29 @@ class TaskAsyncInclude extends IncludeArchetype
                 'Ask user: "Re-execute this task? (yes/no)"',
                 'WAIT for user decision',
             ]))
+            ->phase(Operator::if('$VECTOR_TASK.status === "tested"', [
+                Operator::note('Check for TDD mode marker in comment'),
+                Store::as('IS_TDD_EXECUTION', '{$VECTOR_TASK.comment contains "TDD MODE"}'),
+                Operator::if('$IS_TDD_EXECUTION === true', [
+                    Operator::output([
+                        '',
+                        '🧪 TDD EXECUTION MODE',
+                        'Task #{$VECTOR_TASK_ID} has status "tested" with TDD marker.',
+                        'This task has tests written but feature NOT yet implemented.',
+                        'Tests are expected to FAIL initially. After implementation, tests should PASS.',
+                        '',
+                        'Proceeding with feature implementation via agents...',
+                    ]),
+                ]),
+                Operator::if('$IS_TDD_EXECUTION === false', [
+                    Operator::output([
+                        '',
+                        '✅ TESTED TASK EXECUTION',
+                        'Task #{$VECTOR_TASK_ID} has status "tested" (post-implementation validated).',
+                        'Proceeding with execution. Tests should continue to PASS.',
+                    ]),
+                ]),
+            ]))
             ->phase(Operator::if('$VECTOR_TASK.parent_id !== null', [
                 VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK.parent_id}'),
                 Store::as('PARENT_TASK', '{parent task for broader context}'),
@@ -332,14 +355,42 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if('step fails', ['Store failure to memory', 'Offer: Retry / Skip / Abort']))
             ->phase('POST-EXECUTION CHECK: Verify Brain called ONLY Task() tools. Any Edit/Write/Glob/Grep/Read = VIOLATION.');
 
-        // Phase 6: Completion with Vector Task Update
+        // Phase 6: Completion with Vector Task Update (with TDD test verification)
         $this->guideline('phase6-completion-report')
-            ->goal('Report results, update vector task status, store learnings')
+            ->goal('Report results, run tests for TDD mode, update vector task status, store learnings')
             ->example()
             ->phase(Store::as('COMPLETION_SUMMARY', '{completed_steps, files_modified, outcomes, learnings}'))
             ->phase(VectorMemoryMcp::call('store_memory',
                 '{content: "Completed task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nApproach: {summary}\\n\\nSteps: {outcomes}\\n\\nLearnings: {insights}\\n\\nFiles: {list}", category: "code-solution", tags: ["task-async", "completed"]}'))
-            ->phase(Operator::if('status === SUCCESS', [
+            ->phase(Operator::if('$IS_TDD_EXECUTION === true AND status === SUCCESS', [
+                Operator::output([
+                    '',
+                    '🧪 TDD: Running tests to verify implementation...',
+                ]),
+                TaskTool::agent('explore', 'Run tests related to task #{$VECTOR_TASK_ID}: Find test files from $VECTOR_TASK.comment (TDD MODE section), execute them, report results.'),
+                Store::as('TDD_TEST_RESULTS', '{test execution results from agent}'),
+                Operator::if('$TDD_TEST_RESULTS === ALL_PASS', [
+                    VectorTaskMcp::call('task_update',
+                        '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "TDD Implementation completed. Tests PASSED.\\n\\nFiles: {list}. Memory: #{memory_id}\\n\\nTest results: {$TDD_TEST_RESULTS.summary}", append_comment: true}'),
+                    Operator::output([
+                        '✅ TDD SUCCESS: All tests passed!',
+                        'Vector task #{$VECTOR_TASK_ID} completed',
+                        '',
+                        'Next: Run /task:test-validate #{$VECTOR_TASK_ID} for post-implementation test validation',
+                    ]),
+                ]),
+                Operator::if('$TDD_TEST_RESULTS !== ALL_PASS', [
+                    VectorTaskMcp::call('task_update',
+                        '{task_id: $VECTOR_TASK_ID, comment: "TDD Implementation incomplete. Tests FAILED.\\n\\nPassed: {pass_count}, Failed: {fail_count}\\n\\nFailing tests: {list}", append_comment: true}'),
+                    Operator::output([
+                        '⚠️ TDD: Some tests still failing',
+                        'Passed: {pass_count} | Failed: {fail_count}',
+                        '',
+                        'Continue implementation to make all tests pass.',
+                    ]),
+                ]),
+            ]))
+            ->phase(Operator::if('$IS_TDD_EXECUTION !== true AND status === SUCCESS', [
                 VectorTaskMcp::call('task_update',
                     '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Execution completed successfully. Files: {list}. Memory: #{memory_id}", append_comment: true}'),
                 Operator::output(['Vector task #{$VECTOR_TASK_ID} completed']),
