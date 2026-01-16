@@ -76,9 +76,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->onViolation('Create task for the functional issue instead of fixing directly.');
 
         $this->rule('cosmetic-auto-fix')->critical()
-            ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed immediately using direct tools (Read/Edit/Write) WITHOUT creating tasks. After auto-fix, restart validation from Phase 0.')
-            ->why('Cosmetic fixes are trivial, low-risk, and do not require task tracking. Immediate fix saves time and keeps task queue clean.')
-            ->onViolation('Fix cosmetic issues directly. DO NOT create tasks for cosmetic issues.');
+            ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed INLINE when discovered during validation. When you find a cosmetic issue, fix it IMMEDIATELY with Edit tool, increment cosmetic_fixes counter, then continue validation. NO separate phase. NO restart. NO tasks.')
+            ->why('Inline fix eliminates separate cosmetic phase. Faster validation, no restarts, no extra phases.')
+            ->onViolation('Fix cosmetic issues inline during validation. Report total cosmetic_fixes_applied at end.');
 
         $this->rule('vector-memory-mandatory')->high()
             ->text('ALL validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate tasks.')
@@ -87,7 +87,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // Phase Execution Sequence - STRICT ORDERING
         $this->rule('phase-sequence-strict')->critical()
-            ->text('Phases MUST execute in STRICT sequential order: Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 5.5 → Phase 6 → Phase 7. NO phase may start until previous phase is FULLY COMPLETED. Each phase MUST output its header "=== PHASE N: NAME ===" before any actions. EXCEPTION: Phase 5.5 may trigger RESTART to Phase 0 if only cosmetic issues exist.')
+            ->text('Phases MUST execute in STRICT sequential order: Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7. NO phase may start until previous phase is FULLY COMPLETED. Each phase MUST output its header "=== PHASE N: NAME ===" before any actions.')
             ->why('Sequential execution ensures data dependencies are satisfied. Each phase depends on variables stored by previous phases.')
             ->onViolation('STOP. Return to last completed phase. Execute current phase fully before proceeding.');
 
@@ -264,42 +264,46 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 '{requirements summary}',
             ]));
 
-        // Phase 4: Direct Validation (sync)
+        // Phase 4: Direct Validation (sync) with inline cosmetic fixes
         $this->guideline('phase4-direct-validation')
-            ->goal('Validate requirements and code consistency using direct tools')
+            ->goal('Validate requirements and code consistency using direct tools. FIX COSMETIC ISSUES INLINE.')
             ->example()
             ->phase(Operator::output([
                 '',
                 '=== PHASE 4: DIRECT VALIDATION ===',
             ]))
+            ->phase(Store::as('COSMETIC_FIXES_APPLIED', '0'))
+            ->phase(Operator::note('COSMETIC FIX RULE: When you find whitespace, indentation, trailing spaces, empty line issues, typos, formatting inconsistencies - FIX THEM IMMEDIATELY with Edit tool. Increment $COSMETIC_FIXES_APPLIED. Continue validation. NO separate phase.'))
             ->phase('Identify relevant files and patterns based on $TASK_DESCRIPTION and $DOCUMENTATION_REQUIREMENTS')
             ->phase(GlobTool::describe('Discover related files using patterns derived from requirements'))
             ->phase(GrepTool::describe('Search for implementation evidence and known patterns'))
             ->phase(ReadTool::describe('Read identified files to confirm implementation and consistency'))
-            ->phase(Store::as('VALIDATION_FINDINGS', '{requirements mapping, code issues, tests, docs sync}'))
+            ->phase('During validation: if cosmetic issue found → Edit tool → fix → $COSMETIC_FIXES_APPLIED++ → continue')
+            ->phase(Store::as('VALIDATION_FINDINGS', '{requirements mapping, code issues, tests, docs sync, cosmetic_fixes_applied: $COSMETIC_FIXES_APPLIED}'))
             ->phase(Operator::output([
                 'Direct validation completed.',
                 'Files reviewed: {count}',
+                'Cosmetic fixes applied inline: {$COSMETIC_FIXES_APPLIED}',
                 'Findings captured for aggregation.',
             ]));
 
         // Phase 5: Results Aggregation and Analysis
         $this->guideline('phase5-results-aggregation')
-            ->goal('Aggregate all validation results and categorize issues (functional vs cosmetic)')
+            ->goal('Aggregate all validation results and categorize FUNCTIONAL issues only (cosmetic already fixed inline)')
             ->example()
             ->phase(Operator::output([
                 '',
                 '=== PHASE 5: RESULTS AGGREGATION ===',
             ]))
             ->phase('Merge results from direct validation findings')
-            ->phase(Store::as('ALL_ISSUES', '{merged issues from validation findings}'))
+            ->phase(Store::as('ALL_ISSUES', '{merged FUNCTIONAL issues from validation findings}'))
+            ->phase(Store::as('TOTAL_COSMETIC_FIXES', '{$COSMETIC_FIXES_APPLIED from Phase 4}'))
             ->phase('Categorize FUNCTIONAL issues (require tasks):')
             ->phase(Store::as('CRITICAL_ISSUES', '{issues with severity: critical - code logic, security, architecture}'))
             ->phase(Store::as('MAJOR_ISSUES', '{issues with severity: major - functionality, tests, dependencies}'))
             ->phase(Store::as('MINOR_ISSUES', '{issues with severity: minor - code style affecting logic, naming conventions}'))
             ->phase(Store::as('MISSING_REQUIREMENTS', '{requirements not implemented}'))
-            ->phase('Categorize COSMETIC issues (auto-fixable, NO tasks):')
-            ->phase(Store::as('COSMETIC_ISSUES', '{issues that are purely cosmetic: whitespace errors, indentation issues, extra/trailing spaces, empty line inconsistencies, documentation typos, comment formatting, markdown syntax, docblock formatting - anything NOT affecting code logic or functionality}'))
+            ->phase(Operator::note('Cosmetic issues were already fixed inline during Phase 4. No separate cosmetic tracking needed.'))
             ->phase(Store::as('FUNCTIONAL_ISSUES_COUNT', '{$CRITICAL_ISSUES.count + $MAJOR_ISSUES.count + $MINOR_ISSUES.count + $MISSING_REQUIREMENTS.count}'))
             ->phase(Operator::output([
                 'Validation results:',
@@ -307,73 +311,14 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 '- Major issues: {$MAJOR_ISSUES.count}',
                 '- Minor issues: {$MINOR_ISSUES.count}',
                 '- Missing requirements: {$MISSING_REQUIREMENTS.count}',
-                '- Cosmetic issues (auto-fix): {$COSMETIC_ISSUES.count}',
+                '- Cosmetic fixes (inline): {$TOTAL_COSMETIC_FIXES}',
                 '',
                 'Functional issues total: {$FUNCTIONAL_ISSUES_COUNT}',
             ]));
 
-        // Phase 5.5: Cosmetic Auto-Fix (NO TASKS - immediate direct fix)
-        $this->guideline('phase5-5-cosmetic-autofix')
-            ->goal('Auto-fix cosmetic issues directly WITHOUT creating tasks, then restart validation if only cosmetic issues exist')
-            ->example()
-            ->phase(Operator::if('$COSMETIC_ISSUES.count > 0', [
-                Operator::output([
-                    '',
-                    '=== PHASE 5.5: COSMETIC AUTO-FIX ===',
-                    'Found {$COSMETIC_ISSUES.count} cosmetic issues (whitespace, formatting, typos)',
-                    'Auto-fixing without creating tasks...',
-                ]),
-                'Group cosmetic issues by file for processing',
-                Store::as('COSMETIC_FILE_GROUPS', '{group $COSMETIC_ISSUES by file path}'),
-                Operator::forEach('file in $COSMETIC_FILE_GROUPS', [
-                    ReadTool::call('{file.path}'),
-                    EditTool::call('{file.path}', '{old_string}', '{new_string}'),
-                ]),
-                Store::as('COSMETIC_FIX_RESULTS', '{results from direct fixes}'),
-                Operator::output([
-                    'Cosmetic fixes applied: {$COSMETIC_FIX_RESULTS.total_fixed} issues in {$COSMETIC_FIX_RESULTS.files_count} files',
-                ]),
-            ]))
-            ->phase(Operator::note('DECISION POINT: If ONLY cosmetic issues existed, restart validation to verify fixes'))
-            ->phase(Operator::if('$COSMETIC_ISSUES.count > 0 AND $FUNCTIONAL_ISSUES_COUNT === 0', [
-                Operator::note('All issues were cosmetic - restart validation from Phase 0 to verify fixes'),
-                Store::as('VALIDATION_ITERATION', '{$VALIDATION_ITERATION + 1 or 1 if not set}'),
-                Operator::if('$VALIDATION_ITERATION <= 3', [
-                    VectorTaskMcp::call('task_update',
-                        '{task_id: $VECTOR_TASK_ID, comment: "Cosmetic auto-fix iteration {$VALIDATION_ITERATION}: fixed {$COSMETIC_ISSUES.count} issues. Restarting validation.", append_comment: true}'),
-                    Operator::output([
-                        '',
-                        '🔄 All issues were cosmetic and have been auto-fixed.',
-                        'Restarting validation from Phase 0 (iteration {$VALIDATION_ITERATION}/3)...',
-                        '',
-                    ]),
-                    'RESTART validation from Phase 0',
-                    'GOTO: phase0-task-loading',
-                ]),
-                Operator::if('$VALIDATION_ITERATION > 3', [
-                    Operator::output([
-                        '',
-                        '⚠️ Max validation iterations (3) reached.',
-                        'Proceeding to completion with remaining cosmetic issues.',
-                    ]),
-                    'Continue to Phase 7 (skip Phase 6 - no functional issues)',
-                ]),
-            ]))
-            ->phase(Operator::if('$COSMETIC_ISSUES.count > 0 AND $FUNCTIONAL_ISSUES_COUNT > 0', [
-                Operator::output([
-                    '',
-                    '✅ Cosmetic issues auto-fixed.',
-                    '📋 Proceeding to Phase 6 for {$FUNCTIONAL_ISSUES_COUNT} functional issues...',
-                ]),
-                'Continue to Phase 6 with functional issues only',
-            ]))
-            ->phase(Operator::if('$COSMETIC_ISSUES.count === 0', [
-                Operator::output(['No cosmetic issues found. Proceeding to Phase 6...']),
-            ]));
-
         // Phase 6: Task Creation for FUNCTIONAL Issues Only (Consolidated 5-8h Tasks)
         $this->guideline('phase6-task-creation')
-            ->goal('Create consolidated tasks (5-8h each) for FUNCTIONAL issues with comprehensive context (cosmetic issues already auto-fixed)')
+            ->goal('Create consolidated tasks (5-8h each) for FUNCTIONAL issues with comprehensive context (cosmetic issues already fixed inline)')
             ->example()
             ->phase(Operator::output([
                 '',
@@ -390,7 +335,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase('Check existing tasks to avoid duplicates')
             ->phase(VectorTaskMcp::call('task_list', '{query: "fix issues $TASK_DESCRIPTION", limit: 20}'))
             ->phase(Store::as('EXISTING_FIX_TASKS', 'Existing fix tasks'))
-            ->phase(Operator::note('Phase 6 processes ONLY functional issues. Cosmetic issues were auto-fixed in Phase 5.5'))
+            ->phase(Operator::note('Phase 6 processes ONLY functional issues. Cosmetic issues were fixed inline in Phase 4.'))
             ->phase(Operator::if('$FUNCTIONAL_ISSUES_COUNT === 0', [
                 Operator::output(['No functional issues to create tasks for. Proceeding to Phase 7...']),
                 'SKIP to Phase 7',
@@ -497,10 +442,10 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 '| Major issues | {$MAJOR_ISSUES.count} |',
                 '| Minor issues | {$MINOR_ISSUES.count} |',
                 '| Missing requirements | {$MISSING_REQUIREMENTS.count} |',
-                '| Cosmetic (auto-fixed) | {$COSMETIC_ISSUES.count} |',
+                '| Cosmetic fixes (inline) | {$TOTAL_COSMETIC_FIXES} |',
                 '| Tasks created | {$CREATED_TASKS.count} |',
                 '',
-                '{IF $COSMETIC_ISSUES.count > 0: "✅ Cosmetic issues auto-fixed without tasks"}',
+                '{IF $TOTAL_COSMETIC_FIXES > 0: "✅ Cosmetic issues fixed inline during validation"}',
                 '{IF $CREATED_TASKS.count > 0: "Follow-up tasks: {$CREATED_TASKS}"}',
                 '',
                 'Validation stored to vector memory.',

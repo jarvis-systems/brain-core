@@ -77,9 +77,9 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('Create task for the functional issue instead of fixing directly.');
 
         $this->rule('cosmetic-auto-fix')->critical()
-            ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed by parallel agents immediately WITHOUT creating tasks. After auto-fix, restart validation from Phase 0.')
-            ->why('Cosmetic fixes are trivial, low-risk, and do not require task tracking. Immediate fix saves time and keeps task queue clean.')
-            ->onViolation('Launch parallel agents to fix cosmetic issues. DO NOT create tasks for cosmetic issues.');
+            ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed IMMEDIATELY by the agent that discovers them. NO separate phase, NO additional agents, NO tasks. Agent finds problem → Agent fixes it → Agent continues validation.')
+            ->why('Cosmetic fixes are trivial. Creating tasks or spawning extra agents for whitespace is wasteful. The discovering agent has full context and can fix instantly.')
+            ->onViolation('Agent that found cosmetic issue MUST fix it inline using Edit tool. Report fixed issues in results, not as pending issues.');
 
         $this->rule('vector-memory-mandatory')->high()
             ->text('ALL validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate tasks.')
@@ -327,12 +327,12 @@ class TaskValidateInclude extends IncludeArchetype
                     '',
                     'Launching validation agents in parallel...',
                 ]),
-                'PARALLEL BATCH (SIMPLE): Launch 2 agents',
+                'PARALLEL BATCH (SIMPLE): Launch 2 agents with inline cosmetic fix capability',
                 Operator::do([
                     TaskTool::agent('{$SELECTED_AGENTS.completeness}',
-                        'COMPLETENESS CHECK: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for requirements 2) Scan codebase for implementation evidence 3) Map requirements to code 4) Return: [{requirement_id, status: implemented|partial|missing, evidence: file:line}]. Store findings.'),
+                        'COMPLETENESS CHECK: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for requirements 2) Scan codebase for implementation evidence 3) Map requirements to code. COSMETIC FIX RULE: If you find whitespace/indentation/formatting issues - FIX THEM IMMEDIATELY using Edit tool, then continue. Do NOT report cosmetic issues as findings. Return: [{requirement_id, status: implemented|partial|missing, evidence: file:line, cosmetic_fixes_applied: N}]. Store findings.'),
                     TaskTool::agent('{$SELECTED_AGENTS.tests}',
-                        'TEST COVERAGE CHECK: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Discover related test files 2) Analyze coverage gaps 3) Run tests if possible 4) Return: [{test_file, coverage_status, missing_scenarios}]. Store findings.'),
+                        'TEST COVERAGE CHECK: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Discover related test files 2) Analyze coverage gaps 3) Run tests if possible. COSMETIC FIX RULE: If you find whitespace/indentation/formatting issues in test files - FIX THEM IMMEDIATELY using Edit tool, then continue. Do NOT report cosmetic issues as findings. Return: [{test_file, coverage_status, missing_scenarios, cosmetic_fixes_applied: N}]. Store findings.'),
                 ]),
             ]))
             ->phase(Operator::if('$SIMPLE_VALIDATION === false', [
@@ -352,18 +352,18 @@ class TaskValidateInclude extends IncludeArchetype
                     '',
                     'Launching validation agents in parallel...',
                 ]),
-                'PARALLEL BATCH (COMPLEX): Launch selected agents simultaneously with DEEP RESEARCH tasks',
+                'PARALLEL BATCH (COMPLEX): Launch agents with inline cosmetic fix capability',
                 Operator::do([
                     TaskTool::agent('{$SELECTED_AGENTS.completeness}',
-                        'DEEP RESEARCH - COMPLETENESS: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for past implementations and requirements 2) Scan codebase for implementation evidence 3) Map each requirement from {$DOCUMENTATION_REQUIREMENTS} to code 4) Return: [{requirement_id, status: implemented|partial|missing, evidence: file:line, memory_refs: [...]}]. Store findings.'),
+                        'DEEP RESEARCH - COMPLETENESS: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search vector memory for past implementations and requirements 2) Scan codebase for implementation evidence 3) Map each requirement from {$DOCUMENTATION_REQUIREMENTS} to code. COSMETIC FIX RULE: If you find whitespace/indentation/formatting issues - FIX THEM IMMEDIATELY using Edit tool, then continue. Do NOT report cosmetic issues. Return: [{requirement_id, status: implemented|partial|missing, evidence: file:line, memory_refs: [...], cosmetic_fixes_applied: N}]. Store findings.'),
                     TaskTool::agent('{$SELECTED_AGENTS.consistency}',
-                        'DEEP RESEARCH - CODE CONSISTENCY: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for project coding standards 2) Scan related files for pattern violations 3) Check naming, architecture, style consistency 4) Return: [{file, issue_type, severity, description, suggestion}]. Store findings.'),
+                        'DEEP RESEARCH - CODE CONSISTENCY: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for project coding standards 2) Scan related files for pattern violations 3) Check naming, architecture, style consistency. COSMETIC FIX RULE: If you find whitespace/indentation/formatting issues - FIX THEM IMMEDIATELY using Edit tool, then continue. Only report FUNCTIONAL consistency issues. Return: [{file, issue_type, severity, description, suggestion, cosmetic_fixes_applied: N}]. Store findings.'),
                     TaskTool::agent('{$SELECTED_AGENTS.tests}',
-                        'DEEP RESEARCH - TEST COVERAGE: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for test patterns 2) Discover all related test files 3) Analyze coverage gaps 4) Run tests if possible 5) Return: [{test_file, coverage_status, missing_scenarios}]. Store findings.'),
+                        'DEEP RESEARCH - TEST COVERAGE: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for test patterns 2) Discover all related test files 3) Analyze coverage gaps 4) Run tests if possible. COSMETIC FIX RULE: If you find whitespace/indentation/formatting issues in tests - FIX THEM IMMEDIATELY using Edit tool, then continue. Return: [{test_file, coverage_status, missing_scenarios, cosmetic_fixes_applied: N}]. Store findings.'),
                     TaskTool::agent('{$SELECTED_AGENTS.docs}',
-                        'DEEP RESEARCH - DOCUMENTATION SYNC: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for documentation standards 2) Compare code vs documentation 3) Check docblocks, README, API docs 4) Return: [{doc_type, sync_status, gaps}]. Store findings.'),
+                        'DEEP RESEARCH - DOCUMENTATION SYNC: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for documentation standards 2) Compare code vs documentation 3) Check docblocks, README, API docs. COSMETIC FIX RULE: If you find typos, formatting issues in docs - FIX THEM IMMEDIATELY using Edit tool, then continue. Only report CONTENT gaps. Return: [{doc_type, sync_status, gaps, cosmetic_fixes_applied: N}]. Store findings.'),
                     TaskTool::agent('{$SELECTED_AGENTS.deps}',
-                        'DEEP RESEARCH - DEPENDENCIES: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for dependency issues 2) Scan imports and dependencies 3) Check for broken/unused/circular refs 4) Return: [{file, dependency_issue, severity}]. Store findings.'),
+                        'DEEP RESEARCH - DEPENDENCIES: For task #{$VECTOR_TASK_ID} "{$TASK_DESCRIPTION}": 1) Search memory for dependency issues 2) Scan imports and dependencies 3) Check for broken/unused/circular refs. COSMETIC FIX RULE: If you find whitespace/formatting issues in import sections - FIX THEM IMMEDIATELY using Edit tool. Return: [{file, dependency_issue, severity, cosmetic_fixes_applied: N}]. Store findings.'),
                 ]),
             ]))
             ->phase(Store::as('VALIDATION_BATCH', '{results from all agents}'))
@@ -373,21 +373,20 @@ class TaskValidateInclude extends IncludeArchetype
 
         // Phase 5: Results Aggregation and Analysis
         $this->guideline('phase5-results-aggregation')
-            ->goal('Aggregate all validation results and categorize issues (functional vs cosmetic)')
+            ->goal('Aggregate all validation results - only FUNCTIONAL issues (cosmetic already fixed by agents inline)')
             ->example()
             ->phase(Operator::output([
                 '',
                 '=== PHASE 5: RESULTS AGGREGATION ===',
             ]))
-            ->phase('Merge results from all validation agents')
-            ->phase(Store::as('ALL_ISSUES', '{merged issues from all agents}'))
+            ->phase('Merge results from all validation agents (cosmetic issues already fixed inline)')
+            ->phase(Store::as('ALL_ISSUES', '{merged FUNCTIONAL issues from all agents}'))
+            ->phase(Store::as('TOTAL_COSMETIC_FIXES', '{sum of cosmetic_fixes_applied from all agents}'))
             ->phase('Categorize FUNCTIONAL issues (require tasks):')
             ->phase(Store::as('CRITICAL_ISSUES', '{issues with severity: critical - code logic, security, architecture}'))
             ->phase(Store::as('MAJOR_ISSUES', '{issues with severity: major - functionality, tests, dependencies}'))
             ->phase(Store::as('MINOR_ISSUES', '{issues with severity: minor - code style affecting logic, naming conventions}'))
             ->phase(Store::as('MISSING_REQUIREMENTS', '{requirements not implemented}'))
-            ->phase('Categorize COSMETIC issues (auto-fixable, NO tasks):')
-            ->phase(Store::as('COSMETIC_ISSUES', '{issues that are purely cosmetic: whitespace errors, indentation issues, extra/trailing spaces, empty line inconsistencies, documentation typos, comment formatting, markdown syntax, docblock formatting - anything NOT affecting code logic or functionality}'))
             ->phase(Store::as('FUNCTIONAL_ISSUES_COUNT', '{$CRITICAL_ISSUES.count + $MAJOR_ISSUES.count + $MINOR_ISSUES.count + $MISSING_REQUIREMENTS.count}'))
             ->phase(Operator::output([
                 'Validation results:',
@@ -395,73 +394,9 @@ class TaskValidateInclude extends IncludeArchetype
                 '- Major issues: {$MAJOR_ISSUES.count}',
                 '- Minor issues: {$MINOR_ISSUES.count}',
                 '- Missing requirements: {$MISSING_REQUIREMENTS.count}',
-                '- Cosmetic issues (auto-fix): {$COSMETIC_ISSUES.count}',
+                '- Cosmetic fixes applied inline: {$TOTAL_COSMETIC_FIXES}',
                 '',
-                'Functional issues total: {$FUNCTIONAL_ISSUES_COUNT}',
-            ]));
-
-        // Phase 5.5: Cosmetic Auto-Fix (NO TASKS - immediate parallel agent fix)
-        $this->guideline('phase5-5-cosmetic-autofix')
-            ->goal('Auto-fix cosmetic issues via parallel agents WITHOUT creating tasks, then restart validation if only cosmetic issues exist')
-            ->example()
-            ->phase(Operator::if('$COSMETIC_ISSUES.count > 0', [
-                Operator::output([
-                    '',
-                    '=== PHASE 5.5: COSMETIC AUTO-FIX ===',
-                    'Found {$COSMETIC_ISSUES.count} cosmetic issues (whitespace, formatting, typos)',
-                    'Auto-fixing without creating tasks...',
-                ]),
-                'Group cosmetic issues by file for parallel processing',
-                Store::as('COSMETIC_FILE_GROUPS', '{group $COSMETIC_ISSUES by file path}'),
-                'Launch parallel agents to fix cosmetic issues (max 5 agents)',
-                Operator::do([
-                    TaskTool::agent('explore',
-                        'FIX COSMETIC ISSUES ONLY in files: {$COSMETIC_FILE_GROUP_1}. Issues to fix: {issues list}. ONLY fix: whitespace, indentation, trailing spaces, extra empty lines, documentation typos, comment formatting. DO NOT modify any code logic, function signatures, or functionality. Return: {files_fixed: [...], changes_made: [...]}'),
-                    TaskTool::agent('explore',
-                        'FIX COSMETIC ISSUES ONLY in files: {$COSMETIC_FILE_GROUP_2}. Issues to fix: {issues list}. ONLY fix: whitespace, indentation, trailing spaces, extra empty lines, documentation typos, comment formatting. DO NOT modify any code logic, function signatures, or functionality. Return: {files_fixed: [...], changes_made: [...]}'),
-                    TaskTool::agent('explore',
-                        'FIX COSMETIC ISSUES ONLY in files: {$COSMETIC_FILE_GROUP_3}. Issues to fix: {issues list}. ONLY fix: whitespace, indentation, trailing spaces, extra empty lines, documentation typos, comment formatting. DO NOT modify any code logic, function signatures, or functionality. Return: {files_fixed: [...], changes_made: [...]}'),
-                ]),
-                Store::as('COSMETIC_FIX_RESULTS', '{results from cosmetic fix agents}'),
-                Operator::output([
-                    'Cosmetic fixes applied: {$COSMETIC_FIX_RESULTS.total_fixed} issues in {$COSMETIC_FIX_RESULTS.files_count} files',
-                ]),
-            ]))
-            ->phase(Operator::note('DECISION POINT: If ONLY cosmetic issues existed, restart validation to verify fixes'))
-            ->phase(Operator::if('$COSMETIC_ISSUES.count > 0 AND $FUNCTIONAL_ISSUES_COUNT === 0', [
-                Operator::note('All issues were cosmetic - restart validation from Phase 0 to verify fixes'),
-                Store::as('VALIDATION_ITERATION', '{$VALIDATION_ITERATION + 1 or 1 if not set}'),
-                Operator::if('$VALIDATION_ITERATION <= 3', [
-                    VectorTaskMcp::call('task_update',
-                        '{task_id: $VECTOR_TASK_ID, comment: "Cosmetic auto-fix iteration {$VALIDATION_ITERATION}: fixed {$COSMETIC_ISSUES.count} issues. Restarting validation.", append_comment: true}'),
-                    Operator::output([
-                        '',
-                        '🔄 All issues were cosmetic and have been auto-fixed.',
-                        'Restarting validation from Phase 0 (iteration {$VALIDATION_ITERATION}/3)...',
-                        '',
-                    ]),
-                    'RESTART validation from Phase 0',
-                    'GOTO: phase0-task-loading',
-                ]),
-                Operator::if('$VALIDATION_ITERATION > 3', [
-                    Operator::output([
-                        '',
-                        '⚠️ Max validation iterations (3) reached.',
-                        'Proceeding to completion with remaining cosmetic issues.',
-                    ]),
-                    'Continue to Phase 7 (skip Phase 6 - no functional issues)',
-                ]),
-            ]))
-            ->phase(Operator::if('$COSMETIC_ISSUES.count > 0 AND $FUNCTIONAL_ISSUES_COUNT > 0', [
-                Operator::output([
-                    '',
-                    '✅ Cosmetic issues auto-fixed.',
-                    '📋 Proceeding to Phase 6 for {$FUNCTIONAL_ISSUES_COUNT} functional issues...',
-                ]),
-                'Continue to Phase 6 with functional issues only',
-            ]))
-            ->phase(Operator::if('$COSMETIC_ISSUES.count === 0', [
-                Operator::output(['No cosmetic issues found. Proceeding to Phase 6...']),
+                'Functional issues requiring tasks: {$FUNCTIONAL_ISSUES_COUNT}',
             ]));
 
         // Phase 6: Task Creation for FUNCTIONAL Issues Only (Consolidated 5-8h Tasks)
@@ -590,10 +525,10 @@ class TaskValidateInclude extends IncludeArchetype
                 '| Major issues | {$MAJOR_ISSUES.count} |',
                 '| Minor issues | {$MINOR_ISSUES.count} |',
                 '| Missing requirements | {$MISSING_REQUIREMENTS.count} |',
-                '| Cosmetic (auto-fixed) | {$COSMETIC_ISSUES.count} |',
+                '| Cosmetic fixes (inline) | {$TOTAL_COSMETIC_FIXES} |',
                 '| Tasks created | {$CREATED_TASKS.count} |',
                 '',
-                '{IF $COSMETIC_ISSUES.count > 0: "✅ Cosmetic issues auto-fixed without tasks"}',
+                '{IF $TOTAL_COSMETIC_FIXES > 0: "✅ Cosmetic issues fixed inline by validation agents"}',
                 '{IF $CREATED_TASKS.count > 0: "Follow-up tasks: {$CREATED_TASKS}"}',
                 '',
                 'Validation stored to vector memory.',
