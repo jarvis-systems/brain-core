@@ -19,6 +19,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Aggressive task decomposition with MAXIMUM parallel agent orchestration. Deep multi-agent research, comprehensive codebase analysis, creates optimal subtasks meeting 5-8h golden rule. NEVER executes - only creates.')]
 class TaskDecomposeInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
         // ============================================
@@ -50,10 +52,8 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->why('Decomposition and execution are separate concerns. User decides via /task:next')
             ->onViolation('STOP immediately after subtask creation');
 
-        $this->rule('mandatory-user-approval')->critical()
-            ->text('MUST get explicit user YES/APPROVE/CONFIRM before creating subtasks. EXCEPTION: If $HAS_Y_FLAG is true, auto-approve decomposition (skip user confirmation prompt).')
-            ->why('User must validate decomposition strategy before committing. Flag -y enables automated/scripted execution.')
-            ->onViolation('Present subtask list and wait for explicit confirmation (unless $HAS_Y_FLAG is true)');
+        // Common rule from trait
+        $this->defineMandatoryUserApprovalRule();
 
         $this->rule('fetch-parent-first')->critical()
             ->text('MUST fetch parent task via task_get BEFORE any research')
@@ -87,6 +87,12 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->guideline('phase0-parse')
             ->goal('Validate captured input from $RAW_INPUT')
             ->example()
+            ->phase(Operator::output([
+                '=== TASK:DECOMPOSE ACTIVATED ===',
+                '',
+                '=== PHASE 0: INPUT VALIDATION ===',
+                'Processing task #{$TASK_ID}...',
+            ]))
             ->phase(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
             ->phase('STEP 1 - Validate:')
             ->do([

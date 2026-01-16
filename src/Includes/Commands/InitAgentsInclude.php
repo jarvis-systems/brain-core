@@ -88,6 +88,12 @@ class InitAgentsInclude extends IncludeArchetype
         $this->guideline('phase0-arguments-processing')
             ->goal('Process optional user arguments to narrow search scope and improve targeting')
             ->example()
+            ->phase(Operator::output([
+                '=== INIT:AGENTS ACTIVATED ===',
+                '',
+                '=== PHASE 0: ARGUMENTS PROCESSING ===',
+                'Processing input...',
+            ]))
             ->phase(Store::as('TARGET_DOMAIN', '{extract domain hint from $RAW_INPUT if provided}'))
             ->phase('Parse $RAW_INPUT for specific domain/technology/agent hints')
             ->phase(Operator::if('$RAW_INPUT provided', [

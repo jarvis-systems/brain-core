@@ -22,6 +22,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Direct synchronous vector task execution by Brain without agent delegation. Accepts task ID reference (formats: "15", "#15", "task 15"), loads task context, and executes directly using Read/Edit/Write/Glob/Grep tools. Single approval gate. Best for: simple tasks, quick fixes, single-file changes within vector task workflow.')]
 class TaskSyncInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     /**
      * Handle the architecture logic.
      *
@@ -40,10 +42,8 @@ class TaskSyncInclude extends IncludeArchetype
             ->why('Sync mode is for direct execution without agent overhead')
             ->onViolation('Remove Task() calls. Execute directly.');
 
-        $this->rule('single-approval-gate')->critical()
-            ->text('User approval REQUIRED before execution. Present plan, WAIT for confirmation, then execute without interruption. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve (skip user confirmation prompt).')
-            ->why('Single checkpoint for simple tasks - approve once, execute fully. Flag -y enables automated/scripted execution.')
-            ->onViolation('STOP. Wait for user approval before execution (unless $HAS_AUTO_APPROVE is true).');
+        // Common rule from trait
+        $this->defineSingleApprovalGateRule();
 
         $this->rule('atomic-execution')->critical()
             ->text('Execute ONLY approved plan steps. NO improvisation, NO "while we\'re here" additions. Atomic changes only.')
@@ -60,22 +60,23 @@ class TaskSyncInclude extends IncludeArchetype
             ->why('Leverages past solutions, builds knowledge base')
             ->onViolation('Include memory search in analysis, store insights after.');
 
-        $this->rule('vector-task-id-required')->critical()
-            ->text('$TASK_ID MUST be a valid vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest /do:sync for text-based tasks.')
-            ->why('This command is exclusively for vector task execution. Text descriptions belong to /do:sync.')
-            ->onViolation('STOP. Report: "Invalid task ID. Use /do:sync for text-based tasks or provide valid task ID."');
+        // Common rule from trait
+        $this->defineVectorTaskIdRequiredRule('/do:sync');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
-            ->text(Store::as('VECTOR_TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
+        // Common guideline from trait
+        $this->defineInputCaptureGuideline();
 
         // Phase 0: Vector Task Loading
         $this->guideline('phase0-task-loading')
             ->goal('Load vector task with full context using $VECTOR_TASK_ID from input capture')
             ->example()
+            ->phase(Operator::output([
+                '=== TASK:SYNC ACTIVATED ===',
+                '',
+                '=== PHASE 0: VECTOR TASK LOADING ===',
+                'Loading task #{$VECTOR_TASK_ID}...',
+            ]))
             ->phase('Use $VECTOR_TASK_ID from input capture (already parsed from $CLEAN_ARGS)')
             ->phase('Use $HAS_AUTO_APPROVE for approval gate behavior')
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
@@ -98,7 +99,6 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Store::as('SUBTASKS', '{child tasks if any}'))
             ->phase(Store::as('TASK', '$VECTOR_TASK.title + $VECTOR_TASK.content'))
             ->phase(Operator::output([
-                '=== TASK:SYNC ACTIVATED ===',
                 '',
                 '=== PHASE 0: VECTOR TASK LOADED ===',
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',

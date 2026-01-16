@@ -17,6 +17,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Comprehensive vector task test validation with parallel agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"). Validates test coverage against documentation requirements, test quality (no bloat, real workflows), test consistency, and completeness. Creates follow-up tasks for gaps. Idempotent - can be run multiple times. Best for: validating test quality of completed vector tasks.')]
 class TaskTestValidateInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     /**
      * Handle the architecture logic.
      *
@@ -36,10 +38,8 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->why('Validation is read-only audit. Test writing belongs to task:async.')
             ->onViolation('Abort any test writing. Create task instead.');
 
-        $this->rule('vector-task-id-required')->critical()
-            ->text('$RAW_INPUT MUST be a vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest /do:test-validate for text-based test validation.')
-            ->why('This command is exclusively for vector task test validation. Text descriptions belong to /do:test-validate.')
-            ->onViolation('STOP. Report: "Invalid task ID. Use /do:test-validate for text-based validation or provide valid task ID."');
+        // Common rule from trait
+        $this->defineVectorTaskIdRequiredRule('/do:test-validate');
 
         $this->rule('testable-status-required')->critical()
             ->text('ONLY tasks with status "completed", "tested", or "validated" can be test-validated. Pending/in_progress/stopped tasks MUST first be completed via task:async.')
@@ -66,10 +66,8 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->why('Cosmetic fixes are trivial. Creating tasks or spawning extra agents for whitespace in tests is wasteful. The discovering agent has full context.')
             ->onViolation('Agent that found cosmetic test issue MUST fix it inline using Edit tool. Report fixed count in results, not as pending issues.');
 
-        $this->rule('auto-approval-flag')->critical()
-            ->text('If $RAW_INPUT contains "-y" flag, auto-approve test validation scope (skip user confirmation prompt at Phase 1).')
-            ->why('Flag -y enables automated/scripted execution without manual approval.')
-            ->onViolation('Check for -y flag before waiting for user approval.');
+        // Common rule from trait
+        $this->defineAutoApprovalFlagRule();
 
         $this->rule('parallel-agent-orchestration')->high()
             ->text('Test validation phases SHOULD scale agent orchestration to task complexity. Complex tasks may launch 5-6 agents in parallel; simple tasks can limit to 1-2 agents.')
@@ -86,28 +84,19 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->why('Allows safe re-runs without side effects.')
             ->onViolation('Check existing tasks before creating. Skip duplicates.');
 
-        $this->rule('session-recovery-via-history')->high()
-            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can continue test validation WITHOUT changing status. Treat any vector memory findings from crashed session with caution - previous context is lost.')
-            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous session context is incomplete.')
-            ->onViolation('Check status_history before blocking. If to:null found, proceed with caution warning.');
+        // Common rule from trait
+        $this->defineSessionRecoveryViaHistoryRule();
 
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL test validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate tasks.')
-            ->why('Memory prevents duplicate work and provides audit trail.')
-            ->onViolation('Store validation summary with findings and created tasks.');
+        // Common rule from trait
+        $this->defineVectorMemoryMandatoryRule();
 
         // CRITICAL: Fix task parent_id assignment
-        $this->rule('fix-task-parent-is-validated-task')->critical()
-            ->text('Fix tasks MUST have parent_id = VECTOR_TASK_ID (the task being test-validated NOW). NEVER use VECTOR_TASK.parent_id or PARENT_TASK_CONTEXT.')
-            ->why('Hierarchical integrity: test validation creates subtasks of the validated task.')
-            ->onViolation('VERIFY parent_id = $TASK_PARENT_ID = $VECTOR_TASK_ID before task_create. If wrong, ABORT and recalculate.');
+        // Common rule from trait
+        $this->defineFixTaskParentRule();
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
-            ->text(Store::as('VECTOR_TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
+        // Common guideline from trait
+        $this->defineInputCaptureGuideline();
 
         // Phase 0: Vector Task Loading
         $this->guideline('phase0-task-loading')

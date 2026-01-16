@@ -17,6 +17,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Comprehensive vector task validation with parallel agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"), validates completed tasks against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent - can be run multiple times. Best for: validating vector task work quality.')]
 class TaskValidateInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     /**
      * Handle the architecture logic.
      *
@@ -36,20 +38,16 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('Validation is read-only audit. Execution belongs to task:async.')
             ->onViolation('Abort any implementation. Create task instead of fixing directly.');
 
-        $this->rule('vector-task-id-required')->critical()
-            ->text('$RAW_INPUT MUST contain a vector task ID reference. Valid base formats: "15", "#15", "task 15", "task:15", "task-15". Optional flags (-y, --yes) may follow the ID. Examples: "63 -y", "#15 --yes", "task 42 -y". Extract ID first, then check for flags.')
-            ->why('This command is exclusively for vector task validation. Text descriptions belong to /do:validate.')
-            ->onViolation('STOP. Report: "Invalid task ID. Use /do:validate for text-based validation or provide valid task ID."');
+        // Common rule from trait
+        $this->defineVectorTaskIdRequiredRule('/do:validate');
 
         $this->rule('validatable-status-required')->critical()
             ->text('ONLY tasks with status "completed", "tested", or "validated" can be validated. Pending/in_progress/stopped tasks MUST first be completed via task:async.')
             ->why('Validation audits finished work. Incomplete work cannot be validated.')
             ->onViolation('Report: "Task #{id} has status {status}. Complete via /task:async first."');
 
-        $this->rule('auto-approval-flag')->critical()
-            ->text('If $RAW_INPUT contains "-y" flag, auto-approve validation scope (skip user confirmation prompt at Phase 1).')
-            ->why('Flag -y enables automated/scripted execution without manual approval.')
-            ->onViolation('Check for -y flag before waiting for user approval.');
+        // Common rule from trait
+        $this->defineAutoApprovalFlagRule();
 
         $this->rule('simple-validation-heuristic')->high()
             ->text('Detect simple tasks early: estimate ≤ 4h AND priority != "critical" AND no architecture/security tags AND subtasks.count ≤ 2. Store as $SIMPLE_VALIDATION flag in Phase 0.')
@@ -66,10 +64,8 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('Allows safe re-runs without side effects.')
             ->onViolation('Check existing tasks before creating. Skip duplicates.');
 
-        $this->rule('session-recovery-via-history')->high()
-            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can continue validation WITHOUT changing status. Treat any vector memory findings from crashed session with caution - previous context is lost.')
-            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous session context is incomplete.')
-            ->onViolation('Check status_history before blocking. If to:null found, proceed with caution warning.');
+        // Common rule from trait
+        $this->defineSessionRecoveryViaHistoryRule();
 
         $this->rule('no-direct-fixes-functional')->critical()
             ->text('VALIDATION command NEVER fixes FUNCTIONAL issues directly. Code logic, architecture, functionality issues MUST become tasks.')
@@ -81,10 +77,8 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('Cosmetic fixes are trivial. Creating tasks or spawning extra agents for whitespace is wasteful. The discovering agent has full context and can fix instantly.')
             ->onViolation('Agent that found cosmetic issue MUST fix it inline using Edit tool. Report fixed issues in results, not as pending issues.');
 
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate tasks.')
-            ->why('Memory prevents duplicate work and provides audit trail.')
-            ->onViolation('Store validation summary with findings, fixes, and created tasks.');
+        // Common rule from trait
+        $this->defineVectorMemoryMandatoryRule();
 
         // Phase Execution Sequence - STRICT ORDERING
         $this->rule('phase-sequence-strict')->critical()
@@ -113,17 +107,12 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('Check CREATED_TASKS.count: if > 0 → set "pending", if === 0 AND passed → set "validated". NEVER set "validated" when fix tasks exist.');
 
         // CRITICAL: Fix task parent_id assignment
-        $this->rule('fix-task-parent-is-validated-task')->critical()
-            ->text('Fix tasks MUST have parent_id = VECTOR_TASK_ID (the task being validated NOW). NEVER use VECTOR_TASK.parent_id or PARENT_TASK_CONTEXT. If validating Task B (child of Task A), fix tasks become children of Task B, NOT Task A.')
-            ->why('Hierarchical integrity: validation creates subtasks of the validated task. Chain: Task A → Task B (validation fix) → Task C (validation fix of B). Each level is child of its direct parent, not grandparent.')
-            ->onViolation('VERIFY parent_id = $TASK_PARENT_ID = $VECTOR_TASK_ID before task_create. If wrong, ABORT and recalculate.');
+        // Common rule from trait
+        $this->defineFixTaskParentRule();
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
-            ->text(Store::as('VECTOR_TASK_ID', '{numeric ID extracted from $CLEAN_ARGS: "63", "#63", "task 63" → 63}'));
+        // Common guideline from trait
+        $this->defineInputCaptureGuideline();
 
         // Phase 0: Vector Task Loading
         $this->guideline('phase0-task-loading')

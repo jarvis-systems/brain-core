@@ -16,6 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 #[Purpose('Text-based work validation with parallel agent orchestration. Accepts text description (example: "validate user authentication"). Validates work against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent. For vector task validation use /task:validate.')]
 class DoValidateInclude extends IncludeArchetype
 {
+    use DoCommandCommonTrait;
     /**
      * Handle the architecture logic.
      *
@@ -24,99 +25,31 @@ class DoValidateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
-        $this->rule('entry-point-blocking')->critical()
-            ->text('ON RECEIVING $RAW_INPUT: Your FIRST output MUST be "=== DO:VALIDATE ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except brain list:masters), code generation, file analysis.')
-            ->why('Without explicit entry point, Brain skips workflow and executes directly. Entry point forces workflow compliance.')
-            ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== DO:VALIDATE ACTIVATED ===" and restart from Phase 0.');
+        $this->defineEntryPointBlockingRule('VALIDATE');
 
         // Iron Rules - Zero Tolerance
-        $this->rule('validation-only-no-execution')->critical()
-            ->text('VALIDATION command validates EXISTING work. NEVER implement, fix, or create code directly. Only validate and CREATE TASKS for issues found.')
-            ->why('Validation is read-only audit. Execution belongs to do:async.')
-            ->onViolation('Abort any implementation. Create task instead of fixing directly.');
+        $this->defineValidationOnlyNoExecutionRule();
 
-        $this->rule('text-description-required')->critical()
-            ->text('$RAW_INPUT MUST be a text description of work to validate. Optional flags (-y, --yes) may be appended. Extract flags first, then verify remaining text is NOT a task ID pattern (15, #15, task 15). Examples: "validate auth -y", "check user module --yes".')
-            ->why('This command is exclusively for text-based validation. Vector task validation belongs to /task:validate.')
-            ->onViolation('STOP. Report: "For vector task validation, use /task:validate {id}. This command accepts text descriptions only."');
+        $this->defineTextDescriptionRequiredRule('validate', '/task:validate');
 
-        $this->rule('parallel-agent-orchestration')->high()
-            ->text('Validation phases MUST use parallel agent orchestration (5-6 agents simultaneously) for efficiency. Each agent validates one aspect.')
-            ->why('Parallel validation reduces time and maximizes coverage.')
-            ->onViolation('Restructure validation into parallel Task() calls.');
+        $this->defineParallelAgentOrchestrationRule();
 
-        $this->rule('idempotent-validation')->high()
-            ->text('Validation is IDEMPOTENT. Running multiple times produces same result (no duplicate tasks, no repeated fixes).')
-            ->why('Allows safe re-runs without side effects.')
-            ->onViolation('Check existing tasks before creating. Skip duplicates.');
+        $this->defineIdempotentValidationRule('tasks');
 
-        $this->rule('no-direct-fixes')->critical()
-            ->text('VALIDATION command NEVER fixes issues directly. ALL issues (critical, major, minor) MUST become tasks. No exceptions.')
-            ->why('Traceability and audit trail. Every change must be tracked via task system.')
-            ->onViolation('Create task for the issue instead of fixing directly.');
+        $this->defineNoDirectFixesRule();
 
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate tasks.')
-            ->why('Memory prevents duplicate work and provides audit trail.')
-            ->onViolation('Store validation summary with findings, fixes, and created tasks.');
+        $this->defineVectorMemoryMandatoryRule('ALL validation results');
 
         // Phase Execution Sequence - STRICT ORDERING
-        $this->rule('phase-sequence-strict')->critical()
-            ->text('Phases MUST execute in STRICT sequential order: Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7. NO phase may start until previous phase is FULLY COMPLETED. Each phase MUST output its header "=== PHASE N: NAME ===" before any actions.')
-            ->why('Sequential execution ensures data dependencies are satisfied. Each phase depends on variables stored by previous phases.')
-            ->onViolation('STOP. Return to last completed phase. Execute current phase fully before proceeding.');
+        $this->definePhaseSequenceRules(7);
 
-        $this->rule('no-phase-skip')->critical()
-            ->text('FORBIDDEN: Skipping phases. ALL phases 0-7 MUST execute even if a phase has no issues to report. Empty results are valid; skipped phases are VIOLATION.')
-            ->why('Phase skipping breaks data flow. Later phases expect variables from earlier phases.')
-            ->onViolation('ABORT. Return to first skipped phase. Execute ALL phases in sequence.');
-
-        $this->rule('phase-completion-marker')->high()
-            ->text('Each phase MUST end with its output block before next phase begins. Phase N output MUST appear before "=== PHASE N+1 ===" header.')
-            ->why('Output markers confirm phase completion. Missing output = incomplete phase.')
-            ->onViolation('Complete current phase output before starting next phase.');
-
-        $this->rule('no-parallel-phases')->critical()
-            ->text('FORBIDDEN: Executing multiple phases simultaneously. Only Phase 4 allows parallel AGENTS within the phase. Phase-level parallelism is NEVER allowed.')
-            ->why('Phase parallelism causes race conditions on shared variables.')
-            ->onViolation('Serialize phase execution. Wait for phase completion before starting next.');
-
-        $this->rule('output-status-report')->high()
-            ->text('Output validation status: PASSED (no critical issues, no missing requirements) or NEEDS_WORK (issues found). Report all findings with severity.')
-            ->why('Clear status enables informed decision-making on next steps.')
-            ->onViolation('Include explicit status in validation report.');
+        $this->defineOutputStatusReportRule();
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('VALIDATION_TARGET', '{target to validate extracted from $RAW_INPUT}'));
+        $this->defineInputCaptureWithAutoApproveGuideline();
 
         // Phase 0: Context Setup
-        $this->guideline('phase0-context-setup')
-            ->goal('Process $RAW_INPUT (already captured), extract flags, store task context')
-            ->example()
-            ->phase(Operator::output([
-                '=== DO:VALIDATE ACTIVATED ===',
-            ]))
-            ->phase(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags (-y, --yes) removed, trimmed}'))
-            ->phase('Parse $CLEAN_ARGS - verify it is TEXT description, not task ID pattern')
-            ->phase(Operator::if('$CLEAN_ARGS matches task ID pattern (15, #15, task 15, task:15, task-15)', [
-                Operator::output([
-                    '=== WRONG COMMAND ===',
-                    'Detected vector task ID pattern in $RAW_INPUT.',
-                    'Use /task:validate {id} for vector task validation.',
-                    'This command accepts text descriptions only.',
-                ]),
-                'ABORT command',
-            ]))
-            ->phase(Store::as('TASK_DESCRIPTION', '$CLEAN_ARGS'))
-            ->phase(Operator::output([
-                '',
-                '=== PHASE 0: CONTEXT SETUP ===',
-                'Validation target: {$TASK_DESCRIPTION}',
-                '{IF $HAS_AUTO_APPROVE: "Auto-approve: enabled (-y flag)"}',
-            ]));
+        $this->definePhase0ContextSetupGuideline('VALIDATE', '/task:validate');
 
         // Phase 1: Agent Discovery and Validation Scope Preview
         $this->guideline('phase1-context-preview')
@@ -347,27 +280,11 @@ class DoValidateInclude extends IncludeArchetype
             ]));
 
         // Error Handling
-        $this->guideline('error-handling')
-            ->text('Graceful error handling for validation process')
-            ->example()
-            ->phase()->if('task ID pattern detected', [
-                'Report: "Detected vector task ID. Use /task:validate for vector tasks."',
-                'Abort command',
-            ])
-            ->phase()->if('no documentation found', [
-                'Warn: "No documentation in .docs/ for this task"',
-                'Continue with limited validation (code-only checks)',
-            ])
-            ->phase()->if('agent validation fails', [
-                'Log: "Validation agent {N} failed: {error}"',
-                'Continue with remaining agents',
-                'Report partial validation in summary',
-            ])
-            ->phase()->if('memory storage fails', [
-                'Log: "Failed to store to memory: {error}"',
-                'Report findings in output instead',
-                'Continue with validation report',
-            ]);
+        $this->defineErrorHandlingGuideline(
+            includeAgentErrors: true,
+            includeDocErrors: true,
+            isValidation: true
+        );
 
         // Constraints and Validation
         $this->guideline('constraints')
@@ -407,14 +324,14 @@ class DoValidateInclude extends IncludeArchetype
             ->phase('result', 'Same/updated validation report, no duplicate memories');
 
         // When to use do:validate vs task:validate
-        $this->guideline('validate-command-selection')
-            ->text('When to use /do:validate vs /task:validate')
-            ->example()
-            ->phase('USE /do:validate', 'Text-based validation ("validate user authentication"). Best for: ad-hoc validation, exploratory checks, no existing vector task.')
-            ->phase('USE /task:validate', 'Vector task validation (15, #15, task 15). Best for: systematic task workflow, hierarchical task management, fix task creation as children.');
+        $this->defineCommandSelectionGuideline(
+            '/do:validate',
+            '/task:validate',
+            'Text-based validation ("validate user authentication"). Best for: ad-hoc validation, exploratory checks, no existing vector task.',
+            'Vector task validation (15, #15, task 15). Best for: systematic task workflow, hierarchical task management, fix task creation as children.'
+        );
 
         // Response Format
-        $this->guideline('response-format')
-            ->text('=== headers | Parallel: agent batch indicators | Tables: validation results | No filler | Created memories listed');
+        $this->defineResponseFormatGuideline('=== headers | Parallel: agent batch indicators | Tables: validation results | No filler | Created memories listed');
     }
 }

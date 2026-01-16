@@ -76,6 +76,12 @@ class InitTaskInclude extends IncludeArchetype
         $this->guideline('phase0-preflight')
             ->goal('Check existing state, determine mode')
             ->example()
+            ->phase(Operator::output([
+                '=== INIT:TASK ACTIVATED ===',
+                '',
+                '=== PHASE 0: PRE-FLIGHT CHECKS ===',
+                'Checking task state...',
+            ]))
             ->phase('STEP 1 - Check task state:')
             ->do([
                 VectorTaskMcp::call('task_stats', '{}'),

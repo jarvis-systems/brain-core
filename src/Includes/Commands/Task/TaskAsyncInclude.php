@@ -17,6 +17,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Defines the task:async command protocol for executing vector tasks via multi-agent orchestration. Accepts task ID reference (formats: "15", "#15", "task 15"), loads task context, and executes with flexible modes, user approval gates, and vector memory integration.')]
 class TaskAsyncInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     protected function defineRules(): void
     {
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
@@ -31,10 +33,8 @@ class TaskAsyncInclude extends IncludeArchetype
             ->why('Ensures focused execution and prevents feature drift')
             ->onViolation('Abort immediately. Return to approved plan.');
 
-        $this->rule('approval-gates-mandatory')->critical()
-            ->text('User approval REQUIRED before execution. DEFAULT: two gates (Requirements and Planning). For SIMPLE_TASK, allow a single combined approval after planning. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates.')
-            ->why('Maintains user control while reducing friction for simple tasks. Flag -y enables automated execution.')
-            ->onViolation('STOP. Wait for required approval before continuing (unless $HAS_AUTO_APPROVE is true).');
+        // Common rule from trait
+        $this->defineApprovalGatesMandatoryRule();
 
         $this->rule('atomic-tasks-only')->critical()
             ->text('Each agent task MUST be small and focused: default 1-2 files per agent invocation. Allow 3-5 files ONLY when the change is a single coherent change set (same feature or refactor). NO broad multi-area changes.')
@@ -51,25 +51,19 @@ class TaskAsyncInclude extends IncludeArchetype
             ->why('Simple independent tasks benefit from parallel execution. Synchronous parallel (not background) ensures Brain receives all results before next phase.')
             ->onViolation('Validate task independence before parallel execution. Fallback to sequential if ANY conflict detected.');
 
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL agents MUST search vector memory BEFORE task execution AND store learnings AFTER completion. Vector memory is the primary communication channel between sequential agents.')
-            ->why('Enables knowledge sharing between agents, prevents duplicate work, maintains execution continuity across steps')
-            ->onViolation('Include explicit vector memory instructions in agent Task() delegation.');
+        // Common rule from trait
+        $this->defineVectorMemoryMandatoryRule();
 
         $this->rule('conversation-context-awareness')->high()
             ->text('ALWAYS analyze conversation context BEFORE planning. User may have discussed requirements, constraints, preferences, or decisions in previous messages.')
             ->why('Prevents ignoring critical information already provided by user in conversation')
             ->onViolation('Review conversation history before proceeding with task analysis.');
 
-        $this->rule('session-recovery-via-history')->high()
-            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can RESUME execution WITHOUT changing status (already in_progress). Treat vector memory findings from crashed session with caution - previous context is lost. Execution stage is unknown - may need to verify what was completed.')
-            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous work may be incomplete.')
-            ->onViolation('Check status_history before blocking. If to:null found, proceed with recovery mode.');
+        // Common rule from trait
+        $this->defineSessionRecoveryViaHistoryRule();
 
-        $this->rule('vector-task-id-required')->critical()
-            ->text('$TASK_ID MUST be a valid vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest /do:async for text-based tasks.')
-            ->why('This command is exclusively for vector task execution. Text descriptions belong to /do:async.')
-            ->onViolation('STOP. Report: "Invalid task ID. Use /do:async for text-based tasks or provide valid task ID."');
+        // Common rule from trait
+        $this->defineVectorTaskIdRequiredRule('/do:async');
 
         $this->rule('full-workflow-mandatory')->critical()
             ->text('Workflow REQUIRED with conditional merging: Phase 0 (Task Load) → Phase 1 (Discovery + Requirements) → Phase 2 (Gathering, OPTIONAL) → Phase 3 (Planning + APPROVAL) → Phase 4 (Execution via agents) → Phase 5 (Completion). For SIMPLE_TASK, Phase 2 may be skipped and approval can be a single gate after planning. NEVER execute directly without agent delegation.')
@@ -101,16 +95,19 @@ class TaskAsyncInclude extends IncludeArchetype
     protected function defineGuidelines(): void
     {
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
-            ->text(Store::as('VECTOR_TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
+        // Common guideline from trait
+        $this->defineInputCaptureGuideline();
 
         // Phase 0: Vector Task Loading
         $this->guideline('phase0-task-loading')
             ->goal('Load vector task with full context using pre-captured $VECTOR_TASK_ID')
             ->example()
+            ->phase(Operator::output([
+                '=== TASK:ASYNC ACTIVATED ===',
+                '',
+                '=== PHASE 0: VECTOR TASK LOADING ===',
+                'Loading task #{$VECTOR_TASK_ID}...',
+            ]))
             ->phase('Use pre-captured: $RAW_INPUT, $HAS_AUTO_APPROVE, $CLEAN_ARGS, $VECTOR_TASK_ID')
             ->phase('Validate $VECTOR_TASK_ID: must be numeric, extracted from "15", "#15", "task 15", "task:15", "task-15"')
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
@@ -156,7 +153,6 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Store::as('SUBTASKS', '{child tasks if any}'))
             ->phase(Store::as('TASK_DESCRIPTION', '$VECTOR_TASK.title + $VECTOR_TASK.content'))
             ->phase(Operator::output([
-                '=== TASK:ASYNC ACTIVATED ===',
                 '',
                 '=== PHASE 0: VECTOR TASK LOADED ===',
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',

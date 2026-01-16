@@ -1,0 +1,456 @@
+<?php
+
+declare(strict_types=1);
+
+namespace BrainCore\Includes\Commands\Task;
+
+use BrainCore\Compilation\Operator;
+use BrainCore\Compilation\Store;
+use BrainNode\Mcp\VectorMemoryMcp;
+use BrainNode\Mcp\VectorTaskMcp;
+
+/**
+ * Common patterns extracted from Task command includes.
+ * Provides reusable rule and guideline definitions for task-related commands.
+ *
+ * Usage patterns identified across 9 Task command files:
+ * - Input capture (RAW_INPUT, HAS_AUTO_APPROVE, CLEAN_ARGS, VECTOR_TASK_ID)
+ * - Vector task loading with session recovery
+ * - Auto-approval handling
+ * - Completion status updates (SUCCESS/PARTIAL/FAILED)
+ * - Error handling
+ * - Vector memory mandatory rule
+ * - Task consolidation (5-8h batches)
+ */
+trait TaskCommandCommonTrait
+{
+    // =========================================================================
+    // INPUT CAPTURE PATTERNS
+    // =========================================================================
+
+    /**
+     * Define input capture guideline for commands with VECTOR_TASK_ID.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskTestValidateInclude, TaskValidateSyncInclude
+     */
+    protected function defineInputCaptureGuideline(): void
+    {
+        $this->guideline('input')
+            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
+            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
+            ->text(Store::as('VECTOR_TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
+    }
+
+    /**
+     * Define input capture guideline for commands with TASK_ID (decompose style).
+     * Used by: TaskDecomposeInclude
+     */
+    protected function defineInputCaptureWithTaskIdGuideline(): void
+    {
+        $this->guideline('input')
+            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
+            ->text(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
+            ->text(Store::as('TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
+    }
+
+    /**
+     * Define input capture guideline for create command.
+     * Used by: TaskCreateInclude
+     */
+    protected function defineInputCaptureWithDescriptionGuideline(): void
+    {
+        $this->guideline('input')
+            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
+            ->text(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->text(Store::as('TASK_DESCRIPTION', '{$RAW_INPUT with -y flag removed}'));
+    }
+
+    // =========================================================================
+    // COMMON RULES
+    // =========================================================================
+
+    /**
+     * Define vector-task-id-required rule.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskTestValidateInclude, TaskValidateSyncInclude
+     *
+     * @param string $alternativeCommand Command to suggest for text-based tasks (e.g., '/do:async', '/do:validate')
+     */
+    protected function defineVectorTaskIdRequiredRule(string $alternativeCommand): void
+    {
+        $this->rule('vector-task-id-required')->critical()
+            ->text('$TASK_ID MUST be a valid vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest '.$alternativeCommand.' for text-based tasks.')
+            ->why('This command is exclusively for vector task execution. Text descriptions belong to '.$alternativeCommand.'.')
+            ->onViolation('STOP. Report: "Invalid task ID. Use '.$alternativeCommand.' for text-based tasks or provide valid task ID."');
+    }
+
+    /**
+     * Define auto-approval-flag rule.
+     * Used by: TaskAsyncInclude, TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     */
+    protected function defineAutoApprovalFlagRule(): void
+    {
+        $this->rule('auto-approval-flag')->critical()
+            ->text('If $HAS_AUTO_APPROVE is true, auto-approve all approval gates. Skip approval checkpoints and proceed directly.')
+            ->why('Flag -y enables automated execution without user interaction.')
+            ->onViolation('Check $HAS_AUTO_APPROVE before showing approval checkpoint.');
+    }
+
+    /**
+     * Define approval-gates-mandatory rule (async style - multiple gates).
+     * Used by: TaskAsyncInclude
+     */
+    protected function defineApprovalGatesMandatoryRule(): void
+    {
+        $this->rule('approval-gates-mandatory')->critical()
+            ->text('User approval REQUIRED before execution. DEFAULT: two gates (Requirements and Planning). For SIMPLE_TASK, allow a single combined approval after planning. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates.')
+            ->why('Maintains user control while reducing friction for simple tasks. Flag -y enables automated execution.')
+            ->onViolation('STOP. Wait for required approval before continuing (unless $HAS_AUTO_APPROVE is true).');
+    }
+
+    /**
+     * Define single-approval-gate rule (sync style - one gate).
+     * Used by: TaskSyncInclude
+     */
+    protected function defineSingleApprovalGateRule(): void
+    {
+        $this->rule('single-approval-gate')->critical()
+            ->text('User approval REQUIRED before execution. Single approval gate after plan presentation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve the gate.')
+            ->why('Direct execution requires explicit user consent. Flag -y enables automated execution.')
+            ->onViolation('STOP. Wait for approval before continuing (unless $HAS_AUTO_APPROVE is true).');
+    }
+
+    /**
+     * Define mandatory-user-approval rule (create/decompose style).
+     * Used by: TaskCreateInclude, TaskDecomposeInclude
+     */
+    protected function defineMandatoryUserApprovalRule(): void
+    {
+        $this->rule('mandatory-user-approval')->critical()
+            ->text('EVERY operation MUST have explicit user approval BEFORE execution. Present plan → WAIT for approval → Execute. NO auto-execution. EXCEPTION: If $HAS_Y_FLAG is true, auto-approve.')
+            ->why('User maintains control. No surprises. Flag -y enables automated execution.')
+            ->onViolation('STOP. Wait for explicit user approval (unless $HAS_Y_FLAG is true).');
+    }
+
+    /**
+     * Define session-recovery-via-history rule.
+     * Used by: TaskAsyncInclude, TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     */
+    protected function defineSessionRecoveryViaHistoryRule(): void
+    {
+        $this->rule('session-recovery-via-history')->high()
+            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can RESUME execution WITHOUT changing status (already in_progress). Treat vector memory findings from crashed session with caution - previous context is lost. Execution stage is unknown - may need to verify what was completed.')
+            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous work may be incomplete.')
+            ->onViolation('Check status_history before blocking. If to:null found, proceed with recovery mode.');
+    }
+
+    /**
+     * Define vector-memory-mandatory rule.
+     * Used by: TaskAsyncInclude, TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     */
+    protected function defineVectorMemoryMandatoryRule(): void
+    {
+        $this->rule('vector-memory-mandatory')->high()
+            ->text('ALL agents MUST search vector memory BEFORE task execution AND store learnings AFTER completion. Vector memory is the primary communication channel between sequential agents.')
+            ->why('Enables knowledge sharing between agents, prevents duplicate work, maintains execution continuity across steps')
+            ->onViolation('Include explicit vector memory instructions in agent Task() delegation.');
+    }
+
+    /**
+     * Define fix-task-parent-is-validated-task rule.
+     * Used by: TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     */
+    protected function defineFixTaskParentRule(): void
+    {
+        $this->rule('fix-task-parent-is-validated-task')->high()
+            ->text('ALL fix tasks created during validation MUST have parent_id = $VECTOR_TASK_ID. This maintains hierarchy: validated task → fix subtasks.')
+            ->why('Ensures fix tasks are linked to their source validation task for tracking and completion.')
+            ->onViolation('Set parent_id: $VECTOR_TASK_ID when creating fix tasks.');
+    }
+
+    // =========================================================================
+    // PHASE 0: VECTOR TASK LOADING
+    // =========================================================================
+
+    /**
+     * Define phase0 task loading guideline.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskTestValidateInclude, TaskValidateSyncInclude
+     *
+     * @param string $activationHeader Header text (e.g., '=== TASK:ASYNC ACTIVATED ===')
+     * @param array $validStatuses Valid statuses for this command (e.g., ['pending', 'in_progress'] or ['completed', 'tested', 'validated'])
+     * @param bool $includeSessionRecovery Whether to include session recovery logic
+     */
+    protected function definePhase0TaskLoadingGuideline(
+        string $activationHeader,
+        array $validStatuses = ['pending', 'in_progress'],
+        bool $includeSessionRecovery = true
+    ): void {
+        $guideline = $this->guideline('phase0-task-loading')
+            ->goal('Load vector task with full context using pre-captured $VECTOR_TASK_ID')
+            ->example()
+            ->phase(Operator::output([
+                $activationHeader,
+                '',
+                '=== PHASE 0: VECTOR TASK LOADING ===',
+                'Loading task #{$VECTOR_TASK_ID}...',
+            ]))
+            ->phase('Use pre-captured: $RAW_INPUT, $HAS_AUTO_APPROVE, $CLEAN_ARGS, $VECTOR_TASK_ID')
+            ->phase('Validate $VECTOR_TASK_ID: must be numeric, extracted from "15", "#15", "task 15", "task:15", "task-15"')
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
+            ->phase(Store::as('VECTOR_TASK',
+                '{task object with title, content, status, parent_id, priority, tags, comment}'))
+            ->phase(Operator::if('$VECTOR_TASK not found', [
+                Operator::report('Vector task #$VECTOR_TASK_ID not found'),
+                'Suggest: Check task ID with '.VectorTaskMcp::method('task_list'),
+                'ABORT command',
+            ]));
+
+        // Add session recovery logic if enabled
+        if ($includeSessionRecovery) {
+            $guideline->phase(Operator::if('$VECTOR_TASK.status === "in_progress"', [
+                'Check status_history for session crash indicator',
+                Store::as('LAST_HISTORY_ENTRY', '{last element of $VECTOR_TASK.status_history array}'),
+                Operator::if('$LAST_HISTORY_ENTRY.to === null', [
+                    Operator::output([
+                        '⚠️ SESSION RECOVERY MODE',
+                        'Task #{$VECTOR_TASK_ID} was in_progress but session crashed (status_history.to = null)',
+                        'Resuming execution without status change.',
+                        'WARNING: Previous execution stage unknown. Will verify what was completed via vector memory.',
+                        'NOTE: Memory findings from crashed session should be verified against codebase.',
+                    ]),
+                    Store::as('IS_SESSION_RECOVERY', 'true'),
+                ]),
+                Operator::if('$LAST_HISTORY_ENTRY.to !== null', [
+                    Operator::output([
+                        '=== EXECUTION BLOCKED ===',
+                        'Task #{$VECTOR_TASK_ID} is currently in_progress by another session.',
+                        'Wait for completion or manually reset status if session crashed without history update.',
+                    ]),
+                    'ABORT execution',
+                ]),
+            ]));
+        }
+
+        // Add status validation based on valid statuses
+        if (in_array('completed', $validStatuses, true)) {
+            // For validation commands that work on completed tasks
+            $guideline->phase(Operator::if('$VECTOR_TASK.status NOT IN ["'.implode('", "', $validStatuses).'"]', [
+                Operator::report('Vector task #$VECTOR_TASK_ID has status: {$VECTOR_TASK.status}'),
+                'Only tasks with status ['.implode(', ', $validStatuses).'] can be processed',
+                'ABORT command',
+            ]));
+        } else {
+            // For execution commands (async/sync)
+            $guideline->phase(Operator::if('$VECTOR_TASK.status === "completed"', [
+                Operator::report('Vector task #$VECTOR_TASK_ID already completed'),
+                'Ask user: "Re-execute this task? (yes/no)"',
+                'WAIT for user decision',
+            ]));
+        }
+
+        // Parent and subtasks loading
+        $guideline
+            ->phase(Operator::if('$VECTOR_TASK.parent_id !== null', [
+                VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK.parent_id}'),
+                Store::as('PARENT_TASK', '{parent task for broader context}'),
+            ]))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID, limit: 20}'))
+            ->phase(Store::as('SUBTASKS', '{child tasks if any}'))
+            ->phase(Store::as('TASK_DESCRIPTION', '$VECTOR_TASK.title + $VECTOR_TASK.content'))
+            ->phase(Operator::output([
+                '',
+                '=== PHASE 0: VECTOR TASK LOADED ===',
+                'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
+                'Status: {$VECTOR_TASK.status} | Priority: {$VECTOR_TASK.priority}',
+                'Parent: {$PARENT_TASK.title or "none"}',
+                'Subtasks: {count or "none"}',
+                'Comment: {$VECTOR_TASK.comment or "none"}',
+            ]));
+    }
+
+    // =========================================================================
+    // AUTO-APPROVAL CHECKPOINT
+    // =========================================================================
+
+    /**
+     * Define auto-approval checkpoint guideline.
+     * Used by: TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     *
+     * @param string $checkpointLabel Label for the checkpoint (e.g., 'VALIDATION', 'TEST VALIDATION')
+     * @param string $phaseHeader Phase header (e.g., '=== PHASE 1: APPROVAL ===')
+     */
+    protected function defineAutoApprovalCheckpointGuideline(string $checkpointLabel, string $phaseHeader = '=== PHASE 1: APPROVAL ==='): void
+    {
+        $this->guideline('phase1-approval')
+            ->goal('Check auto-approval flag and handle approval checkpoint')
+            ->example()
+            ->phase(Operator::output([$phaseHeader]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === true', [
+                Operator::output(['Auto-approval enabled (-y flag). Skipping approval checkpoint.']),
+                VectorTaskMcp::call('task_update',
+                    '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "'.$checkpointLabel.' started (auto-approved)", append_comment: true}'),
+            ]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
+                Operator::output([
+                    '',
+                    'APPROVAL CHECKPOINT',
+                    'Task: #{$VECTOR_TASK_ID} - {$VECTOR_TASK.title}',
+                    'Action: '.$checkpointLabel,
+                    '',
+                    'Type "approved" or "yes" to proceed.',
+                    'Type "no" to abort.',
+                ]),
+                'WAIT for user approval',
+                Operator::verify('User approved'),
+                VectorTaskMcp::call('task_update',
+                    '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "'.$checkpointLabel.' started", append_comment: true}'),
+            ]));
+    }
+
+    // =========================================================================
+    // COMPLETION STATUS UPDATE
+    // =========================================================================
+
+    /**
+     * Define completion status update guideline.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskTestValidateInclude, TaskValidateSyncInclude
+     *
+     * @param string $successStatus Status to set on success (e.g., 'completed', 'validated', 'tested')
+     * @param string $processName Name of the process for messages (e.g., 'Execution', 'Validation', 'Test validation')
+     */
+    protected function defineCompletionStatusUpdateGuideline(string $successStatus, string $processName): void
+    {
+        $this->guideline('completion-status-update')
+            ->goal('Update vector task status based on execution outcome')
+            ->example()
+            ->phase(Store::as('COMPLETION_SUMMARY', '{completed_steps, files_modified, outcomes, learnings}'))
+            ->phase(VectorMemoryMcp::call('store_memory',
+                '{content: "Completed task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nApproach: {summary}\\n\\nSteps: {outcomes}\\n\\nLearnings: {insights}\\n\\nFiles: {list}", category: "code-solution", tags: ["task-command", "completed"]}'))
+            ->phase(Operator::if('status === SUCCESS', [
+                VectorTaskMcp::call('task_update',
+                    '{task_id: $VECTOR_TASK_ID, status: "'.$successStatus.'", comment: "'.$processName.' completed successfully. Files: {list}. Memory: #{memory_id}", append_comment: true}'),
+                Operator::output(['Vector task #{$VECTOR_TASK_ID} '.$successStatus]),
+            ]))
+            ->phase(Operator::if('status === PARTIAL', [
+                VectorTaskMcp::call('task_update',
+                    '{task_id: $VECTOR_TASK_ID, comment: "Partial completion: {completed}/{total} steps. Remaining: {list}", append_comment: true}'),
+                Operator::output(['Vector task #{$VECTOR_TASK_ID} progress saved (partial)']),
+            ]))
+            ->phase(Operator::if('status === FAILED', [
+                VectorTaskMcp::call('task_update',
+                    '{task_id: $VECTOR_TASK_ID, status: "stopped", comment: "'.$processName.' failed: {reason}. Completed: {completed}/{total}", append_comment: true}'),
+                Operator::output(['Vector task #{$VECTOR_TASK_ID} stopped (failed)']),
+            ]))
+            ->phase(Operator::output([
+                '',
+                '=== '.strtoupper($processName).' COMPLETE ===',
+                'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
+                'Status: {SUCCESS/PARTIAL/FAILED}',
+                'Steps: {completed}/{total} | Files: {count} | Learnings stored',
+                '{step_outcomes}',
+            ]));
+    }
+
+    // =========================================================================
+    // TASK CONSOLIDATION (5-8h BATCHES)
+    // =========================================================================
+
+    /**
+     * Define task consolidation guideline.
+     * Used by: TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     *
+     * @param string $taskPrefix Prefix for created tasks (e.g., 'FIX|', 'TEST-FIX|')
+     */
+    protected function defineTaskConsolidationGuideline(string $taskPrefix): void
+    {
+        $this->guideline('task-consolidation')
+            ->goal('Consolidate similar fixes into 5-8 hour batches to reduce task overhead')
+            ->example()
+            ->phase('Group related fixes by: file proximity, similar issue type, shared context')
+            ->phase('Target batch size: 5-8 hours estimated work')
+            ->phase('Split if batch > 8 hours into smaller coherent groups')
+            ->phase(Operator::if('multiple related fixes found', [
+                'Create single consolidated task with all related fixes',
+                'Title format: "'.$taskPrefix.' {count} fixes in {area/component}"',
+                'Content: List all individual fixes with file references',
+                'Set estimate: sum of individual estimates (max 8h per task)',
+            ]))
+            ->phase(Operator::if('batch > 8 hours', [
+                'Split into multiple tasks by logical grouping',
+                'Each task 5-8 hours',
+                'Maintain coherent scope per task',
+            ]));
+    }
+
+    // =========================================================================
+    // ERROR HANDLING
+    // =========================================================================
+
+    /**
+     * Define error handling guideline.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskTestValidateInclude, TaskValidateSyncInclude
+     *
+     * @param string $processName Name of the process (e.g., 'Execution', 'Validation')
+     * @param string $alternativeCommand Alternative command to suggest (e.g., '/do:async', '/do:validate')
+     */
+    protected function defineErrorHandlingGuideline(string $processName, string $alternativeCommand): void
+    {
+        $this->guideline('error-handling')
+            ->text('Graceful error handling with recovery options')
+            ->example()
+            ->phase()->if('vector task not found', [
+                'Report: "Vector task #{id} not found"',
+                'Suggest: Check task ID with '.VectorTaskMcp::method('task_list'),
+                'Abort command',
+            ])
+            ->phase()->if('vector task already completed', [
+                'Report: "Vector task #{id} already has status: completed"',
+                'Ask user: "Do you want to re-execute this task?"',
+                'WAIT for user decision',
+            ])
+            ->phase()->if('invalid task ID format', [
+                'Report: "Invalid task ID format. Expected: 15, #15, task 15, task:15"',
+                'Suggest: "Use '.$alternativeCommand.' for text-based task descriptions"',
+                'Abort command',
+            ])
+            ->phase()->if('user rejects plan', [
+                'Accept modifications',
+                'Rebuild plan',
+                'Re-submit for approval',
+            ])
+            ->phase()->if($processName.' step fails', [
+                'Log: "Step {N} failed: {error}"',
+                'Update task comment with failure details',
+                'Offer options:',
+                '  1. Retry current step',
+                '  2. Skip and continue',
+                '  3. Abort remaining steps',
+                'WAIT for user decision',
+            ]);
+    }
+
+    // =========================================================================
+    // STATUS/PRIORITY FILTERS (for list/status commands)
+    // =========================================================================
+
+    /**
+     * Define status and priority icon mappings.
+     * Used by: TaskListInclude, TaskStatusInclude
+     */
+    protected function defineStatusPriorityIconsGuideline(): void
+    {
+        $this->guideline('status-priority-icons')
+            ->goal('Format task output with clear visual hierarchy using emojis and readable structure')
+            ->text('Status icons: 📝 draft, ⏳ pending, 🔄 in_progress, ✅ completed, 🧪 tested, ✓ validated, ⏸️ stopped, ❌ canceled')
+            ->text('Priority icons: 🔴 critical, 🟠 high, 🟡 medium, 🟢 low')
+            ->text('Always prefix status/priority with corresponding emoji')
+            ->text('Group tasks by status or parent, use indentation for hierarchy')
+            ->text('Show key info inline: ID, title, priority, estimate')
+            ->text('Use blank lines between groups for readability');
+    }
+}

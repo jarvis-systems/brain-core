@@ -16,6 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 #[Purpose('Defines the do:async command protocol for multi-agent orchestration with flexible execution modes, user approval gates, and vector memory integration. Ensures zero distractions, atomic tasks, and strict plan adherence for reliable task execution.')]
 class DoAsyncInclude extends IncludeArchetype
 {
+    use DoCommandCommonTrait;
     /**
      * Handle the architecture logic.
      *
@@ -24,16 +25,10 @@ class DoAsyncInclude extends IncludeArchetype
     protected function handle(): void
     {
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
-        $this->rule('entry-point-blocking')->critical()
-            ->text('ON RECEIVING $RAW_INPUT: Your FIRST output MUST be "=== DO:ASYNC ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except brain list:masters), code generation, file analysis, problem solving, implementation thinking.')
-            ->why('Without explicit entry point, Brain skips workflow and executes directly. Entry point forces workflow compliance.')
-            ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== DO:ASYNC ACTIVATED ===" and restart from Phase 0.');
+        $this->defineEntryPointBlockingRule('ASYNC');
 
         // Iron Rules - Zero Tolerance
-        $this->rule('zero-distractions')->critical()
-            ->text('ZERO distractions - implement ONLY specified task from $TASK_DESCRIPTION. NO creative additions, NO unapproved features, NO scope creep.')
-            ->why('Ensures focused execution and prevents feature drift')
-            ->onViolation('Abort immediately. Return to approved plan.');
+        $this->defineZeroDistractionsRule();
 
         $this->rule('approval-gates-mandatory')->critical()
             ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_Y_FLAG is true, auto-approve all gates (skip waiting for user confirmation).')
@@ -55,10 +50,7 @@ class DoAsyncInclude extends IncludeArchetype
             ->why('Balances safety with performance optimization')
             ->onViolation('Validate task independence before parallel execution. Fallback to sequential if conflicts detected.');
 
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL agents MUST search vector memory BEFORE task execution AND store learnings AFTER completion. Vector memory is the primary communication channel between sequential agents.')
-            ->why('Enables knowledge sharing between agents, prevents duplicate work, maintains execution continuity across steps')
-            ->onViolation('Include explicit vector memory instructions in agent Task() delegation.');
+        $this->defineVectorMemoryMandatoryRule();
 
         $this->rule('conversation-context-awareness')->high()
             ->text('ALWAYS analyze conversation context BEFORE planning. User may have discussed requirements, constraints, preferences, or decisions in previous messages.')
@@ -92,15 +84,19 @@ class DoAsyncInclude extends IncludeArchetype
             ->onViolation('Split into multiple Task() calls. One agent per file modification.');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('TASK_DESCRIPTION', '{$RAW_INPUT with flags removed}'));
+        $this->defineInputCaptureWithYFlagGuideline();
 
         // Phase 0: Conversation Context Analysis
         $this->guideline('phase0-context-analysis')
             ->goal('Extract task insights from conversation history before planning')
             ->example()
+            ->phase(Operator::output([
+                '=== DO:ASYNC ACTIVATED ===',
+                '',
+                '=== PHASE 0: CONTEXT ANALYSIS ===',
+                'Task: {$TASK_DESCRIPTION}',
+                'Analyzing conversation context...',
+            ]))
             ->phase('Analyze conversation context: requirements mentioned, constraints discussed, user preferences, prior decisions, related code/files referenced')
             ->phase(Store::as('CONVERSATION_CONTEXT', '{requirements, constraints, preferences, decisions, references}'))
             ->phase(Operator::if('conversation has relevant context', [
@@ -108,8 +104,6 @@ class DoAsyncInclude extends IncludeArchetype
                 'Note: Use conversation insights throughout all phases',
             ]))
             ->phase(Operator::output([
-                '=== PHASE 0: CONTEXT ANALYSIS ===',
-                'Task: {$TASK_DESCRIPTION}',
                 'Context: {summary of relevant conversation info}',
             ]));
 
@@ -298,38 +292,16 @@ class DoAsyncInclude extends IncludeArchetype
             ->phase('CRITICAL: Vector memory is the communication channel between agents. Your learnings enable the next agent!');
 
         // Error Handling
-        $this->guideline('error-handling')
-            ->text('Graceful error handling with recovery options')
+        $this->defineErrorHandlingGuideline(
+            includeAgentErrors: true,
+            includeDocErrors: true,
+            isValidation: false
+        );
+
+        // Additional error cases specific to async
+        $this->guideline('error-handling-async-specific')
+            ->text('Additional error handling for async execution')
             ->example()
-            ->phase()->if('no agents available', [
-                'Report: "No agents found via brain list:masters"',
-                'Suggest: Run /init-agents first',
-                'Abort command',
-            ])
-            ->phase()->if('user rejects requirements plan', [
-                'Accept modifications',
-                'Rebuild requirements plan',
-                'Re-submit for approval',
-            ])
-            ->phase()->if('user rejects execution plan', [
-                'Accept modifications',
-                'Rebuild execution plan',
-                'Verify atomic task constraints',
-                'Re-submit for approval',
-            ])
-            ->phase()->if('agent execution fails', [
-                'Log: "Step {N} failed: {error}"',
-                'Offer options:',
-                '  1. Retry current step',
-                '  2. Skip and continue',
-                '  3. Abort remaining steps',
-                'WAIT for user decision',
-            ])
-            ->phase()->if('documentation scan fails', [
-                'Log: "brain docs command failed or no documentation found"',
-                'Proceed without documentation context',
-                'Note: "Documentation context unavailable"',
-            ])
             ->phase()->if('web research timeout', [
                 'Log: "Web research timed out - continuing without external knowledge"',
                 'Proceed with local context only',
@@ -383,7 +355,6 @@ class DoAsyncInclude extends IncludeArchetype
             ->phase('result', '3/3 ✓ (faster than sequential)');
 
         // Response Format
-        $this->guideline('response-format')
-            ->text('=== headers | ⚠️ approval gates | ▶️✅❌ progress | 📁 file scope | No filler');
+        $this->defineResponseFormatGuideline('=== headers | ⚠️ approval gates | ▶️✅❌ progress | 📁 file scope | No filler');
     }
 }

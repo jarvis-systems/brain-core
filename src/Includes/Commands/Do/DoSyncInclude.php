@@ -21,6 +21,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 #[Purpose('Direct synchronous task execution by Brain without agent delegation. Uses Read/Edit/Write/Glob/Grep tools directly. Single approval gate. Best for: simple tasks, quick fixes, single-file changes, when agent overhead is unnecessary. Accepts task description as input. Zero distractions, atomic execution, strict plan adherence.')]
 class DoSyncInclude extends IncludeArchetype
 {
+    use DoCommandCommonTrait;
     /**
      * Handle the architecture logic.
      *
@@ -29,10 +30,7 @@ class DoSyncInclude extends IncludeArchetype
     protected function handle(): void
     {
         // Iron Rules - Zero Tolerance
-        $this->rule('zero-distractions')->critical()
-            ->text('ZERO distractions - implement ONLY specified task from $TASK_DESCRIPTION. NO creative additions, NO unapproved features, NO scope creep.')
-            ->why('Ensures focused execution and prevents feature drift')
-            ->onViolation('Abort immediately. Return to approved plan.');
+        $this->defineZeroDistractionsRule();
 
         $this->rule('no-delegation')->critical()
             ->text('Brain executes ALL steps directly. NO Task() delegation to agents. Use ONLY direct tools: Read, Edit, Write, Glob, Grep, Bash.')
@@ -228,7 +226,6 @@ class DoSyncInclude extends IncludeArchetype
             ->phase('USE /do:async', 'Complex multi-file tasks, tasks requiring research, architecture changes, tasks benefiting from specialized agents');
 
         // Response Format
-        $this->guideline('response-format')
-            ->text('=== headers | ⚠️ single approval | ▶️✅ progress | 📁 files | Direct execution, no filler');
+        $this->defineResponseFormatGuideline('=== headers | single approval | progress | files | Direct execution, no filler');
     }
 }

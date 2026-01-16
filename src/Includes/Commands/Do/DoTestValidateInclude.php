@@ -16,6 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 #[Purpose('Text-based test validation with parallel agent orchestration. Accepts text description (example: "test-validate user authentication"). Validates test coverage against documentation requirements, test quality (no bloat, real workflows), test consistency, and completeness. Creates memory entries for gaps. Idempotent. For vector task test validation use /task:test-validate.')]
 class DoTestValidateInclude extends IncludeArchetype
 {
+    use DoCommandCommonTrait;
     /**
      * Handle the architecture logic.
      *
@@ -24,21 +25,12 @@ class DoTestValidateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
-        $this->rule('entry-point-blocking')->critical()
-            ->text('ON RECEIVING $RAW_INPUT: Your FIRST output MUST be "=== DO:TEST-VALIDATE ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except brain list:masters), code generation, file analysis.')
-            ->why('Without explicit entry point, Brain skips workflow and executes directly. Entry point forces workflow compliance.')
-            ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== DO:TEST-VALIDATE ACTIVATED ===" and restart from Phase 0.');
+        $this->defineEntryPointBlockingRule('TEST-VALIDATE');
 
         // Iron Rules - Zero Tolerance
-        $this->rule('test-validation-only')->critical()
-            ->text('TEST VALIDATION command validates EXISTING tests. NEVER write tests directly. Only validate and CREATE MEMORY ENTRIES for missing/broken tests.')
-            ->why('Validation is read-only audit. Test writing belongs to do:async.')
-            ->onViolation('Abort any test writing. Create memory entry instead.');
+        $this->defineTestValidationOnlyRule();
 
-        $this->rule('text-description-required')->critical()
-            ->text('$RAW_INPUT MUST be a text description of work to test-validate. If $RAW_INPUT looks like a task ID (pure number, "#N", "task N", "task:N", "task-N"), REJECT and suggest /task:test-validate.')
-            ->why('This command is for text-based test validation. Vector task test validation belongs to /task:test-validate.')
-            ->onViolation('STOP. Report: "Use /task:test-validate for task ID N" and abort.');
+        $this->defineTextDescriptionRequiredRule('test-validate', '/task:test-validate');
 
         $this->rule('real-workflow-tests-only')->critical()
             ->text('Tests MUST cover REAL workflows end-to-end. Reject bloated tests that test implementation details instead of behavior. Quality over quantity.')
@@ -50,31 +42,25 @@ class DoTestValidateInclude extends IncludeArchetype
             ->why('Documentation defines expected behavior. Untested requirements are unverified.')
             ->onViolation('Create memory entry for each uncovered requirement.');
 
-        $this->rule('parallel-agent-orchestration')->high()
-            ->text('Test validation phases MUST use parallel agent orchestration (5-6 agents simultaneously) for efficiency. Each agent validates one aspect.')
-            ->why('Parallel validation reduces time and maximizes coverage.')
-            ->onViolation('Restructure validation into parallel Task() calls.');
+        $this->defineParallelAgentOrchestrationRule();
 
-        $this->rule('idempotent-validation')->high()
-            ->text('Test validation is IDEMPOTENT. Running multiple times produces same result (no duplicate entries, no repeated analysis).')
-            ->why('Allows safe re-runs without side effects.')
-            ->onViolation('Check existing memory entries before creating. Skip duplicates.');
+        $this->defineIdempotentValidationRule('entries');
 
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL test validation results MUST be stored to vector memory. Search memory BEFORE creating duplicate entries.')
-            ->why('Memory prevents duplicate work and provides audit trail.')
-            ->onViolation('Store validation summary with findings and issues found.');
+        $this->defineVectorMemoryMandatoryRule('ALL test validation results');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('VALIDATION_TARGET', '{target to validate extracted from $RAW_INPUT}'));
+        $this->defineInputCaptureWithAutoApproveGuideline();
 
         // Phase 0: Context Setup and Task ID Detection
         $this->guideline('phase0-context-setup')
             ->goal('Detect task ID patterns and reject, set up test validation context from $RAW_INPUT')
             ->example()
+            ->phase(Operator::output([
+                '=== DO:TEST-VALIDATE ACTIVATED ===',
+                '',
+                '=== PHASE 0: CONTEXT SETUP ===',
+                'Processing input...',
+            ]))
             ->phase(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags (-y, --yes) removed, trimmed}'))
             ->phase('Parse $CLEAN_ARGS for task ID patterns: "N", "#N", "task N", "task:N", "task-N"')
             ->phase(Operator::if('$CLEAN_ARGS matches task ID pattern', [
@@ -89,9 +75,6 @@ class DoTestValidateInclude extends IncludeArchetype
             ]))
             ->phase(Store::as('TASK_DESCRIPTION', '$CLEAN_ARGS'))
             ->phase(Operator::output([
-                '=== DO:TEST-VALIDATE ACTIVATED ===',
-                '',
-                '=== PHASE 0: CONTEXT SETUP ===',
                 'Test validation target: {$TASK_DESCRIPTION}',
                 'Mode: Text-based (no vector task)',
                 '{IF $HAS_AUTO_APPROVE: "Auto-approve: enabled (-y flag)"}',
@@ -322,19 +305,16 @@ class DoTestValidateInclude extends IncludeArchetype
             ]));
 
         // Error Handling
-        $this->guideline('error-handling')
-            ->text('Graceful error handling for test validation process')
+        $this->defineErrorHandlingGuideline(
+            includeAgentErrors: true,
+            includeDocErrors: true,
+            isValidation: true
+        );
+
+        // Additional test-specific error handling
+        $this->guideline('error-handling-test-specific')
+            ->text('Additional error handling for test validation')
             ->example()
-            ->phase()->if('task ID detected in arguments', [
-                'Report: "Detected task ID pattern: {pattern}"',
-                'Suggest: "Use /task:test-validate {id} for vector task test validation"',
-                'Abort command',
-            ])
-            ->phase()->if('no documentation found', [
-                'Warn: "No documentation in .docs/ for this target"',
-                'Continue with test-only validation (existing tests analysis)',
-                'Note: "Cannot verify requirements coverage without documentation"',
-            ])
             ->phase()->if('no tests found', [
                 'Report: "No tests found for {$TASK_DESCRIPTION}"',
                 'Store to memory: "Write initial tests for {$TASK_DESCRIPTION}"',
@@ -344,11 +324,6 @@ class DoTestValidateInclude extends IncludeArchetype
                 'Log: "Test execution failed: {error}"',
                 'Mark tests as "execution_unknown"',
                 'Continue with static analysis',
-            ])
-            ->phase()->if('agent validation fails', [
-                'Log: "Validation agent {N} failed: {error}"',
-                'Continue with remaining agents',
-                'Report partial validation in summary',
             ]);
 
         // Test Quality Criteria
@@ -410,14 +385,14 @@ class DoTestValidateInclude extends IncludeArchetype
             ->phase('result', 'Same/updated validation report, no duplicate memory entries');
 
         // When to use do:test-validate vs task:test-validate
-        $this->guideline('test-validate-vs-task-test-validate')
-            ->text('When to use /do:test-validate vs /task:test-validate')
-            ->example()
-            ->phase('USE /do:test-validate', 'Validate tests by text description ("test-validate user authentication"). Best for: ad-hoc test validation, exploratory validation, no existing vector task.')
-            ->phase('USE /task:test-validate', 'Validate tests for specific vector task by ID (15, #15, task 15). Best for: systematic task-based workflow, hierarchical task management, fix task creation as children.');
+        $this->defineCommandSelectionGuideline(
+            '/do:test-validate',
+            '/task:test-validate',
+            'Validate tests by text description ("test-validate user authentication"). Best for: ad-hoc test validation, exploratory validation, no existing vector task.',
+            'Validate tests for specific vector task by ID (15, #15, task 15). Best for: systematic task-based workflow, hierarchical task management, fix task creation as children.'
+        );
 
         // Response Format
-        $this->guideline('response-format')
-            ->text('=== headers | Parallel: agent batch indicators | Tables: coverage metrics + issue counts | Coverage % | Health score | Memory storage confirmation');
+        $this->defineResponseFormatGuideline('=== headers | Parallel: agent batch indicators | Tables: coverage metrics + issue counts | Coverage % | Health score | Memory storage confirmation');
     }
 }

@@ -16,6 +16,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Task creation specialist that analyzes user descriptions, researches context, estimates effort, and creates well-structured tasks after user approval.')]
 class TaskCreateInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     /**
      * Handle the architecture logic.
      *
@@ -39,10 +41,8 @@ class TaskCreateInclude extends IncludeArchetype
             ->why('Estimates enable planning and identify tasks needing decomposition')
             ->onViolation('Add estimate in hours before presenting task');
 
-        $this->rule('mandatory-user-approval')->critical()
-            ->text('MUST get explicit user approval BEFORE creating any task. EXCEPTION: If '.Store::var('HAS_Y_FLAG').' is true, auto-approve task creation (skip user confirmation prompt).')
-            ->why('User must validate task specification before committing to vector storage. Flag -y enables automated/scripted execution.')
-            ->onViolation('Present task specification and wait for explicit YES/APPROVE/CONFIRM (unless '.Store::var('HAS_Y_FLAG').' is true)');
+        // Common rule from trait
+        $this->defineMandatoryUserApprovalRule();
 
         $this->rule('max-task-estimate')->high()
             ->text('If estimate >5-8 hours, MUST strongly recommend /task:decompose')
