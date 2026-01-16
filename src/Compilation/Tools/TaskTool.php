@@ -24,7 +24,8 @@ class TaskTool extends ToolAbstract
             }
         }
         $agentName = puzzle('agent', $name);
-        $args = count($args) > 0 ? ' ' . implode(', ', $args) : '';
-        return static::name() . "($agentName$args)";
+        $argsStr = count($args) > 0 ? ' ' . implode(', ', $args) : '';
+        // Format: [DELEGATE] @agent: 'prompt' - clearly NOT immediate tool call
+        return "[DELEGATE] $agentName:$argsStr";
     }
 }
