@@ -113,6 +113,12 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->guideline('phase0-task-loading')
             ->goal('Load vector task with full context using pre-parsed $VECTOR_TASK_ID, verify testable status')
             ->example()
+            ->phase(Operator::output([
+                '=== TASK:TEST-VALIDATE ACTIVATED ===',
+                '',
+                '=== PHASE 0: VECTOR TASK LOADING ===',
+                'Loading task #{$VECTOR_TASK_ID}...',
+            ]))
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
             ->phase(Store::as('VECTOR_TASK', '{task object with title, content, status, parent_id, priority, tags}'))
             ->phase(Operator::if('$VECTOR_TASK not found', [
@@ -167,7 +173,6 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('SIMPLE_TEST_VALIDATION', '{true if $VECTOR_TASK.estimate <= 4 AND $VECTOR_TASK.priority !== "critical"}'))
             ->phase(Operator::note('SIMPLE_TEST_VALIDATION = {$SIMPLE_TEST_VALIDATION}'))
             ->phase(Operator::output([
-                '=== TASK:TEST-VALIDATE ACTIVATED ===',
                 '',
                 '=== PHASE 0: VECTOR TASK LOADED ===',
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',

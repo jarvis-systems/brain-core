@@ -129,6 +129,12 @@ class TaskValidateInclude extends IncludeArchetype
         $this->guideline('phase0-task-loading')
             ->goal('Load vector task using $VECTOR_TASK_ID (already parsed from input), verify validatable status')
             ->example()
+            ->phase(Operator::output([
+                '=== TASK:VALIDATE ACTIVATED ===',
+                '',
+                '=== PHASE 0: VECTOR TASK LOADING ===',
+                'Loading task #{$VECTOR_TASK_ID}...',
+            ]))
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
             ->phase(Store::as('VECTOR_TASK', '{task object with title, content, status, parent_id, priority, tags}'))
             ->phase(Operator::if('$VECTOR_TASK not found', [
@@ -181,7 +187,6 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase(Operator::note('Calculate SIMPLE_VALIDATION flag based on task characteristics'))
             ->phase(Store::as('SIMPLE_VALIDATION', '{true IF: $VECTOR_TASK.estimate <= 4 AND $VECTOR_TASK.priority != "critical" AND $VECTOR_TASK.tags NOT contains ["architecture", "security", "breaking-change"] AND $SUBTASKS.count <= 2}'))
             ->phase(Operator::output([
-                '=== TASK:VALIDATE ACTIVATED ===',
                 '',
                 '=== PHASE 0: VECTOR TASK LOADED ===',
                 'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
