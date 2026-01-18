@@ -13,7 +13,6 @@ use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
-use BrainCore\Compilation\Tools\WebSearchTool;
 use BrainNode\Agents\AgentMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Agents\WebResearchMaster;
@@ -236,62 +235,38 @@ class InitAgentsInclude extends IncludeArchetype
                 'Boost relevance score for matching patterns'
             ]));
 
-        // Phase 4: Enhanced Gap Analysis with Industry Validation (PROJECT AGENTS ONLY)
-        $this->guideline('phase4-gap-analysis-enhanced')
-            ->goal('Identify missing PROJECT-SPECIFIC agents (NOT system agents) with industry validation')
+        // Phase 4: Gap Analysis (PROJECT AGENTS ONLY)
+        $this->guideline('phase4-gap-analysis')
+            ->goal('Identify missing PROJECT-SPECIFIC agents (NOT system agents)')
             ->note([
                 'Gap analysis compares against PROJECT_AGENTS only, not SYSTEM_AGENTS',
                 'FORBIDDEN: Suggesting system agents (AgentMaster, PromptMaster, etc.) as missing',
                 'New agents use Master variation, NOT SystemMaster',
+                'AgentMaster analyzes gaps using already collected data - no additional web search needed',
             ])
             ->example()
-            ->phase('First pass: Web-informed gap analysis for PROJECT agents')
-            ->phase(
-                WebResearchMaster::call(
-                    Operator::input(
-                        Store::get('PROJECT_AGENTS'),
-                        Store::get('PROJECT_STACK'),
-                        Store::get('INDUSTRY_PATTERNS'),
-                        Store::get('TECH_PATTERNS'),
-                        Store::get('CURRENT_YEAR'),
-                        Store::get('SEARCH_FILTER'),
-                    ),
-                    Operator::task(
-                        'Gather best practices for PROJECT agent coverage (exclude system agents)',
-                        'Cross-reference with industry patterns from web search',
-                        'Consider technology-specific agent requirements',
-                        'EXCLUDE: system agent types (orchestration, delegation, memory management)',
-                        'INCLUDE: domain-specific agents (API, Cache, Auth, Payment, etc.)',
-                        Operator::if('search_mode === "targeted"', 'Focus on $SEARCH_FILTER domains only')
-                    ),
-                    Operator::output('{covered_domains: [...], missing_agents: [{name: \'AgentName\', purpose: \'...\', capabilities: [...], industry_alignment: 0-1}], confidence: 0-1}'),
-                )
-            )
-            ->phase(Store::as('WEB_GAP_ANALYSIS'))
-            ->phase('Second pass: Deep agent-level analysis with industry validation')
+            ->phase('AgentMaster performs gap analysis using cached patterns')
             ->phase(
                 AgentMaster::call(
                     Operator::input(
                         Store::get('PROJECT_AGENTS'),
                         Store::get('SYSTEM_AGENTS'),
                         Store::get('PROJECT_STACK'),
-                        Store::get('WEB_GAP_ANALYSIS'),
                         Store::get('INDUSTRY_PATTERNS'),
                         Store::get('TECH_PATTERNS'),
-                        Store::get('CURRENT_YEAR'),
                         Store::get('SEARCH_FILTER'),
                     ),
                     Operator::task(
                         'Analyze domain expertise needed based on Project requirements',
                         'Compare with existing PROJECT agents (NOT system agents)',
                         'EXCLUDE any agent that overlaps with SYSTEM_AGENTS functionality',
-                        'Cross-validate against industry best practices',
-                        'Validate each proposed agent against INDUSTRY_PATTERNS',
+                        'Cross-validate against INDUSTRY_PATTERNS and TECH_PATTERNS (already cached)',
+                        'EXCLUDE: system agent types (orchestration, delegation, memory management)',
+                        'INCLUDE: domain-specific agents (API, Cache, Auth, Payment, etc.)',
                         'Assign confidence score (0-1) to each missing agent recommendation',
                         'Prioritize critical gaps with high industry alignment',
                         'All new agents will use Master variation (NOT SystemMaster)',
-                        Operator::if('search_mode === "targeted"', 'Validate $SEARCH_FILTER.agents against project needs'),
-                        Operator::forEach('missing domain', WebSearchTool::describe('{domain} agent architecture {current_year}')),
+                        Operator::if('search_mode === "targeted"', 'Focus on $SEARCH_FILTER domains only'),
                     ),
                     Operator::output('{covered_domains: [...], missing_agents: [{name: \'AgentName\', purpose: \'...\', capabilities: [...], confidence: 0-1, industry_alignment: 0-1, priority: "critical|high|medium", variation: "Master"}], industry_coverage_score: 0-1}'),
                     Operator::note('Focus on PROJECT agent gaps with high confidence and industry alignment'),

@@ -14,7 +14,6 @@ use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\ReadTool;
 use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
-use BrainNode\Agents\VectorMaster;
 use BrainNode\Agents\WebResearchMaster;
 use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
@@ -223,65 +222,41 @@ class InitTaskInclude extends IncludeArchetype
                 Operator::if('docs_count 4-8', '2 DocumentationMaster agents in parallel'),
                 Operator::if('docs_count > 8', '3+ DocumentationMaster agents in parallel'),
             ])
-            ->phase('STEP 3 - PARALLEL DocumentationMaster agents:')
+            ->phase('STEP 3 - DocumentationMaster for comprehensive doc analysis:')
             ->do([
                 DocumentationMaster::call(
                     Operator::task([
-                        'Docs batch: [README*, CONTRIBUTING*, ARCHITECTURE*]',
-                        'Read each doc via Read tool',
-                        'EXTRACT: {name|purpose|requirements|constraints|decisions}',
-                        'FOCUS ON: project goals, user requirements, acceptance criteria',
+                        'Analyze ALL project documentation from DOCS_INDEX',
+                        'Read: README*, CONTRIBUTING*, ARCHITECTURE*, API docs, .docs/*.md',
+                        'EXTRACT: {name|purpose|requirements|constraints|decisions|endpoints|integrations}',
+                        'FOCUS ON: project goals, requirements, API contracts, integrations',
                     ]),
-                    Operator::output('{docs_analyzed:N,requirements:[],constraints:[]}'),
-                    Store::as('DOCS_REQUIREMENTS')
+                    Operator::output('{docs_analyzed:N,requirements:[],constraints:[],api_specs:[],integrations:[]}'),
+                    Store::as('DOCS_ANALYSIS')
                 ),
-                DocumentationMaster::call(
-                    Operator::task([
-                        'Docs batch: [API docs, technical specs, .docs/*.md]',
-                        'Read each doc via Read tool',
-                        'EXTRACT: {name|endpoints|integrations|dependencies}',
-                        'FOCUS ON: technical requirements, API contracts, integrations',
-                    ]),
-                    Operator::output('{docs_analyzed:N,api_specs:[],integrations:[]}'),
-                    Store::as('DOCS_TECHNICAL')
-                ),
-            ])
-            ->phase('STEP 4 - README.md direct read for project overview:')
-            ->do([
-                ReadTool::call('README.md'),
-                Store::as('README_CONTENT', 'project overview, features, setup'),
             ]);
 
         // ============================================
-        // PHASE 5: VECTOR MEMORY DEEP RESEARCH
+        // PHASE 5: VECTOR MEMORY RESEARCH (Brain direct MCP)
         // ============================================
 
         $this->guideline('phase5-vector-research')
-            ->goal('VectorMaster for comprehensive prior knowledge extraction')
+            ->goal('Search vector memory for prior knowledge via direct MCP calls')
+            ->note([
+                'Brain uses vector memory MCP tools directly - NO agent delegation needed',
+                'Simple tool calls do not require agent orchestration overhead',
+                'Multi-probe search covers all relevant categories',
+            ])
             ->example()
-            ->phase(
-                VectorMaster::call(
-                    Operator::task([
-                        'DEEP MEMORY RESEARCH for project planning',
-                        'Multi-probe search strategy:',
-                        'Probe 1: "project architecture implementation patterns" (architecture)',
-                        'Probe 2: "project requirements features roadmap" (learning)',
-                        'Probe 3: "bugs issues problems technical debt" (bug-fix)',
-                        'Probe 4: "decisions trade-offs alternatives" (code-solution)',
-                        'Probe 5: "project context conventions standards" (project-context)',
-                        'EXTRACT: past decisions, known issues, lessons learned, patterns',
-                        'OUTPUT: actionable insights for task planning',
-                    ]),
-                    Operator::output('{memories_found:N,insights:[],warnings:[],recommendations:[]}'),
-                    Store::as('PRIOR_KNOWLEDGE')
-                )
-            )
-            ->phase('PARALLEL: Direct memory searches for specific categories:')
+            ->phase('PARALLEL: Multi-probe memory searches:')
             ->do([
-                VectorMemoryMcp::call('search_memories', '{query: "project goals objectives success criteria", limit: 5, category: "learning"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "technical debt refactoring needed", limit: 5, category: "architecture"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "blocked issues dependencies", limit: 5, category: "debugging"}'),
-            ]);
+                VectorMemoryMcp::call('search_memories', '{query: "project architecture implementation patterns", limit: 5, category: "architecture"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "project requirements features roadmap", limit: 5, category: "learning"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "bugs issues problems technical debt", limit: 5, category: "bug-fix"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "decisions trade-offs alternatives", limit: 5, category: "code-solution"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "project context conventions standards", limit: 5, category: "project-context"}'),
+            ])
+            ->phase(Store::as('PRIOR_KNOWLEDGE', '{memories from all probes, filtered for actionable insights}'));
 
         // ============================================
         // PHASE 6: EXTERNAL CONTEXT (if needed)
@@ -323,9 +298,7 @@ class InitTaskInclude extends IncludeArchetype
                 Store::get('CONFIG_ANALYSIS'),
                 Store::get('ROUTES_ANALYSIS'),
                 Store::get('BUILD_ANALYSIS'),
-                Store::get('DOCS_REQUIREMENTS'),
-                Store::get('DOCS_TECHNICAL'),
-                Store::get('README_CONTENT'),
+                Store::get('DOCS_ANALYSIS'),
                 Store::get('PRIOR_KNOWLEDGE'),
                 Store::get('EXTERNAL_CONTEXT'),
             ])

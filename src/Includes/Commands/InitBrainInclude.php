@@ -12,11 +12,9 @@ use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\ReadTool;
-use BrainNode\Agents\AgentMaster;
 use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Agents\PromptMaster;
-use BrainNode\Agents\VectorMaster;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('The InitBrain command automates smart distribution of project-specific configuration across Brain.php, Common.php, and Master.php based on project context discovery.')]
@@ -195,23 +193,21 @@ class InitBrainInclude extends IncludeArchetype
                         Operator::context('Architecture pattern discovery')
                     ),
 
-                    // Task 2.4: Existing Configuration Analysis (ALL files in parallel)
-                    ExploreMaster::call(
-                        Operator::task([
-                            ReadTool::call(Runtime::NODE_DIRECTORY('Brain.php')),
-                            ReadTool::call(Runtime::NODE_DIRECTORY('Common.php')),
-                            ReadTool::call(Runtime::NODE_DIRECTORY('Master.php')),
-                            'For EACH file analyze handle() method content:',
-                            '  - Extract existing $this->rule() definitions (id, severity, text)',
-                            '  - Extract existing $this->guideline() definitions (id, phases, examples)',
-                            '  - Identify custom logic and project-specific patterns',
-                            '  - Mark as POPULATED if handle() has meaningful content beyond skeleton',
-                            Store::as('CURRENT_BRAIN_CONFIG', '{includes: [...], rules: [...], guidelines: [...], is_populated: bool}'),
-                            Store::as('CURRENT_COMMON_CONFIG', '{rules: [...], guidelines: [...], is_populated: bool}'),
-                            Store::as('CURRENT_MASTER_CONFIG', '{rules: [...], guidelines: [...], is_populated: bool}'),
-                        ]),
-                        Operator::context('Existing configuration analysis for incremental enhancement')
-                    ),
+                    // Task 2.4: Existing Configuration Analysis (direct Read - known paths)
+                    Operator::task([
+                        'Read existing configuration files (known paths - no exploration needed):',
+                        ReadTool::call(Runtime::NODE_DIRECTORY('Brain.php')),
+                        ReadTool::call(Runtime::NODE_DIRECTORY('Common.php')),
+                        ReadTool::call(Runtime::NODE_DIRECTORY('Master.php')),
+                        'For EACH file analyze handle() method content:',
+                        '  - Extract existing $this->rule() definitions (id, severity, text)',
+                        '  - Extract existing $this->guideline() definitions (id, phases, examples)',
+                        '  - Identify custom logic and project-specific patterns',
+                        '  - Mark as POPULATED if handle() has meaningful content beyond skeleton',
+                        Store::as('CURRENT_BRAIN_CONFIG', '{includes: [...], rules: [...], guidelines: [...], is_populated: bool}'),
+                        Store::as('CURRENT_COMMON_CONFIG', '{rules: [...], guidelines: [...], is_populated: bool}'),
+                        Store::as('CURRENT_MASTER_CONFIG', '{rules: [...], guidelines: [...], is_populated: bool}'),
+                    ]),
                 ])
             )
             ->phase(Operator::verify('All discovery tasks completed'))
@@ -309,155 +305,52 @@ class InitBrainInclude extends IncludeArchetype
             );
 
         // =====================================================
-        // PHASE 3.5: VECTOR MEMORY DEEP RESEARCH (3 PARALLEL AGENTS)
+        // PHASE 3.5: VECTOR MEMORY RESEARCH (Brain direct MCP)
         // =====================================================
 
         $this->guideline('phase3-5-vector-memory-research')
-            ->goal('Deep research of vector memory via specialized VectorMaster agents for each target file')
+            ->goal('Search vector memory for project-specific insights via direct MCP calls')
             ->note([
-                'Vector memory may be LARGE - simple search is insufficient',
-                'Each file needs DEEP recursive semantic research by dedicated agent',
-                'VectorMaster performs multi-probe strategy: DECOMPOSE → MULTI-SEARCH → ANALYZE',
-                'Focus: knowledge that CANNOT be found via codebase exploration',
+                'Brain uses vector memory MCP tools directly - NO agent delegation needed',
+                'Simple tool calls do not require agent orchestration overhead',
+                'Multi-probe search: 2-3 focused queries per target file',
             ])
             ->example()
-            ->phase()
-            ->name('parallel-vector-research-agents')
-            ->do(
+            ->phase('Search vector memory for Common.php insights')
+            ->phase(
                 Operator::task([
-                    // Agent 1: VectorMaster for Common.php research
-                    VectorMaster::call(
-                        Operator::context([
-                            'Target file: ' . Runtime::NODE_DIRECTORY('Common.php'),
-                            'This file is shared by Brain AND all Agents',
-                        ]),
-                        Operator::task([
-                            'DEEP RESEARCH vector memory for Common.php guidelines',
-                            '',
-                            'Search domains (multi-probe each):',
-                            '  - Environment constraints: Docker, CI/CD, containerization rules',
-                            '  - Tech stack: PHP version, Node version, database conventions',
-                            '  - Universal coding standards: naming, structure, organization',
-                            '  - Shared configuration: env vars, paths, external services',
-                            '  - Development tooling: linters, formatters, analyzers',
-                            '  - Infrastructure patterns: services, networking, deployment',
-                            '',
-                            'For EACH domain:',
-                            '  1. Decompose into 2-3 semantic probes',
-                            '  2. Execute searches with different query angles',
-                            '  3. Cross-reference findings',
-                            '  4. Extract ACTIONABLE insights only',
-                            '',
-                            'FILTER criteria:',
-                            '  - Must apply to BOTH Brain AND Agents (universal)',
-                            '  - Cannot be discovered via normal codebase search',
-                            '  - Represents hard-won knowledge or critical constraints',
-                            '',
-                            'OUTPUT: Detailed recommendations for Common.php rules/guidelines',
-                        ]),
-                        Operator::output('{recommendations: [...], insights_found: N, domains_covered: [...], confidence: high|medium|low}'),
-                    ),
-                    Store::as('VECTOR_COMMON_RESEARCH'),
-
-                    // Agent 2: VectorMaster for Master.php research
-                    VectorMaster::call(
-                        Operator::context([
-                            'Target file: ' . Runtime::NODE_DIRECTORY('Master.php'),
-                            'This file is shared by ALL Agents only (NOT Brain)',
-                        ]),
-                        Operator::task([
-                            'DEEP RESEARCH vector memory for Master.php guidelines',
-                            '',
-                            'Search domains (multi-probe each):',
-                            '  - Agent execution patterns: how agents should approach tasks',
-                            '  - Tool usage constraints: when to use which tools, anti-patterns',
-                            '  - Task handling: decomposition, estimation, status flow',
-                            '  - Code generation patterns: templates, scaffolding, conventions',
-                            '  - Test writing conventions: test structure, coverage, mocking',
-                            '  - Quality gates: validation before completion, review criteria',
-                            '',
-                            'For EACH domain:',
-                            '  1. Decompose into 2-3 semantic probes',
-                            '  2. Execute searches with different query angles',
-                            '  3. Cross-reference findings',
-                            '  4. Extract ACTIONABLE insights only',
-                            '',
-                            'FILTER criteria:',
-                            '  - Must apply to Agents execution (not Brain orchestration)',
-                            '  - Cannot be discovered via normal codebase search',
-                            '  - Represents patterns that prevent repeated mistakes',
-                            '',
-                            'OUTPUT: Detailed recommendations for Master.php rules/guidelines',
-                        ]),
-                        Operator::output('{recommendations: [...], insights_found: N, domains_covered: [...], confidence: high|medium|low}'),
-                    ),
-                    Store::as('VECTOR_MASTER_RESEARCH'),
-
-                    // Agent 3: VectorMaster for Brain.php research
-                    VectorMaster::call(
-                        Operator::context([
-                            'Target file: ' . Runtime::NODE_DIRECTORY('Brain.php'),
-                            'This file is Brain-specific only (orchestration layer)',
-                        ]),
-                        Operator::task([
-                            'DEEP RESEARCH vector memory for Brain.php guidelines',
-                            '',
-                            'Search domains (multi-probe each):',
-                            '  - Orchestration rules: delegation strategies, agent selection',
-                            '  - Brain policies: approval chains, escalation patterns',
-                            '  - Workflow coordination: multi-agent orchestration, sequencing',
-                            '  - Response synthesis: how to merge agent results, validation',
-                            '  - Brain-level validation: quality gates, trust management',
-                            '  - Context management: memory limits, compaction triggers',
-                            '',
-                            'For EACH domain:',
-                            '  1. Decompose into 2-3 semantic probes',
-                            '  2. Execute searches with different query angles',
-                            '  3. Cross-reference findings',
-                            '  4. Extract ACTIONABLE insights only',
-                            '',
-                            'FILTER criteria:',
-                            '  - Must apply to Brain orchestration (not agent execution)',
-                            '  - Cannot be discovered via normal codebase search',
-                            '  - Represents critical coordination knowledge',
-                            '',
-                            'OUTPUT: Detailed recommendations for Brain.php rules/guidelines',
-                        ]),
-                        Operator::output('{recommendations: [...], insights_found: N, domains_covered: [...], confidence: high|medium|low}'),
-                    ),
-                    Store::as('VECTOR_BRAIN_RESEARCH'),
+                    VectorMemoryMcp::call('search_memories', '{query: "environment Docker CI/CD containerization rules", limit: 5}'),
+                    VectorMemoryMcp::call('search_memories', '{query: "tech stack PHP Node database coding standards", limit: 5}'),
+                    VectorMemoryMcp::call('search_memories', '{query: "shared configuration infrastructure patterns", limit: 5}'),
                 ])
             )
-            ->phase('Merge and validate all VectorMaster research results')
+            ->phase(Store::as('VECTOR_COMMON_INSIGHTS'))
+            ->phase('Search vector memory for Master.php insights')
             ->phase(
-                AgentMaster::call(
-                    Operator::input(
-                        Store::get('VECTOR_COMMON_RESEARCH'),
-                        Store::get('VECTOR_MASTER_RESEARCH'),
-                        Store::get('VECTOR_BRAIN_RESEARCH'),
-                    ),
-                    Operator::task([
-                        'VALIDATE and CONSOLIDATE VectorMaster research results',
-                        '',
-                        'For EACH file research result:',
-                        '  1. Verify recommendations are correctly categorized (Common/Master/Brain)',
-                        '  2. Check for cross-file duplicates - keep in most appropriate file',
-                        '  3. Validate insights are truly unique (not in standard includes)',
-                        '  4. Assess confidence level of each recommendation',
-                        '',
-                        'QUALITY GATES:',
-                        '  - Reject low-confidence insights without strong evidence',
-                        '  - Reject generic insights that apply everywhere (noise)',
-                        '  - Reject outdated or superseded knowledge',
-                        '',
-                        'OUTPUT: Validated insights ready for Phase 6 distribution',
-                    ]),
-                    Operator::output('{critical_common: [...], critical_master: [...], critical_brain: [...], total_found: N, total_validated: N, rejected: N, rejection_reasons: [...]}'),
-                )
+                Operator::task([
+                    VectorMemoryMcp::call('search_memories', '{query: "agent execution patterns tool usage constraints", limit: 5}'),
+                    VectorMemoryMcp::call('search_memories', '{query: "task handling decomposition estimation code generation", limit: 5}'),
+                    VectorMemoryMcp::call('search_memories', '{query: "test writing conventions quality gates validation", limit: 5}'),
+                ])
             )
-            ->phase(Store::as('VECTOR_CRITICAL_INSIGHTS'))
+            ->phase(Store::as('VECTOR_MASTER_INSIGHTS'))
+            ->phase('Search vector memory for Brain.php insights')
             ->phase(
-                Operator::note('Validated vector insights will be merged into DISTRIBUTED_GUIDELINES in Phase 6')
+                Operator::task([
+                    VectorMemoryMcp::call('search_memories', '{query: "orchestration delegation strategies agent selection", limit: 5}'),
+                    VectorMemoryMcp::call('search_memories', '{query: "workflow coordination response synthesis validation", limit: 5}'),
+                    VectorMemoryMcp::call('search_memories', '{query: "context management memory limits Brain policies", limit: 5}'),
+                ])
+            )
+            ->phase(Store::as('VECTOR_BRAIN_INSIGHTS'))
+            ->phase(
+                Operator::task([
+                    'FILTER vector memory results:',
+                    '  - Extract UNIQUE insights not in standard includes',
+                    '  - Categorize by target file (Common/Master/Brain)',
+                    '  - Reject duplicates and generic knowledge',
+                    Store::as('VECTOR_CRITICAL_INSIGHTS', '{common: [...], master: [...], brain: [...]}'),
+                ])
             );
 
         // =====================================================
@@ -470,6 +363,7 @@ class InitBrainInclude extends IncludeArchetype
                 'IMPORTANT: Brain already has a Variation with standard includes configured',
                 'This phase focuses ONLY on ' . Runtime::NODE_DIRECTORY('Includes/'),
                 'FORBIDDEN: Suggesting or modifying vendor/jarvis-brain/core/src/Includes/*',
+                'Brain analyzes ExploreMaster results directly - no additional agent needed',
             ])
             ->example()
             ->phase(
@@ -484,23 +378,15 @@ class InitBrainInclude extends IncludeArchetype
             )
             ->phase(Store::as('EXISTING_PROJECT_INCLUDES'))
             ->phase(
-                AgentMaster::call(
-                    Operator::input(
-                        Store::get('EXISTING_PROJECT_INCLUDES'),
-                        Store::get('PROJECT_CONTEXT'),
-                        Store::get('DOCS_ANALYSIS'),
-                    ),
-                    Operator::task([
-                        'Analyze existing project-specific includes in ' . Runtime::NODE_DIRECTORY('Includes/'),
-                        'Map project needs to include capabilities',
-                        'Identify MISSING project-specific includes that should be CREATED',
-                        'DO NOT suggest standard includes from vendor/jarvis-brain/core/src/Includes',
-                        'Generate list of new project includes to create via brain make:include',
-                    ]),
-                    Operator::output('{existing_project_includes: [...], suggested_new_includes: [...], rationale: {...}}'),
-                )
-            )
-            ->phase(Store::as('PROJECT_INCLUDES_RECOMMENDATION'));
+                Operator::task([
+                    'Brain analyzes EXISTING_PROJECT_INCLUDES directly:',
+                    '  - Map discovered includes to project needs from PROJECT_CONTEXT',
+                    '  - Identify MISSING project-specific includes based on DOCS_ANALYSIS',
+                    '  - DO NOT suggest standard includes from vendor/jarvis-brain/core/src/Includes',
+                    '  - Generate list of new project includes to create via brain make:include',
+                    Store::as('PROJECT_INCLUDES_RECOMMENDATION', '{existing: [...], suggested_new: [...], rationale: {...}}'),
+                ])
+            );
 
         // =====================================================
         // PHASE 5: SMART DISTRIBUTION CATEGORIZATION
@@ -513,52 +399,43 @@ class InitBrainInclude extends IncludeArchetype
                 Runtime::NODE_DIRECTORY('Common.php') . ' - Shared by Brain AND all Agents',
                 Runtime::NODE_DIRECTORY('Master.php') . ' - Shared by ALL Agents only',
                 Runtime::NODE_DIRECTORY('Brain.php') . ' - Brain-specific only',
+                'Brain performs categorization directly - simple logic, no agent needed',
             ])
             ->example()
             ->phase(
-                AgentMaster::call(
-                    Operator::input(
-                        Store::get('PROJECT_CONTEXT'),
-                        Store::get('ENVIRONMENT_CONTEXT'),
-                        Store::get('DOCS_ANALYSIS'),
-                        Store::get('ARCHITECTURE_PATTERNS'),
-                        Store::get('VECTOR_CRITICAL_INSIGHTS'),
-                    ),
-                    Operator::task([
-                        'Analyze ALL discovered project patterns, rules, AND critical vector insights',
-                        'MERGE VECTOR_CRITICAL_INSIGHTS into distribution (already categorized)',
-                        'CATEGORIZE remaining rules into exactly ONE target file:',
-                        '',
-                        'COMMON.PHP (Brain + ALL Agents):',
-                        '  - Docker/container environment rules (ports, services, networks)',
-                        '  - CI/CD pipeline awareness (test commands, build steps)',
-                        '  - Project tech stack rules (PHP version, Node version, database type)',
-                        '  - Universal coding standards (naming conventions, file structure)',
-                        '  - Shared configuration (env vars, paths, external services)',
-                        '  - Development tooling rules (linters, formatters, analyzers)',
-                        '',
-                        'MASTER.PHP (ALL Agents only, NOT Brain):',
-                        '  - Agent execution patterns (how agents should approach tasks)',
-                        '  - Tool usage constraints (when to use which tools)',
-                        '  - Task handling guidelines (decomposition, estimation, status flow)',
-                        '  - Code generation patterns (templates, scaffolding)',
-                        '  - Test writing conventions (test structure, coverage expectations)',
-                        '  - Agent-specific quality gates (validation before completion)',
-                        '',
-                        'BRAIN.PHP (Brain-specific only):',
-                        '  - Orchestration rules (delegation strategies, agent selection)',
-                        '  - Brain-specific policies (approval chains, escalation)',
-                        '  - Workflow coordination (multi-agent orchestration)',
-                        '  - Response synthesis (how to merge agent results)',
-                        '  - Brain-level validation (response quality gates)',
-                        '',
-                        'Generate PHP Builder API code for each category',
-                        'Use $this->rule() for constraints, $this->guideline() for patterns',
-                    ]),
-                    Operator::output('{common: [{id, type, code}], master: [{id, type, code}], brain: [{id, type, code}], rationale: {...}}'),
-                )
-            )
-            ->phase(Store::as('DISTRIBUTED_GUIDELINES'));
+                Operator::task([
+                    'Brain categorizes ALL discovered patterns into target files:',
+                    '',
+                    'INPUT: PROJECT_CONTEXT, ENVIRONMENT_CONTEXT, DOCS_ANALYSIS, ARCHITECTURE_PATTERNS, VECTOR_CRITICAL_INSIGHTS',
+                    '',
+                    'COMMON.PHP (Brain + ALL Agents):',
+                    '  - Docker/container environment rules (ports, services, networks)',
+                    '  - CI/CD pipeline awareness (test commands, build steps)',
+                    '  - Project tech stack rules (PHP version, Node version, database type)',
+                    '  - Universal coding standards (naming conventions, file structure)',
+                    '  - Shared configuration (env vars, paths, external services)',
+                    '  - Development tooling rules (linters, formatters, analyzers)',
+                    '',
+                    'MASTER.PHP (ALL Agents only, NOT Brain):',
+                    '  - Agent execution patterns (how agents should approach tasks)',
+                    '  - Tool usage constraints (when to use which tools)',
+                    '  - Task handling guidelines (decomposition, estimation, status flow)',
+                    '  - Code generation patterns (templates, scaffolding)',
+                    '  - Test writing conventions (test structure, coverage expectations)',
+                    '  - Agent-specific quality gates (validation before completion)',
+                    '',
+                    'BRAIN.PHP (Brain-specific only):',
+                    '  - Orchestration rules (delegation strategies, agent selection)',
+                    '  - Brain-specific policies (approval chains, escalation)',
+                    '  - Workflow coordination (multi-agent orchestration)',
+                    '  - Response synthesis (how to merge agent results)',
+                    '  - Brain-level validation (response quality gates)',
+                    '',
+                    'Generate PHP Builder API code for each category',
+                    'Use $this->rule() for constraints, $this->guideline() for patterns',
+                    Store::as('DISTRIBUTED_GUIDELINES', '{common: [...], master: [...], brain: [...]}'),
+                ])
+            );
 
         // =====================================================
         // PHASE 5A: COMMON.PHP ENHANCEMENT
