@@ -94,6 +94,19 @@ class TaskAsyncInclude extends IncludeArchetype
 
     protected function defineGuidelines(): void
     {
+        // =======================================================================
+        // ENTRY POINT - ABSOLUTE FIRST ACTION - NO EXCEPTIONS
+        // =======================================================================
+        $this->guideline('entry-point-mandatory')
+            ->goal('IMMEDIATELY output activation header before ANY other action')
+            ->text('ON RECEIVING THIS COMMAND: Your VERY FIRST output MUST be the activation header below.')
+            ->text('FORBIDDEN FIRST ACTIONS: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Task, Bash, code generation, file analysis, implementation.')
+            ->text('DO THIS FIRST - BEFORE ANYTHING ELSE:')
+            ->example()
+            ->phase(Operator::output([
+                '=== TASK:ASYNC ACTIVATED ===',
+            ]));
+
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         // Common guideline from trait
         $this->defineInputCaptureGuideline();
@@ -103,8 +116,6 @@ class TaskAsyncInclude extends IncludeArchetype
             ->goal('Load vector task with full context using pre-captured $VECTOR_TASK_ID')
             ->example()
             ->phase(Operator::output([
-                '=== TASK:ASYNC ACTIVATED ===',
-                '',
                 '=== PHASE 0: VECTOR TASK LOADING ===',
                 'Loading task #{$VECTOR_TASK_ID}...',
             ]))
