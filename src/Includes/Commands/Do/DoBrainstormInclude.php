@@ -49,14 +49,13 @@ class DoBrainstormInclude extends IncludeArchetype
 
         $this->defineVectorMemoryMandatoryRule('brainstorm topic');
 
-        // === COMMAND INPUT ===
+        // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->guideline('input-capture')
             ->goal('Capture brainstorm topic from command arguments')
             ->example()
-            ->phase('IMMEDIATELY on receiving user input:')
-            ->phase(Store::as('RAW_INPUT', '{full user input including command and arguments}'))
-            ->phase(Store::as('BRAINSTORM_TOPIC', '{everything after /do:brainstorm}'))
-            ->phase(Operator::if('$BRAINSTORM_TOPIC is empty', [
+            ->phase(Store::as('RAW_INPUT', '$ARGUMENTS'))
+            ->phase(Store::as('BRAINSTORM_TOPIC', '{brainstorm topic extracted from $RAW_INPUT}'))
+            ->phase(Operator::if('$BRAINSTORM_TOPIC is empty OR $RAW_INPUT is empty', [
                 Operator::output([
                     '=== DO:BRAINSTORM ===',
                     '',
