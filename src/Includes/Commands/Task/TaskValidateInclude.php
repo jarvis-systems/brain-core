@@ -22,8 +22,18 @@ class TaskValidateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // =========================================================================
-        // CORE RULES (7 essential rules)
+        // CORE RULES (9 essential rules)
         // =========================================================================
+
+        $this->rule('always-execute')->critical()
+            ->text('ALWAYS execute FULL validation when command is invoked. NEVER skip based on current status, child statuses, or previous validation results.')
+            ->why('User invoked command = user wants validation. LLM must not "optimize" by skipping. Re-validation catches regressions and hallucinations.')
+            ->onViolation('Execute full validation. Status "validated" means RE-validate, not skip.');
+
+        $this->rule('auto-approve-not-skip')->critical()
+            ->text('Flag -y (auto-approve) means "skip approval prompt", NOT "skip validation". Full validation MUST execute.')
+            ->why('Auto-approve saves user interaction time, not validation time.')
+            ->onViolation('Execute full validation even with -y flag.');
 
         $this->rule('vector-task-id-required')->critical()
             ->text('Input MUST be valid vector task ID. Formats: "15", "#15", "task 15", "task:15".')
