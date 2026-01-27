@@ -29,7 +29,8 @@ class TaskValidateInclude extends IncludeArchetype
             // 1. Load task
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
             ->phase('IF not found → ABORT')
-            ->phase('IF status NOT IN [completed, tested, validated] → ABORT "Complete first"')
+            ->phase('IF status NOT IN [completed, tested, validated, in_progress] → ABORT "Complete first"')
+            ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session (no active work) → continue validation OR ABORT if another session active')
 
             // 2. Approval (skip if -y)
             ->phase('IF $ARGUMENTS contains -y → skip approval')

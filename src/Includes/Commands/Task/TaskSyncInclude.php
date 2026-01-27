@@ -35,6 +35,7 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
             ->phase('IF not found → ABORT')
             ->phase('IF status=completed → ask "Re-execute?"')
+            ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session (no active work) → continue OR ABORT if another session active')
             ->phase('IF parent_id → load parent context')
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK", limit: 5}'))
 
