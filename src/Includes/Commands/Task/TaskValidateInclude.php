@@ -56,9 +56,9 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('Agent fixes cosmetic inline, reports count in results.');
 
         $this->rule('idempotent')->high()
-            ->text('Validation is idempotent. Check existing fix-tasks before creating. No duplicates.')
-            ->why('Safe re-runs without side effects.')
-            ->onViolation('Search existing tasks, skip duplicates.');
+            ->text('Validation can be re-run safely. Each run creates NEW fix-task (with timestamp suffix if needed). Previous fix-tasks remain for history.')
+            ->why('Re-validation catches regressions. Multiple fix-tasks show validation history.')
+            ->onViolation('Create new fix-task. Add timestamp to title if collision.');
 
         $this->rule('memory-mandatory')->high()
             ->text('Agents MUST search memory BEFORE validation AND store findings AFTER.')
@@ -69,6 +69,11 @@ class TaskValidateInclude extends IncludeArchetype
             ->text('Fix tasks MUST have parent_id = validated task ID.')
             ->why('Maintains hierarchy: validated task → fix subtasks.')
             ->onViolation('Set parent_id when creating fix tasks.');
+
+        $this->rule('mandatory-fix-task')->critical()
+            ->text('When validation finds issues (ALL_ISSUES > 0), MUST execute BOTH: 1) Create fix-task, 2) Update parent status. No exceptions. No "similar task exists" skips.')
+            ->why('Partial execution breaks workflow. User expects complete action.')
+            ->onViolation('Execute BOTH operations. If duplicate concern - add suffix to title, do not skip.');
 
         // =========================================================================
         // INPUT CAPTURE
@@ -286,28 +291,23 @@ Store findings to vector memory.'),
                 '- Minor: {$MINOR.count}',
                 '- Cosmetic fixed inline: {$COSMETIC_FIXED}',
             ]))
-            ->phase('Check existing fix tasks to avoid duplicates:')
-            ->phase(VectorTaskMcp::call('task_list', '{query: "fix $TASK.title", parent_id: $TASK.id, limit: 20}'))
-            ->phase(Store::as('EXISTING_FIX_TASKS', '{existing fix tasks}'))
             ->phase(Operator::if('$ALL_ISSUES.count === 0', [
                 Operator::output(['✅ No issues found. Validation PASSED.']),
                 VectorTaskMcp::call('task_update', '{task_id: $TASK.id, status: "validated", comment: "Validation PASSED. No issues found.", append_comment: true}'),
             ]))
             ->phase(Operator::if('$ALL_ISSUES.count > 0', [
-                'Create consolidated fix task (5-8h batch):',
-                Operator::if('NOT exists similar in $EXISTING_FIX_TASKS', [
-                    VectorTaskMcp::call('task_create', '{
-                        title: "Validation fixes: #{$TASK.id}",
-                        content: "Fix issues found during validation of task #{$TASK.id}: {$TASK.title}\\n\\n## Critical ({$CRITICAL.count})\\n{list with file:line, description, suggestion}\\n\\n## Major ({$MAJOR.count})\\n{list}\\n\\n## Minor ({$MINOR.count})\\n{list}\\n\\n## Context\\n- Memory IDs: {relevant_ids}\\n- Related tasks: {$RELATED_TASKS.ids}",
-                        priority: "{$CRITICAL.count > 0 ? high : medium}",
-                        estimate: {calculated_hours},
-                        tags: ["validation-fix"],
-                        parent_id: $TASK.id
-                    }'),
-                    Store::as('FIX_TASK_ID', '{created task id}'),
-                ]),
+                'MANDATORY: Create fix task AND update status (rule: mandatory-fix-task):',
+                VectorTaskMcp::call('task_create', '{
+                    title: "Validation fixes: #{$TASK.id}",
+                    content: "Fix issues found during validation of task #{$TASK.id}: {$TASK.title}\\n\\n## Critical ({$CRITICAL.count})\\n{list with file:line, description, suggestion}\\n\\n## Major ({$MAJOR.count})\\n{list}\\n\\n## Minor ({$MINOR.count})\\n{list}\\n\\n## Context\\n- Memory IDs: {relevant_ids}\\n- Related tasks: {$RELATED_TASKS.ids}",
+                    priority: "{$CRITICAL.count > 0 ? high : medium}",
+                    estimate: {calculated_hours},
+                    tags: ["validation-fix"],
+                    parent_id: $TASK.id
+                }'),
+                Store::as('FIX_TASK_ID', '{created task id}'),
                 VectorTaskMcp::call('task_update', '{task_id: $TASK.id, status: "pending", comment: "Validation found {$ALL_ISSUES.count} issues. Fix task #{$FIX_TASK_ID} created.", append_comment: true}'),
-                Operator::output(['⚠️ Issues found. Task returned to pending. Fix task created.']),
+                Operator::output(['⚠️ Issues found. Task returned to pending. Fix task #{$FIX_TASK_ID} created.']),
             ]))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Validation #{$TASK.id}: {$TASK.title}\\nResult: {PASSED/NEEDS_WORK}\\nCritical: {$CRITICAL.count}, Major: {$MAJOR.count}, Minor: {$MINOR.count}\\nCosmetic fixed: {$COSMETIC_FIXED}\\nFix task: #{$FIX_TASK_ID or none}", category: "code-solution", tags: ["validation", "quality"]}'))
             ->phase(Operator::output([
