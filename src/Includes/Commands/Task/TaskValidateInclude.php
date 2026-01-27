@@ -21,33 +21,21 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
         $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending. No exceptions.');
 
-        // WORKFLOW
-        $this->guideline('workflow')->example()
-            // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
-            ->phase('IF not found → ABORT')
-            ->phase('IF status NOT IN [completed, tested, validated] → ABORT "Complete first"')
-
-            // 2. Approval (skip if -y)
-            ->phase('IF $ARGUMENTS contains -y → skip approval')
-            ->phase('ELSE → show task info, wait "yes"')
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
-
-            // 3. Validate (3 parallel agents)
-            ->phase(TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. Cosmetic=fix inline. Return issues list.'))
-            ->phase(TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. Cosmetic=fix inline. Return issues list.'))
-            ->phase(TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'))
-
-            // 4. Finalize
-            ->phase('Merge agent results → categorize: Critical/Major/Minor')
-            ->phase('IF issues=0 →')
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'))
-            ->phase('IF issues>0 →')
-            ->phase(VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "pending"}'))
-
-            // 5. Report
-            ->phase('Output: task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID')
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: validation_summary, category: "code-solution"}'));
+        // WORKFLOW - ACTION instruction
+        $this->guideline('workflow')
+            ->text('1. ' . VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' → task.content describes WHAT to validate')
+            ->text('2. IF not found → ABORT')
+            ->text('3. IF status NOT IN [completed, tested, validated] → ABORT "Complete first"')
+            ->text('4. IF -y flag → skip approval, ELSE → show task info, wait "yes"')
+            ->text('5. ' . VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
+            ->text('6. VALIDATE using 3 PARALLEL agents (single message with 3 Task() calls):')
+            ->text('   ' . TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. Cosmetic=fix inline. Return issues list.'))
+            ->text('   ' . TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. Cosmetic=fix inline. Return issues list.'))
+            ->text('   ' . TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'))
+            ->text('7. Merge agent results → categorize: Critical/Major/Minor')
+            ->text('8. IF issues=0 → ' . VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'))
+            ->text('9. IF issues>0 → ' . VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}') . ' + ' . VectorTaskMcp::call('task_update', '{task_id, status: "pending"}'))
+            ->text('10. Output: task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID')
+            ->text('11. ' . VectorMemoryMcp::call('store_memory', '{content: validation_summary, category: "code-solution"}'));
     }
 }
