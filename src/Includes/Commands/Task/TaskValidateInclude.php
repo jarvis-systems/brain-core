@@ -14,7 +14,7 @@ use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Quality-first vector task validation. 3 parallel agents validate: Code Quality (completeness, architecture, security, performance, consistency), Testing (coverage, quality, edge cases, consistency), Documentation (sync, API, docblocks, dependencies, consistency). Creates fix-tasks for issues. Cosmetic fixes applied inline.')]
+#[Purpose('Quality-first vector task validation. 3 parallel agents validate: Code Quality (completeness, architecture, security, performance, consistency), Testing (coverage, quality, edge cases, consistency), Documentation (sync, API, code comments, dependencies, consistency). Creates fix-tasks for issues. Cosmetic fixes applied inline.')]
 class TaskValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -51,9 +51,9 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('Create task instead of fixing.');
 
         $this->rule('cosmetic-inline-fix')->critical()
-            ->text('Cosmetic issues (whitespace, indentation, typos, formatting) MUST be fixed IMMEDIATELY by discovering agent. No tasks for cosmetic.')
-            ->why('Cosmetic fixes are trivial. Creating tasks wastes tokens and context.')
-            ->onViolation('Agent fixes cosmetic inline, reports count in results.');
+            ->text('Cosmetic issues MUST be fixed IMMEDIATELY by discovering agent. No tasks for cosmetic. Cosmetic includes: whitespace, indentation, typos, formatting, comment descriptions (types = functional, descriptions = cosmetic). IGNORE metadata tags (author, version, since, package, copyright, license) - NEVER add, NEVER report.')
+            ->why('Cosmetic fixes are trivial. Creating tasks wastes tokens and context. Metadata tags are obsolete.')
+            ->onViolation('Agent fixes cosmetic inline with Edit tool, reports count in results. NEVER classify comment descriptions as Minor/Major.');
 
         $this->rule('idempotent')->high()
             ->text('Validation can be re-run safely. Each run creates NEW fix-task (with timestamp suffix if needed). Previous fix-tasks remain for history.')
@@ -197,12 +197,12 @@ class TaskValidateInclude extends IncludeArchetype
 
 VALIDATE:
 1. COMPLETENESS - All requirements from {$REQUIREMENTS} implemented
-2. ARCHITECTURE - SOLID principles, correct patterns, no anti-patterns
-3. SECURITY - Input validation, SQL injection, XSS, OWASP top 10
-4. PERFORMANCE - N+1 queries, memory leaks, complexity issues
+2. ARCHITECTURE - Design principles, correct patterns, no anti-patterns
+3. SECURITY - Input validation, injection attacks, common vulnerabilities
+4. PERFORMANCE - Memory leaks, complexity issues, inefficient algorithms
 5. CODE CONSISTENCY - Naming conventions, style patterns across files
 
-COSMETIC RULE: Whitespace/indentation issues → FIX IMMEDIATELY with Edit tool. Do NOT report as findings.
+COSMETIC (FIX IMMEDIATELY, do NOT report): whitespace, indentation, formatting.
 
 RETURN: {
   completeness: [{requirement_id, status: implemented|partial|missing, evidence: file:line}],
@@ -226,9 +226,9 @@ VALIDATE:
 4. ERROR HANDLING - Exceptions caught, fallbacks work, graceful degradation
 5. TEST CONSISTENCY - Naming patterns, structure, setup/teardown across test files
 
-COSMETIC RULE: Whitespace/formatting in tests → FIX IMMEDIATELY with Edit tool.
+COSMETIC (FIX IMMEDIATELY, do NOT report): whitespace, formatting in tests.
 
-RUN TESTS if possible: Bash("php artisan test" or "vendor/bin/phpunit")
+RUN TESTS if test runner available (detect from project: package.json, composer.json, Makefile, etc.)
 
 RETURN: {
   coverage: [{file, coverage_status, missing_scenarios}],
@@ -249,16 +249,18 @@ Store findings to vector memory.'),
 VALIDATE:
 1. DOCS SYNC - Code matches documentation, no stale docs
 2. API DOCS - Endpoints documented, params, responses, examples
-3. DOCBLOCKS - PHPDoc complete, types correct, descriptions meaningful
-4. DEPENDENCIES - Imports clean, composer.json accurate, no unused packages
+3. CODE COMMENTS - Type hints present where language requires/benefits
+4. DEPENDENCIES - Imports clean, dependency manifest accurate
 5. DOCS CONSISTENCY - Style, format, terminology consistent across docs
 
-COSMETIC RULE: Typos, formatting issues in docs → FIX IMMEDIATELY with Edit tool.
+COSMETIC (FIX IMMEDIATELY, do NOT report): typos, formatting, comment descriptions (not types).
+
+IGNORE (NEVER add, NEVER report): metadata tags (author, version, since, package, copyright, license).
 
 RETURN: {
   sync: [{doc_file, sync_status, gaps}],
   api: [{endpoint, documented: bool, missing_info}],
-  docblocks: [{file, missing_docs, incomplete_docs}],
+  comments: [{file, missing_type_hints}],
   dependencies: [{issue, file, severity}],
   consistency: [{style_issue, files, suggestion}],
   cosmetic_fixes_applied: N
@@ -280,10 +282,10 @@ Store findings to vector memory.'),
             ->phase('Merge results from all agents:')
             ->phase(Store::as('ALL_ISSUES', '{merged issues from AGENT_RESULTS}'))
             ->phase(Store::as('COSMETIC_FIXED', '{sum of cosmetic_fixes_applied}'))
-            ->phase('Categorize by severity:')
+            ->phase('Categorize by severity (comment descriptions = COSMETIC, already fixed inline):')
             ->phase(Store::as('CRITICAL', '{security, architecture, missing core requirements}'))
-            ->phase(Store::as('MAJOR', '{functionality, test coverage, performance}'))
-            ->phase(Store::as('MINOR', '{consistency, edge cases, minor gaps}'))
+            ->phase(Store::as('MAJOR', '{functionality, test coverage, performance, missing type hints}'))
+            ->phase(Store::as('MINOR', '{consistency, edge cases, minor gaps - NEVER comment descriptions}'))
             ->phase(Operator::output([
                 'Results:',
                 '- Critical: {$CRITICAL.count}',
