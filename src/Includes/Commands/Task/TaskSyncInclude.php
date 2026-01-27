@@ -46,8 +46,9 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase('IF parent_id → ' . VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context')
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → load subtasks if any')
 
-            // 2. Context gathering (memory + docs + web)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}'))
+            // 2. Context gathering (memory + docs + web + related tasks)
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → past implementations, patterns')
+            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' → related tasks')
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → get documentation index (returns: Path, Name, Description)')
             ->phase('IF docs found → ' . ReadTool::call('{doc.path}') . ' for each relevant doc')
             ->phase('IF web research needed → ' . WebSearchTool::describe('Research best practices for task'))

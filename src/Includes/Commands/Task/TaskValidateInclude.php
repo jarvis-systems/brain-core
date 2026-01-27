@@ -6,6 +6,8 @@ namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
+use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
@@ -33,8 +35,15 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('IF not found → ABORT')
             ->phase('IF status NOT IN [completed, tested, validated, in_progress] → ABORT "Complete first"')
             ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session (no active work) → continue validation OR ABORT if another session active')
+            ->phase('IF parent_id → ' . VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context')
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → load subtasks if any')
 
-            // 2. Approval (skip if -y)
+            // 2. Context gathering (memory + docs + related tasks)
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → past implementations, patterns')
+            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' → related tasks')
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → get documentation index for validation context')
+
+            // 3. Approval (skip if -y)
             ->phase('IF $ARGUMENTS contains -y → skip approval')
             ->phase('ELSE → show task info, wait "yes"')
             ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
@@ -55,5 +64,13 @@ class TaskValidateInclude extends IncludeArchetype
             // 5. Report
             ->phase('Output: task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID')
             ->phase(VectorMemoryMcp::call('store_memory', '{content: validation_summary, category: "code-solution"}'));
+
+        // Error handling
+        $this->guideline('error-handling')->example()
+            ->phase('IF task not found → ABORT, suggest task_list')
+            ->phase('IF task status invalid → ABORT "Complete first"')
+            ->phase('IF agent fails → retry OR continue with remaining agents')
+            ->phase('IF fix-task creation fails → store to memory for manual review')
+            ->phase('IF user rejects validation → accept modifications, re-validate');
     }
 }
