@@ -17,6 +17,7 @@ class TaskValidateInclude extends IncludeArchetype
     {
         // RULES (compact)
         $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
+        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No "fix-task", "not a deliverable", "already validated" excuses. JUST EXECUTE.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic (whitespace, typos, formatting, comment descriptions) = fix inline. Metadata tags (author, version, since) = IGNORE.');
         $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
         $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending. No exceptions.');
