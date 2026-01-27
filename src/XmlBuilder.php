@@ -73,9 +73,11 @@ class XmlBuilder
             : [];
         $single = (bool) ($cleanNode['single'] ?? false);
 
-        // Flatten purpose+guidelines: extract guidelines from purpose and render as siblings
+        // Flatten purpose/execute/mission/provides+guidelines: extract guidelines and render as siblings
+        // All these elements can have nested guidelines that should be flattened
         $extractedGuidelines = null;
-        if ($element === 'purpose') {
+        $purposeLikeElements = ['purpose', 'execute', 'mission', 'provides'];
+        if (in_array($element, $purposeLikeElements, true)) {
             foreach ($children as $idx => $child) {
                 if (is_array($child) && ($child['element'] ?? '') === 'guidelines') {
                     $extractedGuidelines = $child;
@@ -113,17 +115,23 @@ class XmlBuilder
                 (isset($params['id']) && $params['id'] ? str_replace(['_','-'], ' ', $params['id']) : 'Guideline') => null
             ], $scc);
         } elseif ($element === 'rule') {
+            // Format rule with bold labels and auto-coded status values
+            // Research shows bold increases model focus on key terms
+            // Backticks for status values prevent semantic confusion
+            $ruleText = collect($children)->where('element', 'text')->first()['text'] ?? null;
+            $ruleChildren = collect($children)->where('element', '!=', 'text')->mapWithKeys(function ($child) {
+                $key = $child['element'] ?? 'item';
+                $value = $child['text'] ?? null;
+                // Bold the label + auto-code status values in the text
+                return [MD::bold($key) => $value !== null ? MD::autoCode($value) : null];
+            })->toArray();
+
             $lines[] = MD::fromArray([
                 (isset($params['id']) && $params['id'] ? $params['id'] : 'Rule')
-                . (isset($params['severity']) && $params['severity'] ? ' (' . strtoupper($params['severity']) . ')' : '')
-                => collect($children)->where('element', 'text')->first()['text'] ?? null,
-                collect($children)->where('element', '!=', 'text')->mapWithKeys(function ($child) {
-                    $key = $child['element'] ?? 'item';
-                    $value = $child['text'] ?? null;
-                    return [$key => $value];
-                })->toArray()
+                . (isset($params['severity']) && $params['severity'] ? ' ' . MD::severity($params['severity']) : '')
+                => $ruleText !== null ? MD::autoCode($ruleText) : null,
+                $ruleChildren
             ], $sccNext);
-            //dd($children);
         } elseif (! isset(static::$cache['iron_rules_exists'])) {
             $lines[] = '<' . $element . $attributes . '>';
         }
@@ -164,17 +172,21 @@ class XmlBuilder
 
             if ($element === 'guideline') {
                 if ($child['element'] === 'text') {
+                    // Auto-code status values in guideline text
+                    $guidelineText = MD::autoCode($child['text']);
                     $lines[] = MD::fromArray([
-                        $child['text']
+                        $guidelineText
                     ], $sccNext);
                 } elseif ($child['element'] === 'example') {
                     if (isset($child['text']) && trim($child['text']) !== '') {
-                        $examples[] = $child['text'];
+                        // Auto-code status values in examples
+                        $examples[] = MD::autoCode($child['text']);
                     }
-                    foreach ($child['child'] as $i => $item) {
+                    foreach ($child['child'] as $idx => $item) {
                         if (isset($item['text']) && trim($item['text']) !== '') {
-                            $key = $item['name'] ?? $i;
-                            $examples[$key] = $item['text'];
+                            $key = $item['name'] ?? $idx;
+                            // Format example key in code style for clarity
+                            $examples[MD::code($key)] = MD::autoCode($item['text']);
                         }
                     }
                 }
@@ -215,8 +227,8 @@ class XmlBuilder
             $lines[] = '</' . $element . '>';
         }
 
-        // Append extracted guidelines after purpose closing tag
-        if ($element === 'purpose' && $extractedGuidelines !== null) {
+        // Append extracted guidelines after purpose/execute/mission/provides closing tag
+        if (in_array($element, $purposeLikeElements, true) && $extractedGuidelines !== null) {
             $lines[] = $this->renderNode($extractedGuidelines, false, $i + 1);
         }
 

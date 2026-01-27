@@ -141,18 +141,18 @@ class InitAgentsInclude extends IncludeArchetype
                         Store::get('CACHE_AGE'),
                     ),
                     Operator::task(
-                        'IF(cache_valid === true) → THEN → Use cached patterns, skip web search → END-IF',
-                        'IF(cache_valid === false) → THEN → [',
-                        '  Research: multi-agent system architecture best practices {year}',
-                        '  Research: AI agent orchestration patterns {year}',
-                        '  Research: domain-driven agent design principles {year}',
-                        '  Synthesize findings into unified patterns',
-                        '] → END-IF',
+                        Operator::if('cache_valid === true', 'Use cached patterns, skip web search'),
+                        Operator::if('cache_valid === false', [
+                            'Research: multi-agent system architecture best practices {year}',
+                            'Research: AI agent orchestration patterns {year}',
+                            'Research: domain-driven agent design principles {year}',
+                            'Synthesize findings into unified patterns',
+                        ]),
                     ),
                     Operator::output('{architecture: [...], orchestration: [...], domain_design: [...], sources: [...], cache_used: true|false}'),
                     Store::as('INDUSTRY_PATTERNS')
                 ),
-                'IF(fresh research performed) → Store results in vector memory',
+                Operator::if('fresh research performed', 'Store results in vector memory'),
                 VectorMemoryMcp::call('store_memory', '{content: $INDUSTRY_PATTERNS, category: "learning", tags: ["agent-patterns", "best-practices", "{CURRENT_YEAR}"]}')
             ]))
             ->phase(Operator::if('search_mode === "targeted"', [
@@ -214,14 +214,14 @@ class InitAgentsInclude extends IncludeArchetype
                     ),
                     Operator::task(
                         'Extract top 3 most important technologies from stack',
-                        'IF(search_mode === "targeted") → THEN → Focus on $SEARCH_FILTER tech → END-IF',
-                        'FOREACH(technology in top_3_technologies) → [',
-                        '  IF(technology is major framework/language) → THEN → [',
-                        '    Research: {technology} specialized agents best practices {year}',
-                        '    Research: {technology} multi-agent architecture examples {year}',
-                        '    Extract: common patterns, agent types, use cases',
-                        '  ] → END-IF',
-                        '] → END-FOREACH',
+                        Operator::if('search_mode === "targeted"', 'Focus on ' . Store::get('SEARCH_FILTER') . ' tech'),
+                        Operator::forEach('technology in top_3_technologies', [
+                            Operator::if('technology is major framework/language', [
+                                'Research: {technology} specialized agents best practices {year}',
+                                'Research: {technology} multi-agent architecture examples {year}',
+                                'Extract: common patterns, agent types, use cases',
+                            ]),
+                        ]),
                         'Synthesize per-technology patterns',
                     ),
                     Operator::output('{tech_patterns: {Laravel: [...], React: [...]}, tech_examples: {...}}'),
@@ -356,16 +356,16 @@ class InitAgentsInclude extends IncludeArchetype
         $this->guideline('phase7-report-enhanced')
             ->goal('Report generation results with confidence scores, industry alignment, and caching status')
             ->example()
-            ->phase()->if('agents_generated > 0', [
+            ->phase(Operator::if('agents_generated > 0', [
                 'Calculate: avg_confidence = average(generated_agents.confidence)',
                 'Calculate: avg_industry_alignment = average(generated_agents.industry_alignment)',
                 VectorMemoryMcp::call('store_memory', '{content: "Init Gap Analysis: mode={search_mode}, technologies={$PROJECT_STACK.technologies}, agents_generated={agents_count}, avg_confidence={avg_confidence}, avg_industry_alignment={avg_industry_alignment}, coverage=improved, date={$CURRENT_DATE}", category: "architecture", tags: ["init", "gap-analysis", "agents", "{CURRENT_YEAR}"]}'),
-                Operator::output('Generation summary with agent details, confidence scores, and industry alignment metrics')
-            ])
-            ->phase()->if('agents_generated === 0', [
+                Operator::output('Generation summary with agent details, confidence scores, and industry alignment metrics'),
+            ]))
+            ->phase(Operator::if('agents_generated === 0', [
                 VectorMemoryMcp::call('store_memory', '{content: "Init Gap Analysis: mode={search_mode}, result=full_coverage, agents={agents_count}, date={$CURRENT_DATE}", category: "architecture", tags: ["init", "full-coverage", "{CURRENT_YEAR}"]}'),
-                Operator::output('Full coverage confirmation with existing agent list and industry coverage score')
-            ])
+                Operator::output('Full coverage confirmation with existing agent list and industry coverage score'),
+            ]))
             ->phase('Include cache performance metrics: {cache_hits}, {web_searches_performed}');
 
         // Response Format (unified)

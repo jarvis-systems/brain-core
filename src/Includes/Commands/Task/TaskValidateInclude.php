@@ -7,6 +7,8 @@ namespace BrainCore\Includes\Commands\Task;
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\BrainCLI;
+use BrainCore\Compilation\Operator;
+use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\VectorMemoryMcp;
@@ -34,46 +36,64 @@ class TaskValidateInclude extends IncludeArchetype
         // WORKFLOW
         $this->guideline('workflow')->example()
             // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
-            ->phase('IF not found → ABORT')
-            ->phase('IF status NOT IN [completed, tested, validated, in_progress] → ABORT "Complete first"')
-            ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session (no active work) → continue validation OR ABORT if another session active')
-            ->phase('IF parent_id → ' . VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context')
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → load subtasks if any')
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' ' . Store::as('TASK'))
+            ->phase(Operator::if('not found', Operator::abort()))
+            ->phase(Operator::if(
+                'status NOT IN [completed, tested, validated, in_progress]',
+                Operator::abort('Complete first')
+            ))
+            ->phase(Operator::if(
+                'status=in_progress',
+                'SESSION RECOVERY: check if crashed session (no active work)',
+                Operator::abort('another session active')
+            ))
+            ->phase(Operator::if(
+                Store::get('TASK') . '.parent_id',
+                VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT')
+            ))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' ' . Store::as('SUBTASKS'))
 
             // 2. Context gathering (memory + docs + related tasks)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → past implementations, patterns')
-            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' → related tasks')
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → get documentation index for validation context')
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY_CONTEXT'))
+            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' ' . Store::as('RELATED_TASKS'))
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' ' . Store::as('DOCS_INDEX'))
 
             // 3. Approval (skip if -y)
-            ->phase('IF $ARGUMENTS contains -y → skip approval')
-            ->phase('ELSE → show task info, wait "yes"')
+            ->phase(Operator::if(
+                '$ARGUMENTS contains -y',
+                Operator::skip('approval'),
+                'show task info, wait "yes"'
+            ))
             ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
 
-            // 3. Validate (3 parallel agents)
-            ->phase(TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. Cosmetic=fix inline. Return issues list.'))
-            ->phase(TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. Cosmetic=fix inline. Return issues list.'))
-            ->phase(TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'))
+            // 4. Validate (3 parallel agents)
+            ->phase(Operator::parallel([
+                TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. Cosmetic=fix inline. Return issues list.'),
+                TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. Cosmetic=fix inline. Return issues list.'),
+                TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'),
+            ]))
 
-            // 4. Finalize
-            ->phase('Merge agent results → categorize: Critical/Major/Minor')
-            ->phase('IF issues=0 →')
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'))
-            ->phase('IF issues>0 →')
-            ->phase(VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "pending"}'))
+            // 5. Finalize
+            ->phase('Merge agent results ' . Store::as('ISSUES') . ' categorize: Critical/Major/Minor')
+            ->phase(Operator::if(
+                'issues=0',
+                VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'),
+                [
+                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}'),
+                    VectorTaskMcp::call('task_update', '{task_id, status: "pending"}'),
+                ]
+            ))
 
-            // 5. Report
-            ->phase('Output: task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID')
+            // 6. Report
+            ->phase(Operator::output('task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID'))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: validation_summary, category: "code-solution"}'));
 
         // Error handling
         $this->guideline('error-handling')->example()
-            ->phase('IF task not found → ABORT, suggest task_list')
-            ->phase('IF task status invalid → ABORT "Complete first"')
-            ->phase('IF agent fails → retry OR continue with remaining agents')
-            ->phase('IF fix-task creation fails → store to memory for manual review')
-            ->phase('IF user rejects validation → accept modifications, re-validate');
+            ->phase(Operator::if('task not found', Operator::abort('suggest task_list')))
+            ->phase(Operator::if('task status invalid', Operator::abort('Complete first')))
+            ->phase(Operator::if('agent fails', 'retry', 'continue with remaining agents'))
+            ->phase(Operator::if('fix-task creation fails', 'store to memory for manual review'))
+            ->phase(Operator::if('user rejects validation', 'accept modifications, re-validate'));
     }
 }

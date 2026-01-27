@@ -36,31 +36,30 @@ class TaskAsyncInclude extends IncludeArchetype
         // WORKFLOW
         $this->guideline('workflow')->example()
             // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' → task.content IS your work order')
-            ->phase('IF not found → ABORT')
-            ->phase('IF status=completed → ask "Re-execute?"')
-            ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session → continue OR ABORT if another session active')
-            ->phase('IF status=tested AND comment contains "TDD MODE" → TDD execution mode (tests exist, implement feature)')
-            ->phase('IF parent_id → ' . VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context')
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → load subtasks if any')
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' → ' . Store::as('TASK', 'task.content IS your work order'))
+            ->phase(Operator::if('not found', Operator::abort('Task not found')))
+            ->phase(Operator::if('status=completed', 'ask "Re-execute?"'))
+            ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed session → continue', Operator::abort('another session active')))
+            ->phase(Operator::if('status=tested AND comment contains "TDD MODE"', 'TDD execution mode (tests exist, implement feature)'))
+            ->phase(Operator::if('parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → ' . Store::as('SUBTASKS'))
 
             // 2. Context gathering (memory + docs + web + related tasks)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → past implementations, patterns')
-            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' → related tasks')
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → get documentation index')
-            ->phase('IF docs found → delegate: ' . TaskTool::agent('explore', 'Read and analyze documentation files: {doc.paths}'))
-            ->phase('IF web research needed → delegate: ' . TaskTool::agent('web-research-master', 'Research best practices for: {task.title}'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → ' . Store::as('MEMORY', 'past implementations, patterns'))
+            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' → ' . Store::as('RELATED', 'related tasks'))
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS', 'documentation index'))
+            ->phase(Operator::if('docs found', 'delegate: ' . TaskTool::agent('explore', 'Read and analyze documentation files: {doc.paths}')))
+            ->phase(Operator::if('web research needed', 'delegate: ' . TaskTool::agent('web-research-master', 'Research best practices for: {task.title}')))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for task: {summary}", category: "tool-usage"}'))
 
             // 3. Plan & Approval
             ->phase('Analyze task.content → break into atomic agent subtasks')
             ->phase(Store::as('PLAN', '[{agent, subtask, files, parallel: true/false}]'))
-            ->phase('IF -y flag → skip to execution immediately')
-            ->phase('ELSE → show brief plan, wait "yes"')
+            ->phase(Operator::if('-y flag', 'skip to execution immediately', 'show brief plan, wait "yes"'))
             ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress", comment: "Execution started", append_comment: true}'))
 
             // 4. Execute via agents
-            ->phase('Delegate to agents based on PLAN:')
+            ->phase('Delegate to agents based on ' . Store::get('PLAN') . ':')
             ->phase('Independent subtasks → multiple ' . TaskTool::agent('{agent}', '{subtask}') . ' in ONE message (parallel)')
             ->phase('Dependent subtasks → sequential delegation')
             ->phase('Available agents: ' . BashTool::call(BrainCLI::LIST_MASTERS))
@@ -81,18 +80,17 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // TDD mode
         $this->guideline('tdd-mode')->example()
-            ->phase('IF task.comment contains "TDD MODE" AND status=tested:')
-            ->phase('Execute implementation via agents based on task.content')
+            ->phase(Operator::if('task.comment contains "TDD MODE" AND status=tested', 'Execute implementation via agents based on task.content'))
             ->phase('After implementation → ' . TaskTool::agent('explore', 'Run tests: php artisan test --filter="{pattern}"'))
-            ->phase('IF all tests pass → ' . VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "TDD: Tests PASSED", append_comment: true}'))
-            ->phase('IF tests fail → continue implementation via agents, do NOT mark completed');
+            ->phase(Operator::if('all tests pass', VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "TDD: Tests PASSED", append_comment: true}')))
+            ->phase(Operator::if('tests fail', 'continue implementation via agents, do NOT mark completed'));
 
         // Error handling
         $this->guideline('error-handling')->example()
-            ->phase('IF task not found → ABORT, suggest task_list')
-            ->phase('IF task already completed → ask "Re-execute?"')
-            ->phase('IF agent fails → retry with different agent OR escalate to user')
-            ->phase('IF user rejects plan → accept modifications, rebuild plan, re-present');
+            ->phase(Operator::if('task not found', Operator::abort('suggest task_list')))
+            ->phase(Operator::if('task already completed', 'ask "Re-execute?"'))
+            ->phase(Operator::if('agent fails', 'retry with different agent', 'escalate to user'))
+            ->phase(Operator::if('user rejects plan', 'accept modifications, rebuild plan, re-present'));
 
         // Agent memory pattern
         $this->guideline('agent-memory')

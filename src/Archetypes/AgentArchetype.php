@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace BrainCore\Archetypes;
 
 use BrainCore\Archetypes\Traits\DeterminismTrait;
-use BrainCore\Archetypes\Traits\ExtractAttributesTrait;
+use BrainCore\Archetypes\Traits\ExtractAgentAttributesTrait;
 use BrainCore\Archetypes\Traits\GuidelinesTrait;
 use BrainCore\Archetypes\Traits\IronRulesTrait;
-use BrainCore\Archetypes\Traits\PurposeTrait;
+use BrainCore\Archetypes\Traits\MissionTrait;
 use BrainCore\Archetypes\Traits\ResponseTrait;
 use BrainCore\Archetypes\Traits\StyleTrait;
 use BrainCore\Architectures\ArchetypeArchitecture;
@@ -20,12 +20,12 @@ use Illuminate\Support\Str;
 abstract class AgentArchetype extends ArchetypeArchitecture
 {
     use StyleTrait;
-    use PurposeTrait;
+    use MissionTrait;
     use ResponseTrait;
     use IronRulesTrait;
     use GuidelinesTrait;
     use DeterminismTrait;
-    use ExtractAttributesTrait;
+    use ExtractAgentAttributesTrait;
 
     /**
      * Default element name.

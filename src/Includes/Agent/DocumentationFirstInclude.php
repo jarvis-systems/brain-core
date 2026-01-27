@@ -6,6 +6,8 @@ namespace BrainCore\Includes\Agent;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\Operator;
+use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 
 #[Purpose(<<<'PURPOSE'
@@ -35,9 +37,9 @@ class DocumentationFirstInclude extends IncludeArchetype
         $this->guideline('docs-discovery-workflow')
             ->text('Standard workflow for documentation discovery.')
             ->example()
-                ->phase('step-1', BashTool::call('brain docs {keywords}') . ' → discover existing docs')
-                ->phase('step-2', 'IF docs found → Read and apply documented patterns')
-                ->phase('step-3', 'IF no docs → proceed with caution, flag for documentation');
+                ->phase('step-1', BashTool::call('brain docs {keywords}') . ' ' . Store::as('DOCS', 'discover existing docs'))
+                ->phase('step-2', Operator::if('docs found', 'Read and apply documented patterns'))
+                ->phase('step-3', Operator::if('no docs', 'proceed with caution, flag for documentation'));
 
         $this->guideline('docs-conflict-resolution')
             ->text('When external sources conflict with .docs.')

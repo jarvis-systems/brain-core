@@ -4,8 +4,15 @@ declare(strict_types=1);
 
 namespace BrainCore\Compilation\Traits;
 
+use BrainCore\MD;
 use Symfony\Component\VarExporter\VarExporter;
 
+/**
+ * Standard compilation patterns for pseudo-syntax generation.
+ *
+ * Uses MD constants for consistent formatting across all compiled output.
+ * Arrows (→) indicate flow/causality - research shows this improves model comprehension.
+ */
 trait CompileStandartsTrait
 {
     protected static function generateOperator(
@@ -20,7 +27,7 @@ trait CompileStandartsTrait
         return $name
             . static::generateOperatorArguments($arguments, $separatedArgs)
             . (! empty($body = static::generateOperatorBody($body, $hybridBody, $concatBody, $name))
-                ? ' → ' . $body : '');
+                ? ' ' . MD::ARROW . ' ' . $body : '');
     }
 
     protected static function generateOperatorArguments(array|string $arguments = [], bool $separated = false): string
@@ -58,7 +65,7 @@ trait CompileStandartsTrait
                 ($hybrid ? '' : '[') .
                 static::generateOperatorBodyLine($body) .
                 ($hybrid ? '' : ']') .
-                ($name ? " → END-$name" : '')
+                ($name ? ' ' . MD::ARROW . " END-$name" : '')
             )
             : '';
     }
@@ -71,7 +78,7 @@ trait CompileStandartsTrait
             }
         }
 
-        return implode(' → ', $args);
+        return implode(' ' . MD::ARROW . ' ', $args);
     }
 
     protected static function concat(...$args): string
