@@ -24,6 +24,7 @@ class TaskValidateInclude extends IncludeArchetype
 
         // EXECUTION DIRECTIVE
         $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately when command invoked. Do NOT ask questions, do NOT wait - START with step 1.');
+        $this->rule('no-analysis')->critical()->text('NO verbose analysis, NO "let me think", NO meta-commentary. -y flag = SILENT execution. Just call tools and DO the work.');
 
         // WORKFLOW
         $this->guideline('workflow')->example()

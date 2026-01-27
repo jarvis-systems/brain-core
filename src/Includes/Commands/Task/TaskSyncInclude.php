@@ -6,28 +6,34 @@ namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
+use BrainCore\Compilation\Operator;
+use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\EditTool;
 use BrainCore\Compilation\Tools\GlobTool;
 use BrainCore\Compilation\Tools\GrepTool;
 use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Compilation\Tools\WebSearchTool;
 use BrainCore\Compilation\Tools\WriteTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Direct sync execution of vector task by Brain. No agent delegation. Uses Read/Edit/Write/Glob/Grep directly.')]
+#[Purpose('Direct sync execution of vector task by Brain. No agent delegation. Uses Read/Edit/Write/Glob/Grep directly. Includes docs gathering via brain docs, web research, TDD mode support.')]
 class TaskSyncInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        // EXECUTION DIRECTIVE
+        // EXECUTION DIRECTIVES
         $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately when command invoked. Do NOT ask questions, do NOT wait - START with step 1.');
+        $this->rule('no-analysis')->critical()->text('NO verbose analysis, NO "let me think", NO plan output. -y flag = SILENT execution. Just call tools and DO the work.');
+        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to execute. Task ID given = execute it. JUST DO IT.');
 
         // RULES
         $this->rule('no-delegation')->critical()->text('Brain executes ALL steps directly. NO Task() delegation. Use ONLY: Read, Edit, Write, Glob, Grep, Bash.');
-        $this->rule('single-approval')->critical()->text('ONE approval gate after plan. -y flag = auto-approve.');
+        $this->rule('auto-approve')->critical()->text('-y flag = NO plan output, NO approval waiting. Execute immediately and silently.');
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
-        $this->rule('atomic-only')->critical()->text('Execute ONLY approved plan. NO improvisation.');
+        $this->rule('atomic-only')->critical()->text('Execute ONLY task.content requirements. NO improvisation.');
 
         // WORKFLOW
         $this->guideline('workflow')->example()
@@ -35,35 +41,53 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
             ->phase('IF not found → ABORT')
             ->phase('IF status=completed → ask "Re-execute?"')
-            ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session (no active work) → continue OR ABORT if another session active')
-            ->phase('IF parent_id → load parent context')
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK", limit: 5}'))
+            ->phase('IF status=in_progress → SESSION RECOVERY: check if crashed session → continue OR ABORT if another session active')
+            ->phase('IF status=tested AND comment contains "TDD MODE" → TDD execution mode (tests exist, implement feature)')
+            ->phase('IF parent_id → ' . VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context')
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → load subtasks if any')
 
-            // 2. Explore & Plan
-            ->phase(GlobTool::describe('Find relevant files'))
+            // 2. Context gathering (memory + docs + web)
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}'))
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → get documentation index (returns: Path, Name, Description)')
+            ->phase('IF docs found → ' . ReadTool::call('{doc.path}') . ' for each relevant doc')
+            ->phase('IF web research needed → ' . WebSearchTool::describe('Research best practices for task'))
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for task: {summary}", category: "tool-usage"}'))
+
+            // 3. Explore & Plan
+            ->phase(GlobTool::describe('Find relevant files based on task'))
             ->phase(GrepTool::describe('Search code patterns'))
             ->phase(ReadTool::describe('Read identified files'))
-            ->phase('Create atomic plan: [{step, file, action: read|edit|write, changes}]')
-            ->phase('Show plan → WAIT approval (skip if -y)')
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
+            ->phase(Store::as('PLAN', '[{step, file, action: read|edit|write, changes}]'))
+            ->phase('IF -y flag → skip to execution immediately')
+            ->phase('ELSE → show brief plan, wait "yes"')
+            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress", comment: "Execution started", append_comment: true}'))
 
-            // 3. Execute directly
-            ->phase('FOR EACH step:')
-            ->phase(ReadTool::call('{file}'))
-            ->phase(EditTool::call('{file}', '{old}', '{new}'))
-            ->phase('OR ' . WriteTool::call('{file}', '{content}'))
+            // 4. Execute directly
+            ->phase(Operator::forEach('step in PLAN', [
+                ReadTool::call('{step.file}'),
+                EditTool::call('{step.file}', '{old}', '{new}'),
+                'OR ' . WriteTool::call('{step.file}', '{content}'),
+            ]))
             ->phase('IF step fails → Retry/Skip/Abort')
 
-            // 4. Complete
+            // 5. Complete
             ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "Files: {list}", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}", category: "code-solution"}'))
-            ->phase('Output: task, status, files modified');
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, learnings: {insights}", category: "code-solution"}'));
 
         // TDD mode
         $this->guideline('tdd-mode')->example()
             ->phase('IF task.comment contains "TDD MODE" AND status=tested:')
-            ->phase('Execute implementation → ' . BashTool::describe('Run related tests'))
-            ->phase('IF tests pass → status=completed')
-            ->phase('IF tests fail → continue implementation');
+            ->phase('Execute implementation based on task.content')
+            ->phase(BashTool::describe('Run related tests', 'php artisan test --filter="{pattern}" OR vendor/bin/pest --filter="{pattern}"'))
+            ->phase('IF all tests pass → ' . VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "TDD: Tests PASSED", append_comment: true}'))
+            ->phase('IF tests fail → continue implementation, do NOT mark completed');
+
+        // Error handling
+        $this->guideline('error-handling')->example()
+            ->phase('IF task not found → ABORT, suggest task_list')
+            ->phase('IF task already completed → ask "Re-execute?"')
+            ->phase('IF file not found → offer: Create / Specify correct path / Abort')
+            ->phase('IF edit conflict (old_string not found) → Re-read file, adjust edit, retry')
+            ->phase('IF user rejects plan → accept modifications, rebuild plan, re-present');
     }
 }
