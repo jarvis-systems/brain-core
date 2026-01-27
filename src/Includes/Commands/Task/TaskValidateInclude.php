@@ -6,337 +6,48 @@ namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
-use BrainCore\Compilation\BrainCLI;
-use BrainCore\Compilation\Operator;
-use BrainCore\Compilation\Store;
-use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Quality-first vector task validation. 3 parallel agents validate: Code Quality (completeness, architecture, security, performance, consistency), Testing (coverage, quality, edge cases, consistency), Documentation (sync, API, code comments, dependencies, consistency). Creates fix-tasks for issues. Cosmetic fixes applied inline.')]
+#[Purpose('Validate vector task. 3 parallel agents: Code Quality, Testing, Documentation. Creates fix-tasks for issues. Cosmetic fixed inline.')]
 class TaskValidateInclude extends IncludeArchetype
 {
-    use TaskCommandCommonTrait;
-
     protected function handle(): void
     {
-        // =========================================================================
-        // CORE RULES (9 essential rules)
-        // =========================================================================
+        // RULES (compact)
+        $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
+        $this->rule('cosmetic-inline')->critical()->text('Cosmetic (whitespace, typos, formatting, comment descriptions) = fix inline. Metadata tags (author, version, since) = IGNORE.');
+        $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
+        $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending. No exceptions.');
 
-        $this->rule('always-execute')->critical()
-            ->text('ALWAYS execute FULL validation when command is invoked. NEVER skip based on current status, child statuses, or previous validation results.')
-            ->why('User invoked command = user wants validation. LLM must not "optimize" by skipping. Re-validation catches regressions and hallucinations.')
-            ->onViolation('Execute full validation. Status "validated" means RE-validate, not skip.');
+        // WORKFLOW
+        $this->guideline('workflow')->example()
+            // 1. Load task
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
+            ->phase('IF not found → ABORT')
+            ->phase('IF status NOT IN [completed, tested, validated] → ABORT "Complete first"')
 
-        $this->rule('auto-approve-not-skip')->critical()
-            ->text('Flag -y (auto-approve) means "skip approval prompt", NOT "skip validation". Full validation MUST execute.')
-            ->why('Auto-approve saves user interaction time, not validation time.')
-            ->onViolation('Execute full validation even with -y flag.');
+            // 2. Approval (skip if -y)
+            ->phase('IF $ARGUMENTS contains -y → skip approval')
+            ->phase('ELSE → show task info, wait "yes"')
+            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
 
-        $this->rule('vector-task-id-required')->critical()
-            ->text('Input MUST be valid vector task ID. Formats: "15", "#15", "task 15", "task:15".')
-            ->why('This command validates vector tasks only.')
-            ->onViolation('STOP. Report: "Use /do:validate for text-based validation."');
+            // 3. Validate (3 parallel agents)
+            ->phase(TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. Cosmetic=fix inline. Return issues list.'))
+            ->phase(TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. Cosmetic=fix inline. Return issues list.'))
+            ->phase(TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'))
 
-        $this->rule('validatable-status')->critical()
-            ->text('Only tasks with status "completed", "tested", or "validated" can be validated.')
-            ->why('Validation audits finished work.')
-            ->onViolation('Report: "Task #{id} has status {status}. Complete via /task:async first."');
+            // 4. Finalize
+            ->phase('Merge agent results → categorize: Critical/Major/Minor')
+            ->phase('IF issues=0 →')
+            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'))
+            ->phase('IF issues>0 →')
+            ->phase(VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "pending"}'))
 
-        $this->rule('no-direct-fixes')->critical()
-            ->text('NEVER fix functional issues directly. Create tasks for: code logic, architecture, security, missing features.')
-            ->why('Traceability. All code changes tracked via task system.')
-            ->onViolation('Create task instead of fixing.');
-
-        $this->rule('cosmetic-inline-fix')->critical()
-            ->text('Cosmetic issues MUST be fixed IMMEDIATELY by discovering agent. No tasks for cosmetic. Cosmetic includes: whitespace, indentation, typos, formatting, comment descriptions (types = functional, descriptions = cosmetic). IGNORE metadata tags (author, version, since, package, copyright, license) - NEVER add, NEVER report.')
-            ->why('Cosmetic fixes are trivial. Creating tasks wastes tokens and context. Metadata tags are obsolete.')
-            ->onViolation('Agent fixes cosmetic inline with Edit tool, reports count in results. NEVER classify comment descriptions as Minor/Major.');
-
-        $this->rule('idempotent')->high()
-            ->text('Validation can be re-run safely. Each run creates NEW fix-task (with timestamp suffix if needed). Previous fix-tasks remain for history.')
-            ->why('Re-validation catches regressions. Multiple fix-tasks show validation history.')
-            ->onViolation('Create new fix-task. Add timestamp to title if collision.');
-
-        $this->rule('memory-mandatory')->high()
-            ->text('Agents MUST search memory BEFORE validation AND store findings AFTER.')
-            ->why('Knowledge sharing between agents.')
-            ->onViolation('Include memory instructions in agent delegation.');
-
-        $this->rule('fix-task-hierarchy')->high()
-            ->text('Fix tasks MUST have parent_id = validated task ID.')
-            ->why('Maintains hierarchy: validated task → fix subtasks.')
-            ->onViolation('Set parent_id when creating fix tasks.');
-
-        $this->rule('mandatory-fix-task')->critical()
-            ->text('When validation finds issues (ALL_ISSUES > 0), MUST execute BOTH: 1) Create fix-task, 2) Update parent status. No exceptions. No "similar task exists" skips.')
-            ->why('Partial execution breaks workflow. User expects complete action.')
-            ->onViolation('Execute BOTH operations. If duplicate concern - add suffix to title, do not skip.');
-
-        // =========================================================================
-        // INPUT CAPTURE
-        // =========================================================================
-
-        $this->defineInputCaptureGuideline();
-
-        // =========================================================================
-        // STAGE 1: LOAD (Task + Context)
-        // =========================================================================
-
-        $this->guideline('stage1-load')
-            ->goal('Load vector task, verify status, gather initial context')
-            ->example()
-            ->phase(Operator::output([
-                '=== VALIDATION STARTED ===',
-                '',
-                '## STAGE 1: LOADING',
-            ]))
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
-            ->phase(Store::as('TASK', '{id, title, content, status, parent_id, priority, tags, estimate}'))
-            ->phase(Operator::if('$TASK not found', [
-                Operator::report('Task #$VECTOR_TASK_ID not found'),
-                'ABORT',
-            ]))
-            ->phase(Operator::if('$TASK.status NOT IN ["completed", "tested", "validated", "in_progress"]', [
-                Operator::report('Task has status: $TASK.status. Complete via /task:async first.'),
-                'ABORT',
-            ]))
-            ->phase(Operator::if('$TASK.status === "in_progress"', [
-                'Check status_history for crash recovery',
-                Operator::if('last_entry.to === null', [
-                    Store::as('IS_RECOVERY', 'true'),
-                    Operator::output(['⚠️ Session recovery mode. Verifying previous work.']),
-                ]),
-                Operator::if('last_entry.to !== null', [
-                    Operator::report('Task in progress by another session.'),
-                    'ABORT',
-                ]),
-            ]))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID, limit: 20}'))
-            ->phase(Store::as('SUBTASKS', '{existing subtasks}'))
-            ->phase(Operator::if('$TASK.parent_id', [
-                VectorTaskMcp::call('task_get', '{task_id: $TASK.parent_id}'),
-                Store::as('PARENT', '{parent task context}'),
-            ]))
-            ->phase(Operator::output([
-                'Task: #{$TASK.id} - {$TASK.title}',
-                'Status: {$TASK.status} | Priority: {$TASK.priority}',
-                'Subtasks: {$SUBTASKS.count} | Parent: {$PARENT.title or "none"}',
-            ]));
-
-        // =========================================================================
-        // STAGE 2: CONTEXT (Memory + Docs)
-        // =========================================================================
-
-        $this->guideline('stage2-context')
-            ->goal('Gather requirements from memory and documentation')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 2: CONTEXT']))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK.title $TASK.content", limit: 10}'))
-            ->phase(Store::as('MEMORY', '{related implementations, patterns, past validations}'))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from $TASK}'), 'Get documentation index'))
-            ->phase(Store::as('DOCS_INDEX', '{documentation file paths}'))
-            ->phase(Operator::if('$DOCS_INDEX not empty', [
-                'Read documentation files',
-                Store::as('REQUIREMENTS', '{extracted requirements, acceptance criteria}'),
-            ]))
-            ->phase(Operator::if('$DOCS_INDEX empty', [
-                Operator::output(['⚠️ No documentation found. Code-only validation.']),
-                Store::as('REQUIREMENTS', '[]'),
-            ]))
-            ->phase(VectorTaskMcp::call('task_list', '{query: "$TASK.title", limit: 10}'))
-            ->phase(Store::as('RELATED_TASKS', '{semantically related tasks}'))
-            ->phase(Operator::output([
-                'Memory insights: {$MEMORY.count}',
-                'Documentation files: {$DOCS_INDEX.count}',
-                'Related tasks: {$RELATED_TASKS.count}',
-            ]));
-
-        // =========================================================================
-        // STAGE 3: APPROVAL
-        // =========================================================================
-
-        $this->guideline('stage3-approval')
-            ->goal('Present validation scope, get user approval')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 3: APPROVAL']))
-            ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'Get available agents'))
-            ->phase(Store::as('AGENTS', '{available validation agents}'))
-            ->phase(Operator::output([
-                'Validation scope:',
-                '- Task: #{$TASK.id} - {$TASK.title}',
-                '- Requirements: {$REQUIREMENTS.count}',
-                '- 3 parallel agents: Code Quality, Testing, Documentation',
-                '',
-            ]))
-            ->phase(Operator::if('$HAS_AUTO_APPROVE === true', [
-                Operator::output(['✅ Auto-approved (-y flag)']),
-            ]))
-            ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
-                Operator::output(['Type "yes" to start validation, "no" to abort.']),
-                'WAIT for approval',
-                Operator::verify('User approved'),
-            ]))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $TASK.id, status: "in_progress", comment: "Validation started", append_comment: true}'));
-
-        // =========================================================================
-        // STAGE 4: VALIDATE (3 Parallel Agents)
-        // =========================================================================
-
-        $this->guideline('stage4-validate')
-            ->goal('Launch 3 parallel validation agents, aggregate results')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 4: VALIDATION (3 agents parallel)']))
-            ->phase('Launch 3 agents in PARALLEL:')
-            ->phase(Operator::do([
-                // Agent 1: Code Quality
-                TaskTool::agent('explore',
-                    'CODE QUALITY VALIDATION for task #{$TASK.id} "{$TASK.title}":
-
-VALIDATE:
-1. COMPLETENESS - All requirements from {$REQUIREMENTS} implemented
-2. ARCHITECTURE - Design principles, correct patterns, no anti-patterns
-3. SECURITY - Input validation, injection attacks, common vulnerabilities
-4. PERFORMANCE - Memory leaks, complexity issues, inefficient algorithms
-5. CODE CONSISTENCY - Naming conventions, style patterns across files
-
-COSMETIC (FIX IMMEDIATELY, do NOT report): whitespace, indentation, formatting.
-
-RETURN: {
-  completeness: [{requirement_id, status: implemented|partial|missing, evidence: file:line}],
-  architecture: [{issue, severity, file:line, suggestion}],
-  security: [{vulnerability, severity, file:line, fix}],
-  performance: [{issue, severity, file:line, optimization}],
-  consistency: [{pattern_violation, files_affected, suggestion}],
-  cosmetic_fixes_applied: N
-}
-
-Store findings to vector memory.'),
-
-                // Agent 2: Testing
-                TaskTool::agent('explore',
-                    'TESTING VALIDATION for task #{$TASK.id} "{$TASK.title}":
-
-VALIDATE:
-1. COVERAGE - All code paths have tests, no untested scenarios
-2. TEST QUALITY - Meaningful assertions, proper mocks, isolation
-3. EDGE CASES - Boundary conditions, null handling, error paths tested
-4. ERROR HANDLING - Exceptions caught, fallbacks work, graceful degradation
-5. TEST CONSISTENCY - Naming patterns, structure, setup/teardown across test files
-
-COSMETIC (FIX IMMEDIATELY, do NOT report): whitespace, formatting in tests.
-
-RUN TESTS if test runner available (detect from project: package.json, composer.json, Makefile, etc.)
-
-RETURN: {
-  coverage: [{file, coverage_status, missing_scenarios}],
-  quality: [{test_file, issue, suggestion}],
-  edge_cases: [{missing_case, file, severity}],
-  error_handling: [{gap, file:line, fix}],
-  consistency: [{pattern_violation, test_files, suggestion}],
-  test_results: {passed, failed, errors},
-  cosmetic_fixes_applied: N
-}
-
-Store findings to vector memory.'),
-
-                // Agent 3: Documentation
-                TaskTool::agent('explore',
-                    'DOCUMENTATION VALIDATION for task #{$TASK.id} "{$TASK.title}":
-
-VALIDATE:
-1. DOCS SYNC - Code matches documentation, no stale docs
-2. API DOCS - Endpoints documented, params, responses, examples
-3. CODE COMMENTS - Type hints present where language requires/benefits
-4. DEPENDENCIES - Imports clean, dependency manifest accurate
-5. DOCS CONSISTENCY - Style, format, terminology consistent across docs
-
-COSMETIC (FIX IMMEDIATELY, do NOT report): typos, formatting, comment descriptions (not types).
-
-IGNORE (NEVER add, NEVER report): metadata tags (author, version, since, package, copyright, license).
-
-RETURN: {
-  sync: [{doc_file, sync_status, gaps}],
-  api: [{endpoint, documented: bool, missing_info}],
-  comments: [{file, missing_type_hints}],
-  dependencies: [{issue, file, severity}],
-  consistency: [{style_issue, files, suggestion}],
-  cosmetic_fixes_applied: N
-}
-
-Store findings to vector memory.'),
-            ]))
-            ->phase(Store::as('AGENT_RESULTS', '{results from all 3 agents}'))
-            ->phase(Operator::output(['3 validation agents completed']));
-
-        // =========================================================================
-        // STAGE 5: FINALIZE (Aggregate + Tasks + Status)
-        // =========================================================================
-
-        $this->guideline('stage5-finalize')
-            ->goal('Aggregate results, create fix tasks, update status, store to memory')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 5: FINALIZE']))
-            ->phase('Merge results from all agents:')
-            ->phase(Store::as('ALL_ISSUES', '{merged issues from AGENT_RESULTS}'))
-            ->phase(Store::as('COSMETIC_FIXED', '{sum of cosmetic_fixes_applied}'))
-            ->phase('Categorize by severity (comment descriptions = COSMETIC, already fixed inline):')
-            ->phase(Store::as('CRITICAL', '{security, architecture, missing core requirements}'))
-            ->phase(Store::as('MAJOR', '{functionality, test coverage, performance, missing type hints}'))
-            ->phase(Store::as('MINOR', '{consistency, edge cases, minor gaps - NEVER comment descriptions}'))
-            ->phase(Operator::output([
-                'Results:',
-                '- Critical: {$CRITICAL.count}',
-                '- Major: {$MAJOR.count}',
-                '- Minor: {$MINOR.count}',
-                '- Cosmetic fixed inline: {$COSMETIC_FIXED}',
-            ]))
-            ->phase(Operator::if('$ALL_ISSUES.count === 0', [
-                Operator::output(['✅ No issues found. Validation PASSED.']),
-                VectorTaskMcp::call('task_update', '{task_id: $TASK.id, status: "validated", comment: "Validation PASSED. No issues found.", append_comment: true}'),
-            ]))
-            ->phase(Operator::if('$ALL_ISSUES.count > 0', [
-                'MANDATORY: Create fix task AND update status (rule: mandatory-fix-task):',
-                VectorTaskMcp::call('task_create', '{
-                    title: "Validation fixes: #{$TASK.id}",
-                    content: "Fix issues found during validation of task #{$TASK.id}: {$TASK.title}\\n\\n## Critical ({$CRITICAL.count})\\n{list with file:line, description, suggestion}\\n\\n## Major ({$MAJOR.count})\\n{list}\\n\\n## Minor ({$MINOR.count})\\n{list}\\n\\n## Context\\n- Memory IDs: {relevant_ids}\\n- Related tasks: {$RELATED_TASKS.ids}",
-                    priority: "{$CRITICAL.count > 0 ? high : medium}",
-                    estimate: {calculated_hours},
-                    tags: ["validation-fix"],
-                    parent_id: $TASK.id
-                }'),
-                Store::as('FIX_TASK_ID', '{created task id}'),
-                VectorTaskMcp::call('task_update', '{task_id: $TASK.id, status: "pending", comment: "Validation found {$ALL_ISSUES.count} issues. Fix task #{$FIX_TASK_ID} created.", append_comment: true}'),
-                Operator::output(['⚠️ Issues found. Task returned to pending. Fix task #{$FIX_TASK_ID} created.']),
-            ]))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Validation #{$TASK.id}: {$TASK.title}\\nResult: {PASSED/NEEDS_WORK}\\nCritical: {$CRITICAL.count}, Major: {$MAJOR.count}, Minor: {$MINOR.count}\\nCosmetic fixed: {$COSMETIC_FIXED}\\nFix task: #{$FIX_TASK_ID or none}", category: "code-solution", tags: ["validation", "quality"]}'))
-            ->phase(Operator::output([
-                '',
-                '=== VALIDATION REPORT ===',
-                'Task: #{$TASK.id} - {$TASK.title}',
-                '',
-                '| Category | Count |',
-                '|----------|-------|',
-                '| Critical | {$CRITICAL.count} |',
-                '| Major | {$MAJOR.count} |',
-                '| Minor | {$MINOR.count} |',
-                '| Cosmetic (fixed) | {$COSMETIC_FIXED} |',
-                '',
-                'Status: {validated | pending}',
-                '{IF fix task: "Fix task: #{$FIX_TASK_ID}"}',
-            ]));
-
-        // =========================================================================
-        // ERROR HANDLING
-        // =========================================================================
-
-        $this->guideline('error-handling')
-            ->text('Graceful error recovery')
-            ->example()
-            ->phase()->if('task not found', ['Report error', 'Suggest task_list', 'ABORT'])
-            ->phase()->if('agent fails', ['Log error', 'Continue with remaining agents', 'Report partial results'])
-            ->phase()->if('task creation fails', ['Store to memory for manual review', 'Continue']);
+            // 5. Report
+            ->phase('Output: task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID')
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: validation_summary, category: "code-solution"}'));
     }
 }
