@@ -507,6 +507,6 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->example('Synthesize ALL results before decomposition');
 
         $this->guideline('directive')
-            ->text('PARALLEL agents! DEEP research! 5-8h GOLDEN RULE! MAX 10 subtasks! User approval! STOP after create!');
+            ->text('PARALLEL agents! DEEP research! 5-8h GOLDEN RULE! User approval! STOP after create!');
     }
 }
