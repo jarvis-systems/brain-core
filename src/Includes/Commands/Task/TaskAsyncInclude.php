@@ -20,15 +20,17 @@ class TaskAsyncInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        // EXECUTION DIRECTIVES - ABSOLUTE
-        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW.');
-        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me". WITH -y FLAG: ZERO text output. ONLY tool calls. NO questions. NO summaries. NO asking permission.');
+        // IRON EXECUTION LAW - READ THIS FIRST
+        $this->rule('tool-call-first')->critical()->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY.');
+        $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
+        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW. Do not describe what you will do - DO IT.');
+        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me", summaries, explanations. WITH -y FLAG: ZERO text output. ONLY tool calls.');
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content. Task ID given = execute it. JUST DO IT.');
+        $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Delegate to agents immediately. Call tools only.');
 
-        // RULES
+        // ASYNC EXECUTION RULES
         $this->rule('never-execute-directly')->critical()->text('Brain NEVER calls Edit/Write/Glob/Grep/Read for implementation. ALL work via Task() to agents.');
         $this->rule('atomic-tasks')->critical()->text('Each agent task: 1-2 files (max 3-5 if same feature). NO broad changes.');
-        $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Delegate to agents immediately. Call tools only.');
         $this->rule('parallel-when-safe')->high()->text('Parallel: independent tasks, different files, no data flow. Multiple Task() in ONE message.');
 
         // WORKFLOW

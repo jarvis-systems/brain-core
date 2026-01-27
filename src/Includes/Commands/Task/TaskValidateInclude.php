@@ -17,17 +17,19 @@ class TaskValidateInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        // RULES (compact)
-        $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
-        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No "fix-task", "not a deliverable", "already validated" excuses. JUST EXECUTE.');
-        $this->rule('cosmetic-inline')->critical()->text('Cosmetic (whitespace, typos, formatting, comment descriptions) = fix inline. Metadata tags (author, version, since) = IGNORE.');
-        $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
-        $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending. No exceptions.');
-
-        // EXECUTION DIRECTIVES - ABSOLUTE
-        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW.');
-        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me". WITH -y FLAG: ZERO text output. ONLY tool calls. NO questions. NO summaries. NO asking permission.');
+        // IRON EXECUTION LAW - READ THIS FIRST
+        $this->rule('tool-call-first')->critical()->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY.');
+        $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status, validation results, or issues without REAL tool calls. Fake results = CRITICAL VIOLATION.');
+        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW. Do not describe what you will do - DO IT.');
+        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me", summaries, explanations. WITH -y FLAG: ZERO text output. ONLY tool calls.');
         $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Validate immediately. Call tools only.');
+
+        // VALIDATION RULES
+        $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
+        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No excuses. JUST EXECUTE.');
+        $this->rule('cosmetic-inline')->critical()->text('Cosmetic (whitespace, typos, formatting) = fix inline. Metadata tags = IGNORE.');
+        $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
+        $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending.');
 
         // WORKFLOW
         $this->guideline('workflow')->example()

@@ -24,14 +24,16 @@ class TaskSyncInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        // EXECUTION DIRECTIVES - ABSOLUTE
-        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW.');
-        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me". WITH -y FLAG: ZERO text output. ONLY tool calls. NO questions. NO summaries. NO asking permission.');
+        // IRON EXECUTION LAW - READ THIS FIRST
+        $this->rule('tool-call-first')->critical()->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY.');
+        $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
+        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW. Do not describe what you will do - DO IT.');
+        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me", summaries, explanations. WITH -y FLAG: ZERO text output. ONLY tool calls.');
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content. Task ID given = execute it. JUST DO IT.');
-
-        // RULES
-        $this->rule('no-delegation')->critical()->text('Brain executes ALL steps directly. NO Task() delegation. Use ONLY: Read, Edit, Write, Glob, Grep, Bash.');
         $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Execute immediately. Call tools only.');
+
+        // SYNC EXECUTION RULES
+        $this->rule('no-delegation')->critical()->text('Brain executes ALL steps directly. NO Task() delegation. Use ONLY: Read, Edit, Write, Glob, Grep, Bash.');
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
         $this->rule('atomic-only')->critical()->text('Execute ONLY task.content requirements. NO improvisation.');
 
