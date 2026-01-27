@@ -22,15 +22,16 @@ class TaskValidateInclude extends IncludeArchetype
         // IRON EXECUTION LAW - READ THIS FIRST
         $this->rule('tool-call-first')->critical()->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY.');
         $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status, validation results, or issues without REAL tool calls. Fake results = CRITICAL VIOLATION.');
-        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me", summaries, explanations. WITH -y FLAG: ZERO text output. ONLY tool calls.');
-        $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Validate immediately. Call tools only.');
+        $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
+        $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
+        $this->rule('auto-approve')->high()->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress. User sees everything, just no approval prompts.');
 
         // VALIDATION RULES
         $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No excuses. JUST EXECUTE.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic (whitespace, typos, formatting) = fix inline. Metadata tags = IGNORE.');
         $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
-        $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending.');
+        $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → parent status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS. "NOT blocking" still requires fix-task and pending status.');
 
         // WORKFLOW
         $this->guideline('workflow')->example()
@@ -72,14 +73,14 @@ class TaskValidateInclude extends IncludeArchetype
                 TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'),
             ]))
 
-            // 5. Finalize
+            // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
             ->phase('Merge agent results ' . Store::as('ISSUES') . ' categorize: Critical/Major/Minor')
             ->phase(Operator::if(
-                'issues=0',
+                'issues=0 AND no fix-task needed',
                 VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'),
                 [
                     VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}'),
-                    VectorTaskMcp::call('task_update', '{task_id, status: "pending"}'),
+                    VectorTaskMcp::call('task_update', '{task_id, status: "pending"}') . ' ← MANDATORY when fix-task created',
                 ]
             ))
 
