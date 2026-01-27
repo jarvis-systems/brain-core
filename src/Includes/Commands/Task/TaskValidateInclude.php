@@ -24,9 +24,10 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
         $this->rule('fix-task-required')->critical()->text('Issues found → MUST create fix-task AND set status=pending. No exceptions.');
 
-        // EXECUTION DIRECTIVE
-        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately when command invoked. Do NOT ask questions, do NOT wait - START with step 1.');
-        $this->rule('no-analysis')->critical()->text('NO verbose analysis, NO "let me think", NO meta-commentary. -y flag = SILENT execution. Just call tools and DO the work.');
+        // EXECUTION DIRECTIVES - ABSOLUTE
+        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW.');
+        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me". WITH -y FLAG: ZERO text output. ONLY tool calls. NO questions. NO summaries. NO asking permission.');
+        $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Validate immediately. Call tools only.');
 
         // WORKFLOW
         $this->guideline('workflow')->example()

@@ -24,14 +24,14 @@ class TaskSyncInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        // EXECUTION DIRECTIVES
-        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately when command invoked. Do NOT ask questions, do NOT wait - START with step 1.');
-        $this->rule('no-analysis')->critical()->text('NO verbose analysis, NO "let me think", NO plan output. -y flag = SILENT execution. Just call tools and DO the work.');
-        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to execute. Task ID given = execute it. JUST DO IT.');
+        // EXECUTION DIRECTIVES - ABSOLUTE
+        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately. START with step 1 NOW.');
+        $this->rule('no-output')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis>, "Proceed?", "let me". WITH -y FLAG: ZERO text output. ONLY tool calls. NO questions. NO summaries. NO asking permission.');
+        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content. Task ID given = execute it. JUST DO IT.');
 
         // RULES
         $this->rule('no-delegation')->critical()->text('Brain executes ALL steps directly. NO Task() delegation. Use ONLY: Read, Edit, Write, Glob, Grep, Bash.');
-        $this->rule('auto-approve')->critical()->text('-y flag = NO plan output, NO approval waiting. Execute immediately and silently.');
+        $this->rule('auto-approve')->critical()->text('-y flag = SILENT MODE. NO output. NO plan. NO approval. Execute immediately. Call tools only.');
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
         $this->rule('atomic-only')->critical()->text('Execute ONLY task.content requirements. NO improvisation.');
 
