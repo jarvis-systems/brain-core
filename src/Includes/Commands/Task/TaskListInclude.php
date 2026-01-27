@@ -10,7 +10,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Task creation specialist that analyzes user descriptions, researches context, estimates effort, and creates well-structured tasks after user approval.')]
+#[Purpose('Task listing utility that queries vector storage and displays formatted task hierarchy with status and priority indicators. Supports filters: status, parent_id, tags, priority, limit.')]
 class TaskListInclude extends IncludeArchetype
 {
     /**
