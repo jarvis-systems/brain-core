@@ -17,7 +17,10 @@ class TaskAsyncInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        // RULES (compact)
+        // EXECUTION DIRECTIVE
+        $this->rule('execute-now')->critical()->text('This is NOT documentation. EXECUTE workflow immediately when command invoked. Do NOT ask questions, do NOT wait - START with step 1.');
+
+        // RULES
         $this->rule('never-execute-directly')->critical()->text('Brain NEVER calls Edit/Write/Glob/Grep/Read for implementation. ALL work via Task() to agents.');
         $this->rule('atomic-tasks')->critical()->text('Each agent task: 1-2 files (max 3-5 if same feature). NO broad changes.');
         $this->rule('approval-gates')->critical()->text('2 approvals: after requirements, after plan. -y = auto-approve.');
