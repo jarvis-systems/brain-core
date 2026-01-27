@@ -7,11 +7,6 @@ namespace BrainCore\Includes\Commands\Task;
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\Tools\BashTool;
-use BrainCore\Compilation\Tools\EditTool;
-use BrainCore\Compilation\Tools\GlobTool;
-use BrainCore\Compilation\Tools\GrepTool;
-use BrainCore\Compilation\Tools\ReadTool;
-use BrainCore\Compilation\Tools\WriteTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -26,34 +21,14 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
         $this->rule('atomic-only')->critical()->text('Execute ONLY approved plan. NO improvisation.');
 
-        // WORKFLOW
-        $this->guideline('workflow')->example()
-            // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
-            ->phase('IF not found → ABORT')
-            ->phase('IF status=completed → ask "Re-execute?"')
-            ->phase('IF parent_id → load parent context')
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK", limit: 5}'))
-
-            // 2. Explore & Plan
-            ->phase(GlobTool::describe('Find relevant files'))
-            ->phase(GrepTool::describe('Search code patterns'))
-            ->phase(ReadTool::describe('Read identified files'))
-            ->phase('Create atomic plan: [{step, file, action: read|edit|write, changes}]')
-            ->phase('Show plan → WAIT approval (skip if -y)')
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
-
-            // 3. Execute directly
-            ->phase('FOR EACH step:')
-            ->phase(ReadTool::call('{file}'))
-            ->phase(EditTool::call('{file}', '{old}', '{new}'))
-            ->phase('OR ' . WriteTool::call('{file}', '{content}'))
-            ->phase('IF step fails → Retry/Skip/Abort')
-
-            // 4. Complete
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "Files: {list}", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}", category: "code-solution"}'))
-            ->phase('Output: task, status, files modified');
+        // WORKFLOW - ACTION instruction, not output checklist
+        $this->guideline('workflow')
+            ->text('1. ' . VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' → task.content IS your work order')
+            ->text('2. ' . VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5}'))
+            ->text('3. ' . VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
+            ->text('4. EXECUTE task.content directly using Read/Edit/Write/Glob/Grep/Bash')
+            ->text('5. ' . VectorTaskMcp::call('task_update', '{task_id, status: "completed"}'))
+            ->text('6. ' . VectorMemoryMcp::call('store_memory', '{content: learnings, category: "code-solution"}'));
 
         // TDD mode
         $this->guideline('tdd-mode')->example()

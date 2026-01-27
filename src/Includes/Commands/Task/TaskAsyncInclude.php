@@ -23,41 +23,19 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('approval-gates')->critical()->text('2 approvals: after requirements, after plan. -y = auto-approve.');
         $this->rule('parallel-when-safe')->high()->text('Parallel: independent tasks, different files, no data flow. Multiple Task() in ONE message.');
 
-        // WORKFLOW
-        $this->guideline('workflow')->example()
-            // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}'))
-            ->phase('IF not found → ABORT')
-            ->phase('IF status=in_progress with status_history.to=null → SESSION RECOVERY')
-            ->phase('IF status=completed → ask "Re-execute?"')
-            ->phase('IF parent_id → load parent context')
+        // WORKFLOW - ACTION instruction, not output checklist
+        $this->guideline('workflow')
+            ->text('1. ' . VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' → task.content IS your work order')
+            ->text('2. ' . VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5}'))
+            ->text('3. ' . VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
+            ->text('4. EXECUTE task.content by delegating to agents: ' . TaskTool::agent('{agent}', '{subtask from content}'))
+            ->text('5. ' . VectorTaskMcp::call('task_update', '{task_id, status: "completed"}'))
+            ->text('6. ' . VectorMemoryMcp::call('store_memory', '{content: learnings, category: "code-solution"}'));
 
-            // 2. Discovery
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK", limit: 5}'))
-            ->phase(BashTool::call(BrainCLI::LIST_MASTERS))
-            ->phase('Match task to agents, determine: scan_targets, web_research, docs_scan')
-            ->phase('IF complex → APPROVAL #1 (skip if -y) → task_update(in_progress)')
-
-            // 3. Gather (optional)
-            ->phase('IF scan needed → ' . TaskTool::agent('explore', 'Extract context from {targets}'))
-            ->phase('IF docs needed → ' . BashTool::call(BrainCLI::DOCS('{keywords}')) . ' → ' . TaskTool::agent('explore', 'Read docs'))
-            ->phase('IF web needed → ' . TaskTool::agent('web-research-master', 'Research {topic}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for $TASK", category: "tool-usage"}'))
-
-            // 4. Plan
-            ->phase('Create plan: [{step, agent, task, files (≤2), memory_query}]')
-            ->phase('Analyze dependencies → sequential OR parallel')
-            ->phase('Show plan → APPROVAL #2 (skip if -y)')
-
-            // 5. Execute via agents
-            ->phase('SEQUENTIAL: FOR EACH step → ' . TaskTool::agent('{agent}', '{task}') . ' → wait → next')
-            ->phase('PARALLEL: Multiple Task() in SINGLE message → wait ALL')
-            ->phase('IF step fails → Retry/Skip/Abort')
-
-            // 6. Complete
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "Files: {list}", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, {learnings}", category: "code-solution"}'))
-            ->phase('Output: task, status, steps completed, files');
+        $this->guideline('agents')
+            ->text('Available: ' . BashTool::call(BrainCLI::LIST_MASTERS))
+            ->text('explore = code/files, web-research-master = web, documentation-master = docs')
+            ->text('Parallel if independent files: multiple Task() in ONE message');
 
         // TDD mode
         $this->guideline('tdd-mode')->example()
