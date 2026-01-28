@@ -23,7 +23,29 @@ class TaskDecomposeInclude extends IncludeArchetype
     protected function handle(): void
     {
         // =========================================================================
-        // CORE RULES (4 essential rules)
+        // IRON EXECUTION RULES (execute immediately, no verbose)
+        // =========================================================================
+
+        $this->rule('tool-call-first')->critical()
+            ->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY with $TASK_ID.');
+
+        $this->rule('no-hallucination')->critical()
+            ->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
+
+        $this->rule('no-verbose')->critical()
+            ->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action. Brief status updates ONLY.');
+
+        $this->rule('show-progress')->high()
+            ->text('ALWAYS show brief step status and results. User must see what is happening.');
+
+        $this->rule('no-interpretation')->critical()
+            ->text('NEVER interpret task content or give generic responses. Task ID given = decompose it. Follow the workflow EXACTLY.');
+
+        $this->rule('auto-approve')->high()
+            ->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress.');
+
+        // =========================================================================
+        // DECOMPOSITION-SPECIFIC RULES
         // =========================================================================
 
         $this->rule('create-only')->critical()
@@ -50,204 +72,62 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->onViolation('Skip '.Runtime::BRAIN_DIRECTORY.' in all exploration.');
 
         // =========================================================================
-        // INPUT CAPTURE
+        // WORKFLOW (single unified flow)
         // =========================================================================
 
-        $this->defineInputCaptureWithTaskIdGuideline();
-
-        // =========================================================================
-        // STAGE 1: LOAD
-        // =========================================================================
-
-        $this->guideline('stage1-load')
-            ->goal('Load vector task, verify it exists, gather context')
+        $this->guideline('workflow')
+            ->goal('Decompose task into subtasks: load → research → plan → approve → create')
             ->example()
-            ->phase(Operator::output([
-                '=== TASK:DECOMPOSE STARTED ===',
-                '',
-                '## STAGE 1: LOADING',
-            ]))
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $TASK_ID}'))
-            ->phase(Store::as('TASK', '{id, title, content, status, parent_id, priority, tags, estimate}'))
-            ->phase(Operator::if('$TASK not found', [
-                Operator::report('Task #$TASK_ID not found'),
-                'ABORT',
-            ]))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}'))
-            ->phase(Store::as('EXISTING_SUBTASKS', '{existing subtasks}'))
-            ->phase(Operator::if('$EXISTING_SUBTASKS.count > 0', [
-                Operator::output(['Task has {count} existing subtasks.']),
+
+            // Parse input: extract task ID and flags from $ARGUMENTS
+            ->phase('Parse $ARGUMENTS: extract numeric task ID, detect -y flag')
+            ->phase(Store::as('HAS_Y_FLAG', '{true if $ARGUMENTS contains "-y" or "--yes"}'))
+            ->phase(Store::as('TASK_ID', '{numeric ID from $ARGUMENTS, e.g., "3 -y" → 3}'))
+
+            // Stage 1: Load
+            ->phase(Operator::output(['=== TASK:DECOMPOSE ===', 'Loading task #$TASK_ID...']))
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $TASK_ID}').' → '.Store::as('TASK'))
+            ->phase(Operator::if('not found', Operator::abort('Task #$TASK_ID not found')))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}').' → '.Store::as('EXISTING_SUBTASKS'))
+            ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_Y_FLAG', [
+                'Task has {count} existing subtasks.',
                 'Ask: "(1) Add more, (2) Replace all, (3) Abort"',
                 'WAIT for user choice',
             ]))
-            ->phase('Analyze task type:')
-            ->phase(Store::as('TASK_TYPE', '{type: code|docs|architecture|testing, domain: backend|frontend|api|devops}'))
             ->phase(Operator::output([
                 'Task: #{$TASK.id} - {$TASK.title}',
-                'Type: {$TASK_TYPE.type} | Domain: {$TASK_TYPE.domain}',
-                'Existing subtasks: {$EXISTING_SUBTASKS.count}',
-            ]));
+                'Status: {$TASK.status} | Priority: {$TASK.priority}',
+                'Existing subtasks: {count}',
+            ]))
 
-        // =========================================================================
-        // STAGE 2: RESEARCH (2 agents parallel)
-        // =========================================================================
-
-        $this->guideline('stage2-research')
-            ->goal('2 agents research in PARALLEL: code/docs + memory')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 2: RESEARCH (2 agents parallel)']))
-            ->phase('Launch 2 agents in PARALLEL:')
+            // Stage 2: Research (2 agents PARALLEL)
+            ->phase(Operator::output(['', '## RESEARCH (2 agents parallel)']))
+            ->phase('Launch 2 agents in PARALLEL (single message with multiple Task calls):')
             ->phase(Operator::do([
-                // Agent 1: ExploreMaster - code + documentation
-                TaskTool::agent('explore',
-                    'DECOMPOSITION RESEARCH for task #{$TASK.id}: "{$TASK.title}"
-
-RESEARCH:
-1. CODE STRUCTURE - Find affected files, classes, methods
-2. DOCUMENTATION - brain docs "{keywords}" → Read relevant docs
-3. DEPENDENCIES - What depends on what? What must change together?
-4. NATURAL BOUNDARIES - Where to split the work?
-
-EXCLUDE: '.Runtime::BRAIN_DIRECTORY.'
-
-OUTPUT: {
-  files: [{path, purpose, changes_needed}],
-  components: [{name, files, dependencies}],
-  boundaries: [{split_point, reason}],
-  docs_found: [{path, relevant_requirements}]
-}'),
-
-                // Agent 2: VectorMaster - memory search
-                VectorMaster::call(
-                    Operator::task([
-                        'MEMORY RESEARCH for decomposition of: $TASK.title',
-                        'Multi-probe search:',
-                        'Probe 1: "$TASK.title implementation" (code-solution)',
-                        'Probe 2: "$TASK_TYPE.domain decomposition patterns" (tool-usage)',
-                        'Probe 3: "similar task structure breakdown" (architecture)',
-                        'EXTRACT: past decompositions, patterns, warnings, estimates',
-                        'OUTPUT: actionable insights for subtask planning',
-                    ]),
-                    Operator::output('{memories_found:N, patterns:[], warnings:[], past_estimates:[]}'),
-                    Store::as('MEMORY_INSIGHTS')
-                ),
+                TaskTool::agent('explore', 'DECOMPOSITION RESEARCH for task #{$TASK.id}: "{$TASK.title}". Find: files, components, dependencies, natural split boundaries. EXCLUDE: '.Runtime::BRAIN_DIRECTORY.'. OUTPUT: {files:[], components:[], boundaries:[]}'),
+                VectorMaster::call(Operator::task(['Memory search for: task decomposition patterns, similar implementations, past estimates']), Store::as('MEMORY_INSIGHTS')),
             ]))
-            ->phase(Store::as('CODE_INSIGHTS', '{results from ExploreMaster}'))
-            ->phase(Operator::output([
-                'Research complete:',
-                '- Files analyzed: {$CODE_INSIGHTS.files.count}',
-                '- Components found: {$CODE_INSIGHTS.components.count}',
-                '- Memory insights: {$MEMORY_INSIGHTS.memories_found}',
-            ]));
+            ->phase(Store::as('CODE_INSIGHTS', '{from explore agent}'))
 
-        // =========================================================================
-        // STAGE 3: PLAN
-        // =========================================================================
+            // Stage 3: Plan
+            ->phase(Operator::output(['', '## PLANNING']))
+            ->phase('Create subtask plan: group by component, order by dependency, estimate each')
+            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order}]'))
+            ->phase(Operator::if('5+ subtasks', SequentialThinkingMcp::call('sequentialthinking', '{thought: "Order subtasks by dependencies", thoughtNumber: 1, totalThoughts: 3, nextThoughtNeeded: true}')))
 
-        $this->guideline('stage3-plan')
-            ->goal('Create subtask plan with logical execution order')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 3: PLANNING']))
-            ->phase('Synthesize research into subtasks:')
-            ->phase(Operator::do([
-                'Step 1: Group related changes from $CODE_INSIGHTS.components',
-                'Step 2: Apply patterns from $MEMORY_INSIGHTS',
-                'Step 3: Determine dependencies between groups',
-                'Step 4: Order by dependency (independent first)',
-                'Step 5: Add estimates based on scope',
-            ]))
-            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, depends_on}]'))
-            ->phase(Operator::if('count($SUBTASK_PLAN) >= 5', [
-                Operator::output(['Complex decomposition (5+ subtasks). Using SequentialThinking for optimal order.']),
-                SequentialThinkingMcp::call('sequentialthinking', '{
-                    thought: "Planning execution order for {count} subtasks. Must ensure dependencies resolved before dependents. Analyzing: {$SUBTASK_PLAN}",
-                    thoughtNumber: 1,
-                    totalThoughts: 4,
-                    nextThoughtNeeded: true
-                }'),
-                'Reorder $SUBTASK_PLAN based on SequentialThinking analysis',
-            ]))
-            ->phase('For EACH subtask:')
-            ->phase(Operator::forEach('subtask in $SUBTASK_PLAN', [
-                'title: Action-oriented, concise',
-                'content: Scope, files, acceptance criteria',
-                'estimate: hours (realistic)',
-                'priority: inherit from parent',
-                'tags: inherit parent + [decomposed]',
-                'order: execution sequence (1, 2, 3...)',
-            ]));
+            // Stage 4: Approve
+            ->phase(Operator::output(['', '## PLAN']))
+            ->phase('Show table: | # | Subtask | Est | Priority | Depends |')
+            ->phase(Operator::if('$HAS_Y_FLAG', Operator::output(['Auto-approved (-y flag)'])))
+            ->phase(Operator::if('NOT $HAS_Y_FLAG', ['Ask: "Create {count} subtasks? (yes/no/modify)"', 'WAIT for approval']))
 
-        // =========================================================================
-        // STAGE 4: APPROVE
-        // =========================================================================
-
-        $this->guideline('stage4-approve')
-            ->goal('Present plan for user approval')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 4: APPROVAL']))
-            ->phase('Display decomposition summary:')
-            ->phase(Operator::output([
-                '═══ DECOMPOSITION PLAN ═══',
-                'Parent: #{$TASK.id} - {$TASK.title}',
-                'Subtasks: {count}',
-                '',
-                '| # | Subtask | Est | Priority | Depends |',
-                '|---|---------|-----|----------|---------|',
-                '| 1 | {title} | {h}h | {pri} | - |',
-                '| 2 | {title} | {h}h | {pri} | #1 |',
-                '| ... |',
-                '',
-                'Total estimate: {sum}h',
-                '═══════════════════════════',
-            ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === true', [
-                Operator::output(['✅ Auto-approved (-y flag)']),
-            ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === false', [
-                Operator::output(['Create {count} subtasks? (yes/no/modify)']),
-                'WAIT for approval',
-                Operator::verify('User approved'),
-            ]));
-
-        // =========================================================================
-        // STAGE 5: CREATE
-        // =========================================================================
-
-        $this->guideline('stage5-create')
-            ->goal('Create subtasks, store to memory, report')
-            ->example()
-            ->phase(Operator::output(['', '## STAGE 5: CREATING']))
-            ->phase('Create subtasks via bulk:')
-            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: $SUBTASK_PLAN.map(s => ({
-                title: s.title,
-                content: s.content,
-                parent_id: $TASK_ID,
-                priority: s.priority,
-                estimate: s.estimate,
-                order: s.order,
-                tags: [...$TASK.tags, "decomposed"]
-            }))}'))
-            ->phase(Store::as('CREATED_SUBTASKS', '[{id, title}]'))
-            ->phase('Verify:')
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}'))
-            ->phase('Store decomposition insight:')
-            ->phase(VectorMemoryMcp::call('store_memory', '{
-                content: "DECOMPOSED|#{$TASK.id} {$TASK.title}|subtasks:{count}|order:{execution_order}|components:{from CODE_INSIGHTS}",
-                category: "tool-usage",
-                tags: ["task-decomposition", "$TASK_TYPE.domain"]
-            }'))
-            ->phase(Operator::output([
-                '',
-                '═══ DECOMPOSITION COMPLETE ═══',
-                'Created: {count} subtasks for #{$TASK_ID}',
-                'Total estimate: {sum}h',
-                '',
-                'Next steps:',
-                '  /task:list --parent={$TASK_ID} - view subtasks',
-                '  /task:async {first_subtask_id} - start first subtask',
-                '═══════════════════════════════',
-            ]))
-            ->phase('STOP: Do NOT execute any subtask. Return control to user.');
+            // Stage 5: Create
+            ->phase(Operator::output(['', '## CREATING']))
+            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, tags: [...$TASK.tags, "decomposed"]}]}'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}').' → verify created')
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "DECOMPOSED|#{$TASK.id}|subtasks:{count}", category: "tool-usage", tags: ["task-decomposition"]}'))
+            ->phase(Operator::output(['', '=== DECOMPOSITION COMPLETE ===', 'Created: {count} subtasks', 'Next: /task:list --parent={$TASK_ID}']))
+            ->phase('STOP: Do NOT execute subtasks. Return control to user.');
 
         // =========================================================================
         // ERROR HANDLING
