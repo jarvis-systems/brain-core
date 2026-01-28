@@ -45,6 +45,20 @@ trait BrainIncludesTrait
         if (class_exists('BrainNode\\Common')) {
             $this->include('BrainNode\\Common');                        // Common node utilities
         }
+
+        // Quality gates - commands that MUST pass for validation
+        $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+
+        if (!empty($qualityCommands)) {
+            $this->rule('quality-gates-mandatory')->critical()
+                ->text('ALL quality commands below MUST be executed and PASS. Any failure = create fix-task. Cannot mark validated until ALL pass.');
+
+            foreach ($qualityCommands as $key => $cmd) {
+                $this->rule('quality-' . $key)
+                    ->critical()
+                    ->text("QUALITY GATE [{$key}]: {$cmd}");
+            }
+        }
     }
 
     public function isSelfDev(): bool
