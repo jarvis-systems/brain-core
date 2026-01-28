@@ -72,17 +72,18 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->onViolation('Skip '.Runtime::BRAIN_DIRECTORY.' in all exploration.');
 
         // =========================================================================
+        // INPUT CAPTURE
+        // =========================================================================
+
+        $this->defineInputCaptureWithTaskIdGuideline();
+
+        // =========================================================================
         // WORKFLOW (single unified flow)
         // =========================================================================
 
         $this->guideline('workflow')
             ->goal('Decompose task into subtasks: load → research → plan → approve → create')
             ->example()
-
-            // Parse input: extract task ID and flags from $ARGUMENTS
-            ->phase('Parse $ARGUMENTS: extract numeric task ID, detect -y flag')
-            ->phase(Store::as('HAS_Y_FLAG', '{true if $ARGUMENTS contains "-y" or "--yes"}'))
-            ->phase(Store::as('TASK_ID', '{numeric ID from $ARGUMENTS, e.g., "3 -y" → 3}'))
 
             // Stage 1: Load
             ->phase(Operator::output(['=== TASK:DECOMPOSE ===', 'Loading task #$TASK_ID...']))
