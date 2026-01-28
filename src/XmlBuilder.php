@@ -232,7 +232,9 @@ class XmlBuilder
             $lines[] = $this->renderNode($extractedGuidelines, false, $i + 1);
         }
 
-        return implode("\n", $lines);
+        $return = implode("\n", $lines);
+
+        return $return;
     }
 
     /**

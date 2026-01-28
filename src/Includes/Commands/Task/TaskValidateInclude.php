@@ -17,6 +17,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Validate vector task. 3 parallel agents: Code Quality, Testing, Documentation. Creates fix-tasks for issues. Cosmetic fixed inline.')]
 class TaskValidateInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
         // IRON EXECUTION LAW - READ THIS FIRST
@@ -47,10 +49,13 @@ class TaskValidateInclude extends IncludeArchetype
             }
         }
 
+        // INPUT CAPTURE
+        $this->defineInputCaptureGuideline();
+
         // WORKFLOW
         $this->guideline('workflow')->example()
             // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' ' . Store::as('TASK'))
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort()))
             ->phase(Operator::if(
                 'status NOT IN [completed, tested, validated, in_progress]',
@@ -65,7 +70,7 @@ class TaskValidateInclude extends IncludeArchetype
                 Store::get('TASK') . '.parent_id',
                 VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT')
             ))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' ' . Store::as('SUBTASKS'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
             // 2. Context gathering (memory + docs + related tasks)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY_CONTEXT'))
@@ -74,11 +79,11 @@ class TaskValidateInclude extends IncludeArchetype
 
             // 3. Approval (skip if -y)
             ->phase(Operator::if(
-                '$ARGUMENTS contains -y',
+                '$HAS_AUTO_APPROVE',
                 Operator::skip('approval'),
                 'show task info, wait "yes"'
             ))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress"}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress"}'))
 
             // 4. Validate (3 parallel agents)
             ->phase(Operator::parallel([
@@ -91,10 +96,10 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('Merge agent results ' . Store::as('ISSUES') . ' categorize: Critical/Major/Minor')
             ->phase(Operator::if(
                 'issues=0 AND no fix-task needed',
-                VectorTaskMcp::call('task_update', '{task_id, status: "validated"}'),
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
                 [
-                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: task_id, tags: ["validation-fix"]}'),
-                    VectorTaskMcp::call('task_update', '{task_id, status: "pending"}') . ' ← MANDATORY when fix-task created',
+                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
+                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← MANDATORY when fix-task created',
                 ]
             ))
 

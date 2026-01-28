@@ -18,6 +18,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Async execution of vector task via agent delegation. Brain orchestrates, agents execute. Includes docs gathering, web research, TDD mode. Parallel when independent.')]
 class TaskAsyncInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
         // IRON EXECUTION LAW - READ THIS FIRST
@@ -33,16 +35,19 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('atomic-tasks')->critical()->text('Each agent task: 1-2 files (max 3-5 if same feature). NO broad changes.');
         $this->rule('parallel-when-safe')->high()->text('Parallel: independent tasks, different files, no data flow. Multiple Task() in ONE message.');
 
+        // INPUT CAPTURE
+        $this->defineInputCaptureGuideline();
+
         // WORKFLOW
         $this->guideline('workflow')->example()
             // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $ARGUMENTS}') . ' → ' . Store::as('TASK', 'task.content IS your work order'))
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('TASK', 'task.content IS your work order'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
             ->phase(Operator::if('status=completed', 'ask "Re-execute?"'))
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed session → continue', Operator::abort('another session active')))
             ->phase(Operator::if('status=tested AND comment contains "TDD MODE"', 'TDD execution mode (tests exist, implement feature)'))
             ->phase(Operator::if('parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' for broader context'))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: task_id}') . ' → ' . Store::as('SUBTASKS'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('SUBTASKS'))
 
             // 2. Context gathering (memory + docs + web + related tasks)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → ' . Store::as('MEMORY', 'past implementations, patterns'))
@@ -55,8 +60,8 @@ class TaskAsyncInclude extends IncludeArchetype
             // 3. Plan & Approval
             ->phase('Analyze task.content → break into atomic agent subtasks')
             ->phase(Store::as('PLAN', '[{agent, subtask, files, parallel: true/false}]'))
-            ->phase(Operator::if('-y flag', 'skip to execution immediately', 'show brief plan, wait "yes"'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "in_progress", comment: "Execution started", append_comment: true}'))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', 'skip to execution immediately', 'show brief plan, wait "yes"'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Execution started", append_comment: true}'))
 
             // 4. Execute via agents
             ->phase('Delegate to agents based on ' . Store::get('PLAN') . ':')
@@ -66,7 +71,7 @@ class TaskAsyncInclude extends IncludeArchetype
 
             // 5. Complete
             ->phase('Collect agent results')
-            ->phase(VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "Files: {list}", append_comment: true}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Files: {list}", append_comment: true}'))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, learnings: {insights}", category: "code-solution"}'));
 
         // Agent reference
@@ -82,7 +87,7 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->guideline('tdd-mode')->example()
             ->phase(Operator::if('task.comment contains "TDD MODE" AND status=tested', 'Execute implementation via agents based on task.content'))
             ->phase('After implementation → ' . TaskTool::agent('explore', 'Run tests: php artisan test --filter="{pattern}"'))
-            ->phase(Operator::if('all tests pass', VectorTaskMcp::call('task_update', '{task_id, status: "completed", comment: "TDD: Tests PASSED", append_comment: true}')))
+            ->phase(Operator::if('all tests pass', VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "TDD: Tests PASSED", append_comment: true}')))
             ->phase(Operator::if('tests fail', 'continue implementation via agents, do NOT mark completed'));
 
         // Error handling
