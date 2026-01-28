@@ -88,6 +88,18 @@ class Core
         return $this->variables;
     }
 
+    public function allVariables(string|null $findName = null): array
+    {
+        $vars = [];
+        foreach ($this->variables as $key => $value) {
+            if ($findName !== null && ! str_starts_with($key, $findName)) {
+                continue;
+            }
+            $vars[$key] = $value;
+        }
+        return $vars;
+    }
+
     public function isDebug(): bool
     {
         return !! $this->getEnv('BRAIN_CORE_DEBUG')
@@ -97,6 +109,18 @@ class Core
     public function hasEnv(string $name): bool
     {
         return getenv(strtoupper($name)) !== false;
+    }
+
+    public function allEnv(string|null $findName = null): array
+    {
+        $envs = [];
+        foreach (getenv() as $key => $value) {
+            if ($findName !== null && ! str_starts_with($key, $findName)) {
+                continue;
+            }
+            $envs[$key] = $this->getEnv($key);
+        }
+        return $envs;
     }
 
     public function getEnv(string $name): mixed

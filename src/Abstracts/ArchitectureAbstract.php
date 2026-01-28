@@ -33,6 +33,27 @@ abstract class ArchitectureAbstract extends Dto
         });
     }
 
+    public function allVars(string|null $findName = null): array
+    {
+        return array_merge(
+            Brain::allVariables($findName),
+            Brain::allEnv($findName),
+        );
+    }
+
+    public function groupVars(string $group): array
+    {
+        $all = $this->allVars($group);
+        $result = [];
+        foreach ($all as $key => $value) {
+            $groupQuote = preg_quote($group, '/');
+            $newKey = preg_replace('/^' . $groupQuote . '_?/', '', $key);
+            $newKey = trim($newKey, '_');
+            $result[$newKey] = $value;
+        }
+        return $result;
+    }
+
     public function varIs(string $name, mixed $value, bool $strict = true): bool
     {
         if ($strict) {

@@ -33,6 +33,20 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
         $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → parent status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS. "NOT blocking" still requires fix-task and pending status.');
 
+        // Quality gates - commands that MUST pass for validation
+        $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+
+        if (!empty($qualityCommands)) {
+            $this->rule('quality-gates-mandatory')->critical()
+                ->text('ALL quality commands below MUST be executed and PASS. Any failure = create fix-task. Cannot mark validated until ALL pass.');
+
+            foreach ($qualityCommands as $key => $cmd) {
+                $this->rule('quality-' . $key)
+                    ->critical()
+                    ->text("QUALITY GATE [{$key}]: {$cmd}");
+            }
+        }
+
         // WORKFLOW
         $this->guideline('workflow')->example()
             // 1. Load task
