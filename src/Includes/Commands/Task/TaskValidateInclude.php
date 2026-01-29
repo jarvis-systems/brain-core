@@ -31,8 +31,8 @@ class TaskValidateInclude extends IncludeArchetype
         // VALIDATION RULES
         $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No excuses. JUST EXECUTE.');
-        $this->rule('cosmetic-inline')->critical()->text('Cosmetic (whitespace, typos, formatting) = fix inline. Metadata tags = IGNORE.');
-        $this->rule('functional-to-task')->critical()->text('Functional issues (logic, security, architecture) = create fix-task, NEVER fix directly.');
+        $this->rule('cosmetic-inline')->critical()->text('Cosmetic = fix inline, NEVER create task. Cosmetic includes: whitespace, typos, formatting, code comments (add/update/remove), docblocks, docstrings, variable naming (non-breaking), import sorting. Metadata tags = IGNORE.');
+        $this->rule('functional-to-task')->critical()->text('Functional issues ONLY = create fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality. NOT functional: comments, docs, naming, formatting.');
         $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → parent status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS. "NOT blocking" still requires fix-task and pending status.');
 
         // Quality gates - commands that MUST pass for validation
@@ -87,9 +87,9 @@ class TaskValidateInclude extends IncludeArchetype
 
             // 4. Validate (3 parallel agents)
             ->phase(Operator::parallel([
-                TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. Cosmetic=fix inline. Return issues list.'),
-                TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. Cosmetic=fix inline. Return issues list.'),
-                TaskTool::agent('explore', 'DOCUMENTATION: docs sync, API docs, type hints, dependencies. Cosmetic=fix inline. IGNORE metadata tags. Return issues list.'),
+                TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. COSMETIC (fix inline, NO task): comments, docblocks, formatting, naming, imports. Return ONLY functional issues.'),
+                TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. COSMETIC (fix inline, NO task): test comments, docstrings. Return ONLY functional issues.'),
+                TaskTool::agent('explore', 'DOCUMENTATION: docs sync, type hints, dependencies. COSMETIC (fix inline, NO task): comment text, docblock wording. IGNORE metadata tags. Return ONLY functional issues.'),
             ]))
 
             // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
