@@ -31,6 +31,9 @@ class TaskValidateInclude extends IncludeArchetype
         // VALIDATION RULES
         $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No excuses. JUST EXECUTE.');
+        $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content describes. Do NOT check unrelated code/files. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
+        $this->rule('task-complete')->critical()->text('ALL task requirements MUST be done. Parse task.content for requirements list. Each requirement = verified. Missing requirement = fix-task.');
+        $this->rule('no-garbage')->critical()->text('Detect garbage: unused imports, dead code, debug statements, commented-out code, orphan files, test artifacts. Garbage in task scope = fix-task.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic = fix inline, NEVER create task. Cosmetic includes: whitespace, typos, formatting, code comments (add/update/remove), docblocks, docstrings, variable naming (non-breaking), import sorting. Metadata tags = IGNORE.');
         $this->rule('functional-to-task')->critical()->text('Functional issues ONLY = create fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality. NOT functional: comments, docs, naming, formatting.');
         $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → parent status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS. "NOT blocking" still requires fix-task and pending status.');
@@ -85,11 +88,11 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress"}'))
 
-            // 4. Validate (3 parallel agents)
+            // 4. Validate (3 parallel agents) - TASK SCOPE ONLY
             ->phase(Operator::parallel([
-                TaskTool::agent('explore', 'CODE QUALITY: completeness, architecture, security, performance. COSMETIC (fix inline, NO task): comments, docblocks, formatting, naming, imports. Return ONLY functional issues.'),
-                TaskTool::agent('explore', 'TESTING: coverage, quality, edge cases, error handling. Run tests. COSMETIC (fix inline, NO task): test comments, docstrings. Return ONLY functional issues.'),
-                TaskTool::agent('explore', 'DOCUMENTATION: docs sync, type hints, dependencies. COSMETIC (fix inline, NO task): comment text, docblock wording. IGNORE metadata tags. Return ONLY functional issues.'),
+                TaskTool::agent('explore', 'TASK COMPLETION: Read task.content. List ALL requirements. Verify EACH requirement is done. Check ONLY files mentioned/created by task. Detect garbage: unused imports, dead code, debug statements. COSMETIC=fix inline. Return: missing requirements, garbage found.'),
+                TaskTool::agent('explore', 'CODE QUALITY: Check ONLY task-related code. No scope expansion. Verify: logic correct, no security issues, architecture ok. Run quality gates. COSMETIC=fix inline. Return: functional issues in task scope ONLY.'),
+                TaskTool::agent('explore', 'TESTING: Run tests for task scope ONLY. Verify: tests exist for new code, tests pass, edge cases covered. COSMETIC=fix inline. Return: missing tests, failing tests.'),
             ]))
 
             // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
