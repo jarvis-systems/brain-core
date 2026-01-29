@@ -52,7 +52,7 @@ class VectorTaskInclude extends IncludeArchetype
             ->example('status: "pending"|"in_progress"|"completed"|"stopped"')->key('status')
             ->example('comment: "text" | append_comment: true (append with \\n\\n separator) | false (replace)')->key('comment')
             ->example('add_tag: "single_tag" (validates duplicates, 10-tag limit) | remove_tag: "tag" (case-insensitive)')->key('tags')
-            ->example('start_at/finish_at: ISO 8601 timestamps | estimate: hours | order: triggers sibling reorder')->key('timestamps');
+            ->example('start_at/finish_at: AUTO-MANAGED (NEVER set manually, only for user-requested corrections) | estimate: hours | order: triggers sibling reorder')->key('timestamps');
 
         $this->guideline('mcp-tools-delete')
             ->text('Task deletion (permanent, cannot be undone).')
@@ -163,5 +163,10 @@ class VectorTaskInclude extends IncludeArchetype
             ->text('Sibling tasks (same parent_id) SHOULD have explicit order for execution sequence.')
             ->why('Order defines execution priority within same level. Prevents ambiguity in task selection.')
             ->onViolation('Set order parameter: ' . VectorTaskMcp::call('task_update', '{task_id, order: N}') . '. Sequential: 1, 2, 3. Parallel: same order.');
+
+        $this->rule('timestamps-auto')->critical()
+            ->text('NEVER set start_at/finish_at manually. Timestamps are AUTO-MANAGED by system on status change.')
+            ->why('System sets start_at when status→in_progress, finish_at when status→completed/stopped. Manual values corrupt timeline.')
+            ->onViolation('Remove start_at/finish_at from task_update call. Use ONLY for corrections when explicitly requested by user.');
     }
 }
