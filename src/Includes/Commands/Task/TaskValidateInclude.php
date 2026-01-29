@@ -43,7 +43,7 @@ class TaskValidateInclude extends IncludeArchetype
 
         if (!empty($qualityCommands)) {
             $this->rule('quality-gates-mandatory')->critical()
-                ->text('ALL quality commands below MUST be executed and PASS. Any failure = create fix-task. Cannot mark validated until ALL pass.');
+                ->text('ALL quality commands MUST PASS with ZERO errors AND ZERO warnings. PASS = exit code 0 + no errors + no warnings. Warnings are NOT "acceptable". Any error OR warning = FAIL = create fix-task. Cannot mark validated until ALL gates show clean output.');
 
             foreach ($qualityCommands as $key => $cmd) {
                 $this->rule('quality-' . $key)
