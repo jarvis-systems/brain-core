@@ -52,6 +52,12 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->why('Task modification is a commitment. User must consent to changing the task they are brainstorming on.')
             ->onViolation('Ask user: "Would you like to update this task, create subtasks, or both?"');
 
+        // PARENT INHERITANCE (IRON LAW)
+        $this->rule('parent-id-mandatory')->critical()
+            ->text('When working with task $VECTOR_TASK_ID, ALL new subtasks created MUST have parent_id = $VECTOR_TASK_ID. IRON LAW: Subtasks are ALWAYS children of the brainstormed task, NEVER orphans. No exceptions.')
+            ->why('Task hierarchy integrity. Orphan tasks break traceability and workflow.')
+            ->onViolation('ABORT task_create if parent_id missing or != $VECTOR_TASK_ID. Verify parent_id in EVERY task_create call.');
+
         $this->defineVectorMemoryMandatoryRule();
         $this->defineVectorTaskIdRequiredRule('/do:brainstorm');
     }

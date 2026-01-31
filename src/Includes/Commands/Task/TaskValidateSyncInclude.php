@@ -10,15 +10,13 @@ use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
-use BrainCore\Compilation\Tools\EditTool;
 use BrainCore\Compilation\Tools\GlobTool;
 use BrainCore\Compilation\Tools\GrepTool;
 use BrainCore\Compilation\Tools\ReadTool;
-use BrainCore\Compilation\Tools\WriteTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Direct synchronous vector task validation without agent delegation. Accepts task ID reference (formats: "15", "#15", "task 15"), validates completed tasks against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent. Best for: validation requiring direct execution without parallel agents.')]
+#[Purpose('Direct synchronous vector task validation without agent delegation. Accepts task ID reference (formats: "15", "#15", "task 15"), validates completed tasks against task.content requirements (TASK SCOPE ONLY), code quality, tests, and completeness. Creates follow-up tasks for functional issues. Cosmetic issues fixed inline. Idempotent. Best for: validation requiring direct execution without parallel agents.')]
 class TaskValidateSyncInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -71,22 +69,58 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->why('Traceability and audit trail. Code changes must be tracked via task system.')
             ->onViolation('Create task for the functional issue instead of fixing directly.');
 
+        // PARENT INHERITANCE (IRON LAW)
+        $this->rule('parent-id-mandatory')->critical()
+            ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. IRON LAW: Fix-tasks are ALWAYS children of the validated task, NEVER orphans, NEVER grandchildren. $TASK_PARENT_ID = $VECTOR_TASK_ID always.')
+            ->why('Task hierarchy integrity. Orphan tasks break traceability. Grandchildren break workflow.')
+            ->onViolation('ABORT task_create if parent_id != $VECTOR_TASK_ID. Verify TASK_PARENT_ID = VECTOR_TASK_ID before ANY task_create.');
+
         $this->rule('cosmetic-auto-fix')->critical()
             ->text('COSMETIC issues (whitespace, indentation, extra spaces, trailing spaces, documentation typos, formatting inconsistencies, empty lines) MUST be auto-fixed INLINE when discovered during validation. When you find a cosmetic issue, fix it IMMEDIATELY with Edit tool, increment cosmetic_fixes counter, then continue validation. NO separate phase. NO restart. NO tasks.')
             ->why('Inline fix eliminates separate cosmetic phase. Faster validation, no restarts, no extra phases.')
             ->onViolation('Fix cosmetic issues inline during validation. Report total cosmetic_fixes_applied at end.');
+
+        // VALIDATION SCOPE RULES (consistent with TaskValidateInclude)
+        $this->rule('task-scope-only')->critical()
+            ->text('Validate ONLY what task.content describes. Do NOT check unrelated code/files. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.')
+            ->why('Scope creep wastes time and creates false positives.')
+            ->onViolation('Remove out-of-scope findings. Focus ONLY on task.content requirements.');
+
+        $this->rule('task-complete')->critical()
+            ->text('ALL task requirements MUST be done. Parse task.content for requirements list. Each requirement = verified. Missing requirement = fix-task.')
+            ->why('Partial completion is not completion.')
+            ->onViolation('Create fix-task for missing requirements.');
+
+        $this->rule('no-garbage')->critical()
+            ->text('Detect garbage: unused imports, dead code, debug statements, commented-out code, orphan files, test artifacts. Garbage in task scope = fix-task.')
+            ->why('Clean code is part of completion.')
+            ->onViolation('Create fix-task for garbage removal.');
+
+        // Quality gates - commands that MUST pass for validation
+        $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+
+        if (!empty($qualityCommands)) {
+            $this->rule('quality-gates-mandatory')->critical()
+                ->text('ALL quality commands MUST PASS with ZERO errors AND ZERO warnings. PASS = exit code 0 + no errors + no warnings. Warnings are NOT "acceptable". Any error OR warning = FAIL = create fix-task. Cannot mark validated until ALL gates show clean output.');
+
+            foreach ($qualityCommands as $key => $cmd) {
+                $this->rule('quality-' . $key)
+                    ->critical()
+                    ->text("QUALITY GATE [{$key}]: {$cmd}");
+            }
+        }
 
         // Common rule from trait
         $this->defineVectorMemoryMandatoryRule();
 
         // Phase Execution Sequence - STRICT ORDERING
         $this->rule('phase-sequence-strict')->critical()
-            ->text('Phases MUST execute in STRICT sequential order: Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7. NO phase may start until previous phase is FULLY COMPLETED. Each phase MUST output its header "=== PHASE N: NAME ===" before any actions.')
+            ->text('Phases MUST execute in STRICT sequential order: Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6. NO phase may start until previous phase is FULLY COMPLETED. Each phase MUST output its header "=== PHASE N: NAME ===" before any actions.')
             ->why('Sequential execution ensures data dependencies are satisfied. Each phase depends on variables stored by previous phases.')
             ->onViolation('STOP. Return to last completed phase. Execute current phase fully before proceeding.');
 
         $this->rule('no-phase-skip')->critical()
-            ->text('FORBIDDEN: Skipping phases. ALL phases 0-7 MUST execute even if a phase has no issues to report. Empty results are valid; skipped phases are VIOLATION.')
+            ->text('FORBIDDEN: Skipping phases. ALL phases 0-6 MUST execute even if a phase has no issues to report. Empty results are valid; skipped phases are VIOLATION.')
             ->why('Phase skipping breaks data flow. Later phases expect variables from earlier phases.')
             ->onViolation('ABORT. Return to first skipped phase. Execute ALL phases in sequence.');
 
@@ -233,47 +267,41 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 '- Related tasks: {$RELATED_TASKS.count}',
             ]));
 
-        // Phase 3: Documentation Requirements Extraction (sync)
-        $this->guideline('phase3-documentation-extraction')
-            ->goal('Extract ALL requirements from .docs/ using direct tools')
+        // Phase 3: Direct Validation (sync) - TASK SCOPE ONLY
+        $this->guideline('phase3-direct-validation')
+            ->goal('Validate task.content requirements using direct tools. TASK SCOPE ONLY. FIX COSMETIC ISSUES INLINE.')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 3: DOCUMENTATION REQUIREMENTS ===',
-            ]))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from $TASK_DESCRIPTION}'), 'Get documentation INDEX'))
-            ->phase(Store::as('DOCS_INDEX', 'Documentation file paths'))
-            ->phase(Operator::if('$DOCS_INDEX not empty', [
-                Operator::forEach('doc in $DOCS_INDEX', [
-                    ReadTool::call('{doc.path}'),
-                ]),
-                Store::as('DOCUMENTATION_REQUIREMENTS', '{structured requirements list extracted from docs}'),
-            ]))
-            ->phase(Operator::if('$DOCS_INDEX empty', [
-                Store::as('DOCUMENTATION_REQUIREMENTS', '[]'),
-                Operator::output(['WARNING: No documentation found. Validation will be limited.']),
-            ]))
-            ->phase(Operator::output([
-                'Requirements extracted: {$DOCUMENTATION_REQUIREMENTS.count}',
-                '{requirements summary}',
-            ]));
-
-        // Phase 4: Direct Validation (sync) with inline cosmetic fixes
-        $this->guideline('phase4-direct-validation')
-            ->goal('Validate requirements and code consistency using direct tools. FIX COSMETIC ISSUES INLINE.')
-            ->example()
-            ->phase(Operator::output([
-                '',
-                '=== PHASE 4: DIRECT VALIDATION ===',
+                '=== PHASE 3: DIRECT VALIDATION (TASK SCOPE) ===',
             ]))
             ->phase(Store::as('COSMETIC_FIXES_APPLIED', '0'))
-            ->phase(Operator::note('COSMETIC FIX RULE: When you find whitespace, indentation, trailing spaces, empty line issues, typos, formatting inconsistencies - FIX THEM IMMEDIATELY with Edit tool. Increment $COSMETIC_FIXES_APPLIED. Continue validation. NO separate phase.'))
-            ->phase('Identify relevant files and patterns based on $TASK_DESCRIPTION and $DOCUMENTATION_REQUIREMENTS')
-            ->phase(GlobTool::describe('Discover related files using patterns derived from requirements'))
-            ->phase(GrepTool::describe('Search for implementation evidence and known patterns'))
-            ->phase(ReadTool::describe('Read identified files to confirm implementation and consistency'))
-            ->phase('During validation: if cosmetic issue found → Edit tool → fix → $COSMETIC_FIXES_APPLIED++ → continue')
-            ->phase(Store::as('VALIDATION_FINDINGS', '{requirements mapping, code issues, tests, docs sync, cosmetic_fixes_applied: $COSMETIC_FIXES_APPLIED}'))
+            ->phase(Operator::note('TASK SCOPE RULE: Parse $TASK_DESCRIPTION (task.content) for requirements. Validate ONLY those requirements. Do NOT expand scope to unrelated code.'))
+            ->phase(Operator::note('COSMETIC FIX RULE: Whitespace, indentation, trailing spaces, typos, formatting - FIX IMMEDIATELY with Edit tool. Increment $COSMETIC_FIXES_APPLIED. Continue. NO tasks for cosmetic.'))
+
+            // 3.1 Task Completion Check
+            ->phase('3.1 TASK COMPLETION: Parse task.content → list ALL requirements → verify EACH is done')
+            ->phase(GlobTool::describe('Discover files mentioned/created by task'))
+            ->phase(ReadTool::describe('Read task-related files to confirm implementation'))
+            ->phase('Detect garbage in task scope: unused imports, dead code, debug statements, commented-out code')
+
+            // 3.2 Code Quality Check
+            ->phase('3.2 CODE QUALITY: Check ONLY task-related code')
+            ->phase(GrepTool::describe('Search for implementation patterns and potential issues'))
+            ->phase('Verify: logic correct, no security issues, architecture ok for task scope')
+
+            // 3.3 Quality Gates
+            ->phase('3.3 QUALITY GATES: Run quality commands')
+            ->phase(BashTool::describe('{QUALITY_COMMAND from groupVars}', 'Run quality gate commands'))
+            ->phase('Quality gate FAIL = create fix-task')
+
+            // 3.4 Testing Check
+            ->phase('3.4 TESTING: Verify tests for task scope ONLY')
+            ->phase('Check: tests exist for new code, tests pass, edge cases covered')
+            ->phase('Missing tests = fix-task. Failing tests = fix-task.')
+
+            ->phase('During validation: cosmetic issue found → Edit → fix → $COSMETIC_FIXES_APPLIED++ → continue')
+            ->phase(Store::as('VALIDATION_FINDINGS', '{task requirements mapping, code issues, test issues, garbage found, quality gate results, cosmetic_fixes_applied: $COSMETIC_FIXES_APPLIED}'))
             ->phase(Operator::output([
                 'Direct validation completed.',
                 'Files reviewed: {count}',
@@ -281,23 +309,23 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 'Findings captured for aggregation.',
             ]));
 
-        // Phase 5: Results Aggregation and Analysis
-        $this->guideline('phase5-results-aggregation')
+        // Phase 4: Results Aggregation and Analysis
+        $this->guideline('phase4-results-aggregation')
             ->goal('Aggregate all validation results and categorize FUNCTIONAL issues only (cosmetic already fixed inline)')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 5: RESULTS AGGREGATION ===',
+                '=== PHASE 4: RESULTS AGGREGATION ===',
             ]))
             ->phase('Merge results from direct validation findings')
             ->phase(Store::as('ALL_ISSUES', '{merged FUNCTIONAL issues from validation findings}'))
-            ->phase(Store::as('TOTAL_COSMETIC_FIXES', '{$COSMETIC_FIXES_APPLIED from Phase 4}'))
+            ->phase(Store::as('TOTAL_COSMETIC_FIXES', '{$COSMETIC_FIXES_APPLIED from Phase 3}'))
             ->phase('Categorize FUNCTIONAL issues (require tasks):')
             ->phase(Store::as('CRITICAL_ISSUES', '{issues with severity: critical - code logic, security, architecture}'))
             ->phase(Store::as('MAJOR_ISSUES', '{issues with severity: major - functionality, tests, dependencies}'))
             ->phase(Store::as('MINOR_ISSUES', '{issues with severity: minor - code style affecting logic, naming conventions}'))
-            ->phase(Store::as('MISSING_REQUIREMENTS', '{requirements not implemented}'))
-            ->phase(Operator::note('Cosmetic issues were already fixed inline during Phase 4. No separate cosmetic tracking needed.'))
+            ->phase(Store::as('MISSING_REQUIREMENTS', '{task.content requirements not implemented}'))
+            ->phase(Operator::note('Cosmetic issues were already fixed inline during Phase 3. No separate cosmetic tracking needed.'))
             ->phase(Store::as('FUNCTIONAL_ISSUES_COUNT', '{$CRITICAL_ISSUES.count + $MAJOR_ISSUES.count + $MINOR_ISSUES.count + $MISSING_REQUIREMENTS.count}'))
             ->phase(Operator::output([
                 'Validation results:',
@@ -310,13 +338,13 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 'Functional issues total: {$FUNCTIONAL_ISSUES_COUNT}',
             ]));
 
-        // Phase 6: Task Creation for FUNCTIONAL Issues Only (Consolidated 5-8h Tasks)
-        $this->guideline('phase6-task-creation')
-            ->goal('Create consolidated tasks (5-8h each) for FUNCTIONAL issues with comprehensive context (cosmetic issues already fixed inline)')
+        // Phase 5: Task Creation for FUNCTIONAL Issues Only (Consolidated 5-8h Tasks)
+        $this->guideline('phase5-task-creation')
+            ->goal('Create consolidated tasks (5-8h each) for FUNCTIONAL issues with comprehensive context (cosmetic already fixed inline)')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 6: TASK CREATION (CONSOLIDATED) ===',
+                '=== PHASE 5: TASK CREATION (CONSOLIDATED) ===',
             ]))
             ->phase(Operator::note('CRITICAL VERIFICATION: Confirm TASK_PARENT_ID before creating any tasks'))
             ->phase(Operator::verify([
@@ -329,10 +357,10 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase('Check existing tasks to avoid duplicates')
             ->phase(VectorTaskMcp::call('task_list', '{query: "fix issues $TASK_DESCRIPTION", limit: 20}'))
             ->phase(Store::as('EXISTING_FIX_TASKS', 'Existing fix tasks'))
-            ->phase(Operator::note('Phase 6 processes ONLY functional issues. Cosmetic issues were fixed inline in Phase 4.'))
+            ->phase(Operator::note('Phase 5 processes ONLY functional issues. Cosmetic issues were fixed inline in Phase 3.'))
             ->phase(Operator::if('$FUNCTIONAL_ISSUES_COUNT === 0', [
-                Operator::output(['No functional issues to create tasks for. Proceeding to Phase 7...']),
-                'SKIP to Phase 7',
+                Operator::output(['No functional issues to create tasks for. Proceeding to Phase 6...']),
+                'SKIP to Phase 6',
             ]))
             ->phase('CONSOLIDATION STRATEGY: Group FUNCTIONAL issues into 5-8 hour task batches')
             ->phase(Operator::do([
@@ -400,13 +428,13 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->why('Enables full context restoration without re-exploration. Saves agent time on task pickup.')
             ->onViolation('Add missing context references before creating task.');
 
-        // Phase 7: Validation Completion
-        $this->guideline('phase7-completion')
+        // Phase 6: Validation Completion
+        $this->guideline('phase6-completion')
             ->goal('Complete validation, update task status, store summary to memory')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 7: VALIDATION COMPLETE ===',
+                '=== PHASE 6: VALIDATION COMPLETE ===',
             ]))
             ->phase(Store::as('VALIDATION_SUMMARY', '{all_issues_count, tasks_created_count, pass_rate}'))
             ->phase(Store::as('VALIDATION_STATUS',
@@ -464,10 +492,6 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 'Suggest: "Use /do:validate for text-based validation"',
                 'Abort command',
             ])
-            ->phase()->if('no documentation found', [
-                'Warn: "No documentation in .docs/ for this task"',
-                'Continue with limited validation (code-only checks)',
-            ])
             ->phase()->if('validation fails', [
                 'Log: "Validation failed: {error}"',
                 'Report partial validation in summary',
@@ -487,7 +511,8 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::verify([
                 'vector_task_loaded = true',
                 'validatable_status_verified = true',
-                'documentation_checked = true',
+                'task_scope_validated = true',
+                'quality_gates_executed = true',
                 'results_stored_to_memory = true',
                 'no_direct_fixes = true',
             ]));
@@ -499,7 +524,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase('input', '"task 15" or "#15" where task #15 is "Implement user login"')
             ->phase('load', 'task_get(15) → title, content, status: completed')
             ->phase('flow',
-                'Task Loading → Context → Docs → Direct Validation → Aggregate → Create Tasks → Complete')
+                'Task Loading → Preview → Context → Validation (task scope) → Aggregate → Create Tasks → Complete')
             ->phase('result', 'Validation PASSED → status: validated OR NEEDS_WORK → N fix tasks created');
 
         $this->guideline('example-with-fixes')

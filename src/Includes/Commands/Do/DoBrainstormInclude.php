@@ -12,6 +12,7 @@ use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\ReadTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -134,6 +135,12 @@ class DoBrainstormInclude extends IncludeArchetype
                 '',
                 '---',
             ]))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Analyzing brainstorm topic: {$BRAINSTORM_TOPIC}. Considering: problem space, constraints, stakeholders, success criteria, potential approaches.",
+                thoughtNumber: 1,
+                totalThoughts: 4,
+                nextThoughtNeeded: true
+            }'))
             ->phase('Present ideas structured by category:')
             ->phase(Operator::output([
                 '## Context',
@@ -219,6 +226,12 @@ class DoBrainstormInclude extends IncludeArchetype
         $this->guideline('phase2b-action-selection')
             ->goal('After ideation complete, present action options')
             ->example()
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Synthesizing all collected ideas from brainstorm session. Evaluating: feasibility, priority, dependencies, risks, actionability.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
             ->phase(Operator::output([
                 '',
                 '=== IDEATION COMPLETE ===',
@@ -275,8 +288,14 @@ class DoBrainstormInclude extends IncludeArchetype
                     '=== PHASE 3: TASK CREATION ===',
                     'Converting brainstorm outcomes to tasks...',
                 ]),
+                SequentialThinkingMcp::call('sequentialthinking', '{
+                    thought: "Converting brainstorm ideas to tasks. Analyzing: task boundaries, dependencies, optimal order, effort estimation, priority assignment.",
+                    thoughtNumber: 1,
+                    totalThoughts: 3,
+                    nextThoughtNeeded: true
+                }'),
                 'Compile actionable items from brainstorm session',
-                Store::as('ACTIONABLE_ITEMS', '[{title, description, priority, estimate}, ...]'),
+                Store::as('ACTIONABLE_ITEMS', '[{title, description, priority, estimate, order}, ...]'),
                 Operator::output([
                     'Proposed tasks:',
                     '',

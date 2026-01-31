@@ -54,12 +54,22 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->onViolation('STOP immediately after subtask creation. Return control to user.');
 
         $this->rule('parent-id-required')->critical()
-            ->text('ALL created subtasks MUST have parent_id = $TASK_ID.')
-            ->why('Hierarchy integrity. Subtasks must link to parent task.')
-            ->onViolation('Verify parent_id in every task_create call.');
+            ->text('ALL created subtasks MUST have parent_id = $TASK_ID. IRON LAW: When working with task X, EVERY new task created MUST be a child of X. No orphan tasks. No exceptions. Verify parent_id = $TASK_ID in EVERY task_create/task_create_bulk call before execution.')
+            ->why('Hierarchy integrity. Orphan tasks break traceability, workflow, and task relationships. Task X work = Task X children only.')
+            ->onViolation('ABORT if parent_id missing or != $TASK_ID. Double-check EVERY task_create call.');
 
         // Common rule from trait
         $this->defineMandatoryUserApprovalRule();
+
+        $this->rule('order-mandatory')->critical()
+            ->text('EVERY subtask MUST have explicit order field set. Sequential: 1, 2, 3. Parallel-safe: same order.')
+            ->why('Order defines execution priority. Missing order = ambiguous sequence = blocked user.')
+            ->onViolation('Set order parameter in EVERY task_create call. Never omit.');
+
+        $this->rule('sequence-analysis')->critical()
+            ->text('When creating 2+ subtasks: STOP and THINK about optimal sequence. Consider: dependencies, data flow, setup requirements, parallel opportunities.')
+            ->why('Wrong sequence wastes time. User executes in order - if task 3 needs output from task 5, user is blocked.')
+            ->onViolation('Use SequentialThinking to analyze dependencies. Reorder before creation.');
 
         $this->rule('logical-order')->high()
             ->text('Subtasks MUST be in logical execution order. Dependencies first, dependents after.')
@@ -112,13 +122,24 @@ class TaskDecomposeInclude extends IncludeArchetype
 
             // Stage 3: Plan
             ->phase(Operator::output(['', '## PLANNING']))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Synthesizing research: CODE_INSIGHTS + MEMORY_INSIGHTS. Identifying: logical boundaries, component coupling, data dependencies, effort distribution.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
             ->phase('Create subtask plan: group by component, order by dependency, estimate each')
+            ->phase(Operator::if('2+ subtasks', [
+                'STOP: Analyze optimal execution sequence',
+                'Consider: What depends on what? What can run parallel? What needs setup first?',
+                'Assign order: 1=first, 2=second, same order=parallel-safe',
+            ]))
             ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order}]'))
-            ->phase(Operator::if('5+ subtasks', SequentialThinkingMcp::call('sequentialthinking', '{thought: "Order subtasks by dependencies", thoughtNumber: 1, totalThoughts: 3, nextThoughtNeeded: true}')))
+            ->phase(Operator::if('3+ subtasks', SequentialThinkingMcp::call('sequentialthinking', '{thought: "Analyze dependencies and optimal order for subtasks", thoughtNumber: 1, totalThoughts: 3, nextThoughtNeeded: true}')))
 
             // Stage 4: Approve
             ->phase(Operator::output(['', '## PLAN']))
-            ->phase('Show table: | # | Subtask | Est | Priority | Depends |')
+            ->phase('Show table: | Order | Subtask | Est | Priority | Depends |')
             ->phase(Operator::if('$HAS_Y_FLAG', Operator::output(['Auto-approved (-y flag)'])))
             ->phase(Operator::if('NOT $HAS_Y_FLAG', ['Ask: "Create {count} subtasks? (yes/no/modify)"', 'WAIT for approval']))
 

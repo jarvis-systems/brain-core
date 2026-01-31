@@ -16,6 +16,7 @@ use BrainCore\Compilation\Tools\GrepTool;
 use BrainCore\Compilation\Tools\ReadTool;
 use BrainCore\Compilation\Tools\WebSearchTool;
 use BrainCore\Compilation\Tools\WriteTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('Direct synchronous task execution by Brain without agent delegation. Uses Read/Edit/Write/Glob/Grep tools directly. Single approval gate. Best for: simple tasks, quick fixes, single-file changes, when agent overhead is unnecessary. Accepts task description as input. Zero distractions, atomic execution, strict plan adherence.')]
@@ -113,6 +114,12 @@ class DoSyncInclude extends IncludeArchetype
             ->phase(GrepTool::describe('Search for relevant code patterns'))
             ->phase(ReadTool::describe('Read identified files for context'))
             ->phase(Store::as('CONTEXT', '{files_found, code_patterns, current_state}'))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Planning direct execution. Analyzing: file dependencies, edit sequence, atomic steps, potential conflicts, rollback strategy.",
+                thoughtNumber: 1,
+                totalThoughts: 2,
+                nextThoughtNeeded: true
+            }'))
             ->phase('Create atomic execution plan: specific edits with exact changes')
             ->phase(Store::as('PLAN', '[{step_N, file, action: read|edit|write, description, exact_changes}, ...]'))
             ->phase(Operator::output([

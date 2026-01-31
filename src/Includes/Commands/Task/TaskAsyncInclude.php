@@ -12,6 +12,7 @@ use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainCore\Compilation\Tools\WebSearchTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -59,7 +60,13 @@ class TaskAsyncInclude extends IncludeArchetype
 
             // 3. Plan & Approval
             ->phase('Analyze task.content → break into atomic agent subtasks')
-            ->phase(Store::as('PLAN', '[{agent, subtask, files, parallel: true/false}]'))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Planning agent delegation. Analyzing: task boundaries, parallelization opportunities, agent selection, subtask dependencies, file scope per agent.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
+            ->phase(Store::as('PLAN', '[{agent, subtask, files, parallel: true/false, order}]'))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'skip to execution immediately', 'show brief plan, wait "yes"'))
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Execution started", append_comment: true}'))
 

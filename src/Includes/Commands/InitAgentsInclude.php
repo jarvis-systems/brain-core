@@ -16,6 +16,7 @@ use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Agents\AgentMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Agents\WebResearchMaster;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('The InitAgents command initializes the project with agents based on industry best practices.')]
@@ -245,6 +246,12 @@ class InitAgentsInclude extends IncludeArchetype
                 'AgentMaster analyzes gaps using already collected data - no additional web search needed',
             ])
             ->example()
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Analyzing agent gaps. Comparing: project requirements vs existing agents, industry patterns vs coverage, technology stack vs specialized needs.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
             ->phase('AgentMaster performs gap analysis using cached patterns')
             ->phase(
                 AgentMaster::call(

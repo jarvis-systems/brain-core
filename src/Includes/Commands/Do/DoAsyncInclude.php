@@ -11,6 +11,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('Defines the do:async command protocol for multi-agent orchestration with flexible execution modes, user approval gates, and vector memory integration. Ensures zero distractions, atomic tasks, and strict plan adherence for reliable task execution.')]
@@ -182,6 +183,12 @@ class DoAsyncInclude extends IncludeArchetype
             ->example()
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "execution approach for {task_type}", limit: 5, category: "code-solution"}'))
             ->phase(Store::as('EXECUTION_PATTERNS', 'Past successful execution approaches'))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Planning agent delegation. Analyzing: task decomposition, agent selection, step dependencies, parallelization opportunities, file scope per step.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
             ->phase('Create plan: atomic steps (≤2 files each), logical order, informed by $EXECUTION_PATTERNS')
             ->phase('Analyze step dependencies: file conflicts, context dependencies, data flow')
             ->phase('Determine execution mode: sequential (default/safe) OR parallel (independent tasks/user request/optimization)')

@@ -11,6 +11,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -27,6 +28,12 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
         $this->rule('auto-approve')->high()->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress. User sees everything, just no approval prompts.');
+
+        // PARENT INHERITANCE (IRON LAW)
+        $this->rule('parent-id-mandatory')->critical()
+            ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
+            ->why('Task hierarchy integrity. Orphan tasks break traceability and workflow.')
+            ->onViolation('ABORT task_create if parent_id missing or wrong. Verify parent_id = $VECTOR_TASK_ID in EVERY task_create call.');
 
         // VALIDATION RULES
         $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
@@ -88,6 +95,14 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress"}'))
 
+            // 3.5 Pre-validation analysis
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Analyzing task requirements for validation. Parsing task.content to extract: explicit requirements, acceptance criteria, affected files, expected behaviors.",
+                thoughtNumber: 1,
+                totalThoughts: 2,
+                nextThoughtNeeded: true
+            }'))
+
             // 4. Validate (3 parallel agents) - TASK SCOPE ONLY
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', 'TASK COMPLETION: Read task.content. List ALL requirements. Verify EACH requirement is done. Check ONLY files mentioned/created by task. Detect garbage: unused imports, dead code, debug statements. COSMETIC=fix inline. Return: missing requirements, garbage found.'),
@@ -96,6 +111,12 @@ class TaskValidateInclude extends IncludeArchetype
             ]))
 
             // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Merging validation agent results. Analyzing: issue severity, duplicates, false positives, fix priority, task scope compliance.",
+                thoughtNumber: 1,
+                totalThoughts: 2,
+                nextThoughtNeeded: true
+            }'))
             ->phase('Merge agent results ' . Store::as('ISSUES') . ' categorize: Critical/Major/Minor')
             ->phase(Operator::if(
                 'issues=0 AND no fix-task needed',

@@ -16,6 +16,7 @@ use BrainCore\Compilation\Tools\GrepTool;
 use BrainCore\Compilation\Tools\ReadTool;
 use BrainCore\Compilation\Tools\WebSearchTool;
 use BrainCore\Compilation\Tools\WriteTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -65,6 +66,12 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(GlobTool::describe('Find relevant files based on task'))
             ->phase(GrepTool::describe('Search code patterns'))
             ->phase(ReadTool::describe('Read identified files'))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Planning execution steps. Analyzing: file dependencies, edit order, atomic changes, rollback points, risk assessment.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
             ->phase(Store::as('PLAN', '[{step, file, action: read|edit|write, changes}]'))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'skip to execution immediately', 'show brief plan, wait "yes"'))
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Execution started", append_comment: true}'))

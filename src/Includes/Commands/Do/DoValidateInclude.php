@@ -11,6 +11,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('Text-based work validation with parallel agent orchestration. Accepts text description (example: "validate user authentication"). Validates work against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent. For vector task validation use /task:validate.')]
@@ -175,6 +176,12 @@ class DoValidateInclude extends IncludeArchetype
             ]))
             ->phase('Merge results from all validation agents')
             ->phase(Store::as('ALL_ISSUES', '{merged issues from all agents}'))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Analyzing validation results. Categorizing by: severity (critical/major/minor), type (functional/cosmetic), impact, fix effort, dependencies between issues.",
+                thoughtNumber: 1,
+                totalThoughts: 3,
+                nextThoughtNeeded: true
+            }'))
             ->phase('Categorize issues:')
             ->phase(Store::as('CRITICAL_ISSUES', '{issues with severity: critical}'))
             ->phase(Store::as('MAJOR_ISSUES', '{issues with severity: major}'))
@@ -199,6 +206,12 @@ class DoValidateInclude extends IncludeArchetype
             ->phase('Check existing tasks in memory to avoid duplicates')
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "fix issues ' . Store::var('TASK_DESCRIPTION') . '", limit: 20, category: "code-solution"}'))
             ->phase(Store::as('EXISTING_FIX_MEMORIES', 'Existing fix task memories'))
+            ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
+                thought: "Planning task consolidation strategy. Analyzing: total effort, issue grouping, dependencies, optimal batch sizes (5-8h), priority ordering.",
+                thoughtNumber: 1,
+                totalThoughts: 2,
+                nextThoughtNeeded: true
+            }'))
             ->phase('CONSOLIDATION STRATEGY: Group issues into 5-8 hour task batches')
             ->phase(Operator::do([
                 'Calculate total estimate for ALL issues:',
