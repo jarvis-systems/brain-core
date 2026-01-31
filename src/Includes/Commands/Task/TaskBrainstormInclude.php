@@ -42,6 +42,11 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->why('Efficient resource usage - simple topics don\'t need agent delegation overhead. Agent selection must be dynamic based on project configuration.')
             ->onViolation('Evaluate: Is research truly needed? If yes, run brain list:masters, select appropriate agent, delegate. If no, proceed with brainstorming.');
 
+        $this->rule('iterative-ideation-loop')->critical()
+            ->text('After presenting initial ideas, you MUST enter iterative ideation loop. Keep proposing new ideas and asking for user input until user explicitly says "that\'s all", "let\'s continue", "proceed", or similar confirmation. NEVER skip this loop or proceed automatically.')
+            ->why('Quality brainstorming requires exhaustive exploration. Users often have more ideas after seeing initial proposals. Premature closure misses valuable input.')
+            ->onViolation('STOP. Ask user: "Do you have more ideas to share, or shall I propose more? Say \'that\'s all, let\'s continue\' when ready to proceed."');
+
         $this->rule('task-modification-user-approved')->high()
             ->text('Modify the brainstormed task (update title, content, priority, estimate) OR create subtasks ONLY when user explicitly requests or approves. Options include: 1) Update current task content/description, 2) Rewrite task completely, 3) Add details to existing content, 4) Create subtasks, 5) Any combination.')
             ->why('Task modification is a commitment. User must consent to changing the task they are brainstorming on.')
@@ -171,22 +176,87 @@ class TaskBrainstormInclude extends IncludeArchetype
                 '',
                 '## Open Questions',
                 '{Questions that need user input or further research}',
+            ]));
+
+        // Phase 3A: Iterative Idea Generation Loop
+        $this->guideline('phase3a-iterative-ideation')
+            ->goal('Continuously generate and refine ideas until user confirms completion. Keep proposing new angles until user says to proceed.')
+            ->example()
+            ->phase(Store::as('IDEATION_COMPLETE', 'false'))
+            ->phase(Operator::output([
                 '',
                 '---',
                 '',
-                'What are your thoughts? Would you like to:',
-                '1. Explore any approach deeper',
-                '2. Consider additional alternatives',
-                '3. Invite a specialist agent for alternative perspective',
-                '4. Update this task based on insights',
-                '5. Create subtasks from brainstorm outcomes',
-                '6. Research a specific aspect further',
+                'These are my initial ideas based on the context gathered.',
+                '',
+                'Do you have any thoughts, additions, or alternative ideas to share?',
+                'I can also propose more ideas from different angles.',
+                '',
+                '**Reply with your ideas, or say "that\'s all, let\'s continue" to proceed.**',
             ]))
-            ->phase('ENGAGE in dialogue - iterate based on user feedback')
-            ->phase('Continue brainstorming until user is satisfied or requests task modification/creation');
+            ->phase('WAIT for user response')
+            ->phase(Operator::forEach('WHILE $IDEATION_COMPLETE === false', [
+                Operator::if('user says "that\'s all" OR "let\'s continue" OR "proceed" OR similar confirmation', [
+                    Store::as('IDEATION_COMPLETE', 'true'),
+                    Operator::output(['Great! Moving forward with collected ideas...']),
+                ]),
+                Operator::if('user provides new ideas OR asks for more', [
+                    Store::as('USER_IDEAS', '{append user ideas to collection}'),
+                    'Generate 2-3 MORE ideas inspired by user input or from new angle:',
+                    Operator::output([
+                        '',
+                        '## Additional Ideas',
+                        '{New approaches inspired by user input or unexplored angles}',
+                        '',
+                        '## Building on Your Input',
+                        '{How user ideas could be extended or combined}',
+                        '',
+                        '---',
+                        '',
+                        'Any more thoughts? Or shall we proceed? ("that\'s all, let\'s continue")',
+                    ]),
+                    'WAIT for user response',
+                ]),
+                Operator::if('user asks to explore specific idea deeper', [
+                    'Expand on requested idea with more detail',
+                    Operator::output([
+                        '',
+                        '## Deep Dive: {idea}',
+                        '{Detailed analysis, implementation considerations, edge cases}',
+                        '',
+                        '---',
+                        '',
+                        'More ideas to add? Or ready to proceed?',
+                    ]),
+                    'WAIT for user response',
+                ]),
+            ]))
+            ->phase(Store::as('ALL_IDEAS', '{merged: initial ideas + user ideas + additional generated ideas}'));
 
-        // Phase 3B: Invite Specialist Agent (optional, user-triggered)
-        $this->guideline('phase3b-invite-specialist')
+        // Phase 3B: Transition to Actions
+        $this->guideline('phase3b-action-selection')
+            ->goal('After ideation complete, present action options')
+            ->example()
+            ->phase(Operator::output([
+                '',
+                '=== IDEATION COMPLETE ===',
+                '',
+                '## Collected Ideas Summary',
+                '{Summary of all ideas discussed}',
+                '',
+                '---',
+                '',
+                'What would you like to do next?',
+                '1. Invite a specialist agent for alternative perspective',
+                '2. Update this task based on insights',
+                '3. Create subtasks from brainstorm outcomes',
+                '4. Research a specific aspect further',
+                '5. End session and save insights',
+            ]))
+            ->phase('WAIT for user to select action');
+
+        // Phase 3C: Invite Specialist Agent (optional, user-triggered)
+        $this->guideline('phase3c-invite-specialist')
             ->goal('Invite subagent as additional specialist for alternative perspective (different LLM = different viewpoint)')
             ->example()
             ->phase(Operator::if('user requests specialist agent', [
