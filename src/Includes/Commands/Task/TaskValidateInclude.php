@@ -45,6 +45,7 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('functional-to-task')->critical()->text('Functional issues ONLY = create fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality. NOT functional: comments, docs, naming, formatting.');
         $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → $VECTOR_TASK_ID status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. SCOPE: only $VECTOR_TASK_ID status.');
         $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY context. NEVER call task_update on parent task. NEVER attempt to change parent status. Parent hierarchy is managed by operator/automation OUTSIDE this validation scope. Validator scope = $VECTOR_TASK_ID ONLY.');
+        $this->rule('slow-test-detection')->high()->text('Detect abnormally slow tests. Thresholds: unit test >500ms = suspicious, integration test >2s = suspicious, any test >5s = CRITICAL. Slow test in task scope = create fix-task for optimization. Causes: missing mocks, real I/O instead of stubs, unoptimized queries, sleep() calls, inefficient algorithms. Unjustified slow execution = unoptimized code.');
 
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
@@ -108,7 +109,7 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', 'TASK COMPLETION: Read task.content. List ALL requirements. Verify EACH requirement is done. Check ONLY files mentioned/created by task. Detect garbage: unused imports, dead code, debug statements. COSMETIC=fix inline. Return: missing requirements, garbage found.'),
                 TaskTool::agent('explore', 'CODE QUALITY: Check ONLY task-related code. No scope expansion. Verify: logic correct, no security issues, architecture ok. Run quality gates. COSMETIC=fix inline. Return: functional issues in task scope ONLY.'),
-                TaskTool::agent('explore', 'TESTING: Run tests for task scope ONLY. Verify: tests exist for new code, tests pass, edge cases covered. COSMETIC=fix inline. Return: missing tests, failing tests.'),
+                TaskTool::agent('explore', 'TESTING: Run tests for task scope ONLY. Verify: tests exist for new code, tests pass, edge cases covered. DETECT SLOW TESTS: unit >500ms, integration >2s, any >5s = CRITICAL. Slow = missing mocks, real I/O, unoptimized code. COSMETIC=fix inline. Return: missing tests, failing tests, slow tests with timing.'),
             ]))
 
             // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
