@@ -43,7 +43,8 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('no-garbage')->critical()->text('Detect garbage: unused imports, dead code, debug statements, commented-out code, orphan files, test artifacts. Garbage in task scope = fix-task.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic = fix inline, NEVER create task. Cosmetic includes: whitespace, typos, formatting, code comments (add/update/remove), docblocks, docstrings, variable naming (non-breaking), import sorting. Metadata tags = IGNORE.');
         $this->rule('functional-to-task')->critical()->text('Functional issues ONLY = create fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality. NOT functional: comments, docs, naming, formatting.');
-        $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → parent status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS. "NOT blocking" still requires fix-task and pending status.');
+        $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → $VECTOR_TASK_ID status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. SCOPE: only $VECTOR_TASK_ID status.');
+        $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY context. NEVER call task_update on parent task. NEVER attempt to change parent status. Parent hierarchy is managed by operator/automation OUTSIDE this validation scope. Validator scope = $VECTOR_TASK_ID ONLY.');
 
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
@@ -78,7 +79,7 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(Operator::if(
                 Store::get('TASK') . '.parent_id',
-                VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT')
+                VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT') . ' (READ-ONLY context, NEVER modify)'
             ))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
