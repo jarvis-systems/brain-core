@@ -10,7 +10,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\TaskTool;
-use BrainNode\Agents\VectorMaster;
+use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
@@ -26,23 +26,23 @@ class TaskDecomposeInclude extends IncludeArchetype
         // IRON EXECUTION RULES (execute immediately, no verbose)
         // =========================================================================
 
-        $this->rule('tool-call-first')->critical()
-            ->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY with $TASK_ID.');
+        $this->rule('task-get-first')->critical()
+            ->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze how to decompose.');
 
         $this->rule('no-hallucination')->critical()
-            ->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
+            ->text('NEVER output results without ACTUALLY calling tools. Fake results = CRITICAL VIOLATION.');
 
         $this->rule('no-verbose')->critical()
-            ->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action. Brief status updates ONLY.');
+            ->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. Brief status only.');
 
         $this->rule('show-progress')->high()
-            ->text('ALWAYS show brief step status and results. User must see what is happening.');
+            ->text('Show brief step status. User must see what is happening.');
 
-        $this->rule('no-interpretation')->critical()
-            ->text('NEVER interpret task content or give generic responses. Task ID given = decompose it. Follow the workflow EXACTLY.');
+        $this->rule('understand-to-decompose')->critical()
+            ->text('MUST understand task INTENT to decompose properly. Analyze: what are logical boundaries? what depends on what? Unknown library/pattern → context7 first.');
 
         $this->rule('auto-approve')->high()
-            ->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress.');
+            ->text('-y flag = auto-approve. Skip "Proceed?" but show progress.');
 
         // =========================================================================
         // DECOMPOSITION-SPECIFIC RULES
@@ -96,70 +96,43 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->example()
 
             // Stage 1: Load
-            ->phase(Operator::output(['=== TASK:DECOMPOSE ===', 'Loading task #$TASK_ID...']))
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $TASK_ID}').' → '.Store::as('TASK'))
-            ->phase(Operator::if('not found', Operator::abort('Task #$TASK_ID not found')))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}').' → '.Store::as('EXISTING_SUBTASKS'))
-            ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_Y_FLAG', [
-                'Task has {count} existing subtasks.',
-                'Ask: "(1) Add more, (2) Replace all, (3) Abort"',
-                'WAIT for user choice',
-            ]))
-            ->phase(Operator::output([
-                'Task: #{$TASK.id} - {$TASK.title}',
-                'Status: {$TASK.status} | Priority: {$TASK.priority}',
-                'Existing subtasks: {count}',
-            ]))
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $TASK_ID}') . ' → ' . Store::as('TASK'))
+            ->phase(Operator::if('not found', Operator::abort('Task not found')))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
+            ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_AUTO_APPROVE', 'Ask: "(1) Add more, (2) Replace all, (3) Abort"'))
 
-            // Stage 2: Research (2 agents PARALLEL)
-            ->phase(Operator::output(['', '## RESEARCH (2 agents parallel)']))
-            ->phase('Launch 2 agents in PARALLEL (single message with multiple Task calls):')
-            ->phase(Operator::do([
-                TaskTool::agent('explore', 'DECOMPOSITION RESEARCH for task #{$TASK.id}: "{$TASK.title}". Find: files, components, dependencies, natural split boundaries. EXCLUDE: '.Runtime::BRAIN_DIRECTORY.'. OUTPUT: {files:[], components:[], boundaries:[]}'),
-                VectorMaster::call(Operator::task(['Memory search for: task decomposition patterns, similar implementations, past estimates']), Store::as('MEMORY_INSIGHTS')),
+            // Stage 2: Research (parallel)
+            ->phase(Operator::if('unknown library/pattern in task', Context7Mcp::call('query-docs', '{query: "{library/pattern}"}') . ' → understand before decomposing'))
+            ->phase(Operator::parallel([
+                TaskTool::agent('explore', 'DECOMPOSE RESEARCH: task #{$TASK.id}. Find: files, components, dependencies, split boundaries. EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . '. Return: {files, components, boundaries}'),
+                VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),
             ]))
             ->phase(Store::as('CODE_INSIGHTS', '{from explore agent}'))
 
             // Stage 3: Plan
-            ->phase(Operator::output(['', '## PLANNING']))
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
-                thought: "Synthesizing research: CODE_INSIGHTS + MEMORY_INSIGHTS. Identifying: logical boundaries, component coupling, data dependencies, effort distribution.",
+                thought: "Synthesizing: CODE_INSIGHTS + MEMORY_INSIGHTS. Identify: boundaries, dependencies, parallel opportunities, order.",
                 thoughtNumber: 1,
-                totalThoughts: 3,
+                totalThoughts: 2,
                 nextThoughtNeeded: true
             }'))
-            ->phase('Create subtask plan: group by component, order by dependency, estimate each')
-            ->phase(Operator::if('2+ subtasks', [
-                'STOP: Analyze optimal execution sequence',
-                'Consider: What depends on what? What can run parallel? What needs setup first?',
-                'Assign order: 1=first, 2=second, same order=parallel-safe',
-            ]))
+            ->phase('Group by component, order by dependency, estimate each')
             ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order}]'))
-            ->phase(Operator::if('3+ subtasks', SequentialThinkingMcp::call('sequentialthinking', '{thought: "Analyze dependencies and optimal order for subtasks", thoughtNumber: 1, totalThoughts: 3, nextThoughtNeeded: true}')))
 
             // Stage 4: Approve
-            ->phase(Operator::output(['', '## PLAN']))
-            ->phase('Show table: | Order | Subtask | Est | Priority | Depends |')
-            ->phase(Operator::if('$HAS_Y_FLAG', Operator::output(['Auto-approved (-y flag)'])))
-            ->phase(Operator::if('NOT $HAS_Y_FLAG', ['Ask: "Create {count} subtasks? (yes/no/modify)"', 'WAIT for approval']))
+            ->phase('Show: | Order | Subtask | Est | Priority |')
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create {count} subtasks? (yes/no/modify)"'))
 
             // Stage 5: Create
-            ->phase(Operator::output(['', '## CREATING']))
-            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, tags: [...$TASK.tags, "decomposed"]}]}'))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}').' → verify created')
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "DECOMPOSED|#{$TASK.id}|subtasks:{count}", category: "tool-usage", tags: ["task-decomposition"]}'))
-            ->phase(Operator::output(['', '=== DECOMPOSITION COMPLETE ===', 'Created: {count} subtasks', 'Next: /task:list --parent={$TASK_ID}']))
-            ->phase('STOP: Do NOT execute subtasks. Return control to user.');
+            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, tags: ["decomposed"]}]}'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Decomposed #{$TASK.id} into {count} subtasks", category: "tool-usage"}'))
+            ->phase('STOP: Do NOT execute. Return control to user.');
 
-        // =========================================================================
         // ERROR HANDLING
-        // =========================================================================
-
-        $this->guideline('error-handling')
-            ->text('Graceful error recovery')
-            ->example()
-            ->phase()->if('task not found', ['Report error', 'Suggest task_list', 'ABORT'])
-            ->phase()->if('agent fails', ['Log error', 'Continue with available data', 'Report partial results'])
-            ->phase()->if('user rejects', ['Accept modifications', 'Rebuild plan', 'Re-submit for approval']);
+        $this->guideline('error-handling')->example()
+            ->phase(Operator::if('task not found', Operator::abort('suggest task_list')))
+            ->phase(Operator::if('agent fails', 'Continue with available data'))
+            ->phase(Operator::if('user rejects plan', 'Accept modifications, rebuild, re-submit'));
     }
 }

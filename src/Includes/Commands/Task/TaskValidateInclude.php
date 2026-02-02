@@ -15,7 +15,7 @@ use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Validate vector task. 3 parallel agents: Code Quality, Testing, Documentation. Creates fix-tasks for issues. Cosmetic fixed inline.')]
+#[Purpose('Validate completed vector task. 3 parallel agents: Completion, Code Quality, Testing. Creates fix-tasks for functional issues. Cosmetic fixed inline by agents.')]
 class TaskValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -23,7 +23,7 @@ class TaskValidateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // IRON EXECUTION LAW - READ THIS FIRST
-        $this->rule('tool-call-first')->critical()->text('YOUR VERY FIRST RESPONSE MUST BE A TOOL CALL. No text before tools. No analysis. No thinking out loud. CALL mcp__vector-task__task_get IMMEDIATELY.');
+        $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to validate.');
         $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status, validation results, or issues without REAL tool calls. Fake results = CRITICAL VIOLATION.');
         $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
@@ -36,16 +36,17 @@ class TaskValidateInclude extends IncludeArchetype
             ->onViolation('ABORT task_create if parent_id missing or wrong. Verify parent_id = $VECTOR_TASK_ID in EVERY task_create call.');
 
         // VALIDATION RULES
-        $this->rule('execute-always')->critical()->text('NEVER skip validation. Status "validated" = re-validate.');
-        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. No excuses. JUST EXECUTE.');
-        $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content describes. Do NOT check unrelated code/files. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
-        $this->rule('task-complete')->critical()->text('ALL task requirements MUST be done. Parse task.content for requirements list. Each requirement = verified. Missing requirement = fix-task.');
-        $this->rule('no-garbage')->critical()->text('Detect garbage: unused imports, dead code, debug statements, commented-out code, orphan files, test artifacts. Garbage in task scope = fix-task.');
-        $this->rule('cosmetic-inline')->critical()->text('Cosmetic = fix inline, NEVER create task. Cosmetic includes: whitespace, typos, formatting, code comments (add/update/remove), docblocks, docstrings, variable naming (non-breaking), import sorting. Metadata tags = IGNORE.');
-        $this->rule('functional-to-task')->critical()->text('Functional issues ONLY = create fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality. NOT functional: comments, docs, naming, formatting.');
-        $this->rule('fix-task-blocks-validated')->critical()->text('If fix-task created → $VECTOR_TASK_ID status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. SCOPE: only $VECTOR_TASK_ID status.');
-        $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY context. NEVER call task_update on parent task. NEVER attempt to change parent status. Parent hierarchy is managed by operator/automation OUTSIDE this validation scope. Validator scope = $VECTOR_TASK_ID ONLY.');
-        $this->rule('slow-test-detection')->high()->text('Detect abnormally slow tests. Thresholds: unit test >500ms = suspicious, integration test >2s = suspicious, any test >5s = CRITICAL. Slow test in task scope = create fix-task for optimization. Causes: missing mocks, real I/O instead of stubs, unoptimized queries, sleep() calls, inefficient algorithms. Unjustified slow execution = unoptimized code.');
+        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
+        $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content describes. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
+        $this->rule('task-complete')->critical()->text('ALL task requirements MUST be done. Parse task.content → list requirements → verify each. Missing = fix-task.');
+        $this->rule('no-garbage')->critical()->text('Detect garbage in task scope: unused imports, dead code, debug statements, commented-out code. Garbage = fix-task.');
+        $this->rule('cosmetic-inline')->critical()->text('Cosmetic issues = AGENTS fix inline during validation. NO task created. Cosmetic: whitespace, typos, formatting, comments, docblocks, naming (non-breaking), import sorting.');
+        $this->rule('functional-to-task')->critical()->text('Functional issues = fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality.');
+        $this->rule('fix-task-blocks-validated')->critical()->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks.');
+        $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
+        $this->rule('test-coverage')->high()->text('New code MUST have test coverage. Critical paths = 100%. Other code >= 80%. No coverage = fix-task.');
+        $this->rule('no-breaking-changes')->high()->text('Public API/interface changes = verify backward compatibility OR document breaking change in task comment.');
+        $this->rule('slow-test-detection')->high()->text('Slow tests = fix-task. Thresholds: unit >500ms, integration >2s, any >5s = CRITICAL. Causes: missing mocks, real I/O, unoptimized queries.');
 
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
@@ -107,9 +108,9 @@ class TaskValidateInclude extends IncludeArchetype
 
             // 4. Validate (3 parallel agents) - TASK SCOPE ONLY
             ->phase(Operator::parallel([
-                TaskTool::agent('explore', 'TASK COMPLETION: Read task.content. List ALL requirements. Verify EACH requirement is done. Check ONLY files mentioned/created by task. Detect garbage: unused imports, dead code, debug statements. COSMETIC=fix inline. Return: missing requirements, garbage found.'),
-                TaskTool::agent('explore', 'CODE QUALITY: Check ONLY task-related code. No scope expansion. Verify: logic correct, no security issues, architecture ok. Run quality gates. COSMETIC=fix inline. Return: functional issues in task scope ONLY.'),
-                TaskTool::agent('explore', 'TESTING: Run tests for task scope ONLY. Verify: tests exist for new code, tests pass, edge cases covered. DETECT SLOW TESTS: unit >500ms, integration >2s, any >5s = CRITICAL. Slow = missing mocks, real I/O, unoptimized code. COSMETIC=fix inline. Return: missing tests, failing tests, slow tests with timing.'),
+                TaskTool::agent('explore', 'COMPLETION CHECK: Parse task.content → list requirements → verify each done. Check ONLY task files. Detect garbage (unused imports, dead code). Fix cosmetic inline. Return: missing requirements, garbage.'),
+                TaskTool::agent('explore', 'CODE QUALITY: Task scope only. Check: logic, security, architecture, breaking changes. Run quality gates. Unknown lib → context7. Fix cosmetic inline. Return: functional issues.'),
+                TaskTool::agent('explore', 'TESTING: Task scope only. Check: tests exist (coverage >=80%), tests pass, edge cases. Slow tests (unit >500ms, integration >2s) = issue. Unknown pattern → context7. Return: missing/failing/slow tests.'),
             ]))
 
             // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
