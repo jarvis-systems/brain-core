@@ -33,6 +33,11 @@ abstract class ArchitectureAbstract extends Dto
         });
     }
 
+    public static function disableByDefault(): bool
+    {
+        return false;
+    }
+
     public function allVars(string|null $findName = null): array
     {
         return array_merge(

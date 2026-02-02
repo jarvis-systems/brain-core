@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore\Console\Commands;
 
 use Bfg\Dto\Dto;
+use BrainCore\Abstracts\ArchitectureAbstract;
 use BrainCore\Architectures\ArchetypeArchitecture;
 use BrainCore\Merger;
 use BrainCore\Support\Brain;
@@ -82,7 +83,24 @@ class ConvertCommand extends Command
                 ->toString();
 
             if (Brain::getEnv($className . '_DISABLE')) {
+                if ($dumpFormat) {
+                    $format = $dumpFormat;
+                    $dumpFormat = null;
+                }
                 continue;
+            }
+
+            if (is_subclass_of($class, ArchitectureAbstract::class)) {
+                if (
+                    $class::disableByDefault()
+                    && ! Brain::getEnv($className . '_ENABLE')
+                ) {
+                    if ($dumpFormat) {
+                        $format = $dumpFormat;
+                        $dumpFormat = null;
+                    }
+                    continue;
+                }
             }
 
             $fromEmptyStart = microtime(true);
