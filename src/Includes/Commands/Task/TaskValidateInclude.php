@@ -51,6 +51,32 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('no-breaking-changes')->high()->text('Public API/interface changes = verify backward compatibility OR document breaking change in task comment.');
         $this->rule('slow-test-detection')->high()->text('Slow tests = fix-task. Thresholds: unit >500ms, integration >2s, any >5s = CRITICAL. Causes: missing mocks, real I/O, unoptimized queries.');
 
+        // Light validation - skip heavy checks for trivial tasks
+        $this->rule('light-validation-tag')->medium()
+            ->text('Task with "light validation" tag = SKIP heavy checks (quality gates, full test suite, code quality agents). RUN only: syntax check, file exists, basic format validation.')
+            ->why('Trivial tasks (docs, typos, comments, config values, formatting) do not need full validation. Explicit tag = conscious decision by task creator.');
+
+        $this->guideline('light-validation-examples')
+            ->text('Recognize tags that signal trivial/light validation. Match by INTENT, not exact string.')
+            ->example('light-validation, light, trivial, minor, docs-only, documentation, readme, typo, cosmetic, formatting, config-only, skip-tests, no-validation');
+
+        $this->guideline('light-validation-scope')
+            ->text('Light validation appropriate for:')
+            ->example('Documentation changes (README, CHANGELOG, comments, docblocks)')
+            ->example('Typo fixes in text/UI/messages')
+            ->example('Config value changes (not logic)')
+            ->example('Code formatting, import sorting')
+            ->example('Removing dead/unused code')
+            ->example('Adding/updating .gitignore, .editorconfig');
+
+        $this->guideline('light-validation-not-for')
+            ->text('NEVER light validation for:')
+            ->example('Any logic changes (even "simple" ones)')
+            ->example('API/interface changes')
+            ->example('Database migrations')
+            ->example('Security-related code')
+            ->example('New features or bug fixes');
+
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
 
@@ -101,7 +127,27 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress"}'))
 
-            // 3.5 Pre-validation analysis
+            // 3.5 Light validation check - skip heavy validation for trivial tasks
+            ->phase(Store::as('IS_LIGHT_VALIDATION', 'task.tags matches light-validation intent (light, trivial, docs-only, minor, cosmetic, etc.)'))
+            ->phase(Operator::if(
+                Store::get('IS_LIGHT_VALIDATION'),
+                [
+                    'LIGHT VALIDATION MODE: skip quality gates and agent validation',
+                    'Check only: files exist, valid syntax/format, no obvious errors',
+                    Operator::if(
+                        'basic checks pass',
+                        VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Light validation passed (trivial task)", append_comment: true}'),
+                        [
+                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
+                            VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}'),
+                        ]
+                    ),
+                    Operator::output('task, light validation result, status'),
+                    Operator::skip('full validation'),
+                ]
+            ))
+
+            // 3.6 Pre-validation analysis (full validation path)
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
                 thought: "Analyzing task requirements for validation. Parsing task.content to extract: explicit requirements, acceptance criteria, affected files, expected behaviors.",
                 thoughtNumber: 1,
@@ -109,7 +155,7 @@ class TaskValidateInclude extends IncludeArchetype
                 nextThoughtNeeded: true
             }'))
 
-            // 4. Validate (3 parallel agents) - TASK SCOPE ONLY
+            // 4. Validate (3 parallel agents) - TASK SCOPE ONLY - FULL VALIDATION PATH
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', 'COMPLETION CHECK: Parse task.content → list requirements → verify each done. Check ONLY task files. Detect garbage (unused imports, dead code). Fix cosmetic inline. Return: missing requirements, garbage.'),
                 TaskTool::agent('explore', 'CODE QUALITY: Task scope only. Check: logic, security, architecture, breaking changes. Run quality gates. Unknown lib → context7. Fix cosmetic inline. Return: functional issues.'),
