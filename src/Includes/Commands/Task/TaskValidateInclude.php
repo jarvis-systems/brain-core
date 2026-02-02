@@ -42,7 +42,10 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('no-garbage')->critical()->text('Detect garbage in task scope: unused imports, dead code, debug statements, commented-out code. Garbage = fix-task.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic issues = AGENTS fix inline during validation. NO task created. Cosmetic: whitespace, typos, formatting, comments, docblocks, naming (non-breaking), import sorting.');
         $this->rule('functional-to-task')->critical()->text('Functional issues = fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality.');
-        $this->rule('fix-task-blocks-validated')->critical()->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks.');
+        $this->rule('fix-task-blocks-validated')->critical()
+            ->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS.')
+            ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it. Any subtask creation = task NOT done = "pending". Period.')
+            ->onViolation('ABORT validation. Set status="pending" BEFORE task_create. Never set "validated" if ANY fix-task exists or will be created.');
         $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
         $this->rule('test-coverage')->high()->text('New code MUST have test coverage. Critical paths = 100%. Other code >= 80%. No coverage = fix-task.');
         $this->rule('no-breaking-changes')->high()->text('Public API/interface changes = verify backward compatibility OR document breaking change in task comment.');
@@ -113,7 +116,7 @@ class TaskValidateInclude extends IncludeArchetype
                 TaskTool::agent('explore', 'TESTING: Task scope only. Check: tests exist (coverage >=80%), tests pass, edge cases. Slow tests (unit >500ms, integration >2s) = issue. Unknown pattern → context7. Return: missing/failing/slow tests.'),
             ]))
 
-            // 5. Finalize (CRITICAL: fix-task created = status MUST be "pending", NEVER "validated")
+            // 5. Finalize (IRON LAW: fix-task created = "pending" ALWAYS. MCP will reset status anyway when child starts. NO "validated" with children.)
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
                 thought: "Merging validation agent results. Analyzing: issue severity, duplicates, false positives, fix priority, task scope compliance.",
                 thoughtNumber: 1,
@@ -126,7 +129,7 @@ class TaskValidateInclude extends IncludeArchetype
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
                 [
                     VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
-                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← MANDATORY when fix-task created',
+                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',
                 ]
             ))
 
