@@ -38,7 +38,7 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
         $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content describes. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
         $this->rule('task-complete')->critical()->text('ALL task requirements MUST be done. Parse task.content → list requirements → verify each. Missing = fix-task.');
-        $this->rule('no-garbage')->critical()->text('Detect garbage in task scope: unused imports, dead code, debug statements, commented-out code. Garbage = fix-task.');
+        $this->rule('no-garbage')->critical()->text('Garbage code in task scope = fix-task.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic issues = AGENTS fix inline during validation. NO task created. Cosmetic: whitespace, typos, formatting, comments, docblocks, naming (non-breaking), import sorting.');
         $this->rule('functional-to-task')->critical()->text('Functional issues = fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality.');
         $this->rule('fix-task-blocks-validated')->critical()
@@ -46,12 +46,10 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it. Any subtask creation = task NOT done = "pending". Period.')
             ->onViolation('ABORT validation. Set status="pending" BEFORE task_create. Never set "validated" if ANY fix-task exists or will be created.');
         $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
-        $this->rule('test-coverage')->high()->text('New code MUST have test coverage. Critical paths = 100%. Other code >= 80%. No coverage = fix-task.');
-        $this->rule('no-breaking-changes')->high()->text('Public API/interface changes = verify backward compatibility OR document breaking change in task comment.');
-        $this->rule('slow-test-detection')->high()->text('Slow tests = fix-task. Thresholds: unit >500ms, integration >2s, any >5s = CRITICAL. Causes: missing mocks, real I/O, unoptimized queries.');
-        $this->rule('flaky-test-detection')->high()
-            ->text('Flaky tests (pass/fail inconsistently) = fix-task. Run test 2-3 times if suspect. Causes: shared state, time-dependent logic, race conditions, external dependencies without mocks.')
-            ->why('Flaky tests erode trust in test suite and waste CI resources.');
+        $this->rule('test-coverage')->high()->text('No test coverage = fix-task. Critical paths = 100%, other >= 80%.');
+        $this->rule('no-breaking-changes')->high()->text('Breaking API/interface changes without documentation = fix-task.');
+        $this->rule('slow-test-detection')->high()->text('Slow tests = fix-task. Unit >500ms, integration >2s.');
+        $this->rule('flaky-test-detection')->high()->text('Flaky tests = fix-task.');
 
         // FAILURE-AWARE VALIDATION (CRITICAL - prevents repeating same mistakes)
         $this->rule('failure-history-mandatory')->critical()
@@ -67,54 +65,28 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('Creating fix-task with known-failed solution = guaranteed failure + wasted effort.')
             ->onViolation('Search memory for proposed fix. Match found in debugging = BLOCK task creation, suggest alternative or escalate.');
 
-        // SECURITY VALIDATION (language-agnostic)
-        $this->rule('security-injection')->critical()
-            ->text('Injection vulnerabilities = fix-task. Check: SQL/NoSQL injection (parameterized queries?), command injection (shell escaping?), template injection, LDAP injection, XPath injection. ANY user input in query/command = suspect.')
-            ->why('Injection = #1 OWASP. Exploitable = full system compromise.');
-        $this->rule('security-xss')->critical()
-            ->text('XSS vulnerabilities = fix-task. Check: output escaping in HTML/JS context, innerHTML usage, dangerouslySetInnerHTML, template literals with user data, URL parameters reflected in page.')
-            ->why('XSS enables session hijacking, defacement, malware distribution.');
-        $this->rule('security-secrets')->critical()
-            ->text('Hardcoded secrets = fix-task. Grep for: password, secret, api_key, token, credential, private_key, AWS_, STRIPE_, DATABASE_URL. Check: .env files not in .gitignore, secrets in logs/comments.')
-            ->why('Leaked credentials = immediate breach. No exceptions.');
-        $this->rule('security-auth')->high()
-            ->text('Auth/authz issues = fix-task. Check: missing authentication on endpoints, broken access control (IDOR), privilege escalation paths, session management (secure cookies, expiration).')
-            ->why('Broken auth = unauthorized access to data/functionality.');
-        $this->rule('security-sensitive-data')->high()
-            ->text('Sensitive data exposure = fix-task. Check: PII in logs, sensitive data in error messages, missing encryption for data at rest/transit, excessive data in API responses.')
-            ->why('Data leaks = compliance violations, reputation damage.');
+        // SECURITY VALIDATION (severity policy)
+        $this->rule('security-injection')->critical()->text('Injection vulnerabilities = fix-task.');
+        $this->rule('security-xss')->critical()->text('XSS vulnerabilities = fix-task.');
+        $this->rule('security-secrets')->critical()->text('Hardcoded secrets = fix-task.');
+        $this->rule('security-auth')->high()->text('Auth/authz issues = fix-task.');
+        $this->rule('security-sensitive-data')->high()->text('Sensitive data exposure = fix-task.');
 
-        // PERFORMANCE VALIDATION (language-agnostic)
-        $this->rule('performance-n-plus-one')->high()
-            ->text('N+1 query pattern = fix-task. Detect: loop with DB/API call inside, lazy loading in iteration, missing eager loading/batching. Check query logs or ORM debug output.')
-            ->why('N+1 destroys performance at scale. 100 items = 101 queries.');
-        $this->rule('performance-complexity')->medium()
-            ->text('Algorithmic complexity issues = fix-task. Nested loops on unbounded data, recursive calls without memoization, O(n²) or worse on large datasets. Check: loops inside loops, repeated searches.')
-            ->why('Bad algorithms fail silently until data grows.');
-        $this->rule('performance-memory')->medium()
-            ->text('Memory issues = fix-task. Loading entire dataset into memory, missing pagination, unbounded caches, large object graphs, missing cleanup/disposal.')
-            ->why('Memory leaks cause OOM crashes in production.');
+        // PERFORMANCE VALIDATION (severity policy)
+        $this->rule('performance-n-plus-one')->high()->text('N+1 query pattern = fix-task.');
+        $this->rule('performance-complexity')->medium()->text('Algorithmic complexity issues = fix-task.');
+        $this->rule('performance-memory')->medium()->text('Memory issues = fix-task.');
 
-        // TYPE SAFETY (language-agnostic)
-        $this->rule('type-safety')->high()
-            ->text('Type safety violations = fix-task. Missing type annotations on public API, any/unknown overuse, nullable without null checks, implicit type coercion in comparisons, missing runtime validation at boundaries.')
-            ->why('Type errors are runtime bombs. Static typing catches bugs early.');
+        // TYPE SAFETY (severity policy)
+        $this->rule('type-safety')->high()->text('Type safety violations = fix-task.');
 
-        // DEPENDENCY VALIDATION (language-agnostic)
-        $this->rule('dependency-audit')->high()
-            ->text('Dependency vulnerabilities = fix-task. Run package audit tool (npm audit, composer audit, pip-audit, cargo audit, etc.). Known CVEs in dependencies = CRITICAL.')
-            ->why('Supply chain attacks via vulnerable dependencies are common.');
-        $this->rule('dependency-license')->medium()
-            ->text('License compatibility issues = fix-task. New dependencies must have compatible licenses. GPL in proprietary project = problem. Check: SPDX identifiers, license files.')
-            ->why('License violations = legal liability.');
+        // DEPENDENCY VALIDATION (severity policy)
+        $this->rule('dependency-audit')->high()->text('Dependency vulnerabilities = fix-task.');
+        $this->rule('dependency-license')->medium()->text('License compatibility issues = fix-task.');
 
-        // TEST QUALITY (beyond coverage)
-        $this->rule('test-quality-assertions')->high()
-            ->text('Tests without meaningful assertions = fix-task. Empty tests, tests that only check "no exception thrown", mocked everything including SUT. Test MUST verify behavior, not just execute code.')
-            ->why('High coverage with weak assertions = false confidence.');
-        $this->rule('test-quality-edge-cases')->high()
-            ->text('Missing edge case tests = fix-task. Check: null/empty inputs, boundary values, error paths, concurrent access, timeout scenarios. Happy path only = incomplete.')
-            ->why('Bugs hide in edge cases. Production hits all paths.');
+        // TEST QUALITY (severity policy)
+        $this->rule('test-quality-assertions')->high()->text('Tests without meaningful assertions = fix-task.');
+        $this->rule('test-quality-edge-cases')->high()->text('Missing edge case tests = fix-task.');
 
         // DEDUPLICATION & MERGE
         $this->rule('issue-deduplication')->high()
@@ -245,13 +217,108 @@ class TaskValidateInclude extends IncludeArchetype
             ))
 
             // 4. Validate (4 parallel agents) - TASK SCOPE ONLY - FULL VALIDATION PATH
-            // CRITICAL: Pass KNOWN_FAILURES to ALL agents so they don't repeat failed solutions
-            ->phase('Prepare agent context: KNOWN_FAILURES=' . Store::get('KNOWN_FAILURES') . ', FAILURE_PATTERNS=' . Store::get('FAILURE_PATTERNS'))
+            // CRITICAL: Each agent MUST receive full context to work independently
+            ->phase('PREPARE AGENT CONTEXT (extract from stored data):')
+            ->phase('  - TASK_ID: ' . Store::get('TASK') . '.id')
+            ->phase('  - TASK_TITLE: ' . Store::get('TASK') . '.title')
+            ->phase('  - TASK_CONTENT: ' . Store::get('TASK') . '.content (full requirements text)')
+            ->phase('  - TASK_FILES: extract file paths mentioned in task.content (src/*, tests/*, etc.)')
+            ->phase('  - PARENT_CONTEXT: ' . Store::get('PARENT') . '.title + .content (if exists) — broader goal')
+            ->phase('  - MEMORY_IDS: list memory IDs from ' . Store::get('MEMORY_CONTEXT') . ' (e.g., #1500, #1502)')
+            ->phase('  - KNOWN_FAILURES_TEXT: full text from ' . Store::get('KNOWN_FAILURES') . ' — what NOT to suggest')
+            ->phase('  - FAILURE_PATTERNS_TEXT: full text from ' . Store::get('FAILURE_PATTERNS') . ' — previous failed attempts')
+            ->phase('  - DOCS_PATHS: file paths from ' . Store::get('DOCS_INDEX') . ' (if relevant)')
+            ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data'))
             ->phase(Operator::parallel([
-                TaskTool::agent('explore', 'COMPLETION CHECK: Parse task.content → list requirements → verify each done. Check ONLY task files. Detect garbage (unused imports, dead code, debug statements, commented code). Fix cosmetic inline. KNOWN FAILURES (DO NOT SUGGEST THESE): {$KNOWN_FAILURES}. Return JSON: {missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
-                TaskTool::agent('explore', 'CODE QUALITY: Task scope only. Check: logic errors, architecture violations, breaking changes, type safety (missing types, nullable without checks), algorithmic complexity (nested loops, O(n²)). Run quality gates. Fix cosmetic inline. KNOWN FAILURES (DO NOT SUGGEST THESE): {$KNOWN_FAILURES}. PREVIOUS FAILED ATTEMPTS: {$FAILURE_PATTERNS}. Return JSON: {logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: []}'),
-                TaskTool::agent('explore', 'TESTING: Task scope only. Check: tests exist (coverage >=80%, critical=100%), tests pass, meaningful assertions (not just "no exception"), edge cases covered (null, empty, boundary), slow tests (unit >500ms, integration >2s), flaky tests (run 2x if suspect). KNOWN FAILURES (DO NOT SUGGEST THESE): {$KNOWN_FAILURES}. If test approach in KNOWN_FAILURES - find ALTERNATIVE. Return JSON: {missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: []}'),
-                TaskTool::agent('explore', 'SECURITY & PERFORMANCE: Task scope only. Security: injection (SQL, command, template), XSS (output escaping), hardcoded secrets (grep: password, api_key, token, secret), auth/authz gaps, sensitive data in logs. Performance: N+1 queries (loop+DB call), memory issues (unbounded loading), missing pagination. Dependency audit if new deps added. KNOWN FAILURES: {$KNOWN_FAILURES}. Return JSON: {injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: []}'),
+                TaskTool::agent('explore', '
+CONTEXT (provided by validator):
+- Task ID: {TASK_ID}
+- Task title: {TASK_TITLE}
+- Task content: {TASK_CONTENT}
+- Files to check: {TASK_FILES}
+- Parent goal: {PARENT_CONTEXT}
+- Related memories: {MEMORY_IDS}
+
+KNOWN FAILURES (DO NOT SUGGEST THESE):
+{KNOWN_FAILURES_TEXT}
+
+MISSION: COMPLETION CHECK
+1. Parse task content → extract ALL requirements as checklist
+2. For EACH requirement → verify done in task files
+3. Check ONLY files from TASK_FILES list
+4. Detect garbage: unused imports, dead code, debug statements, commented code
+5. Fix cosmetic issues inline (whitespace, formatting)
+
+Return JSON: {requirements_checklist: [{requirement, status, evidence}], missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
+                TaskTool::agent('explore', '
+CONTEXT (provided by validator):
+- Task ID: {TASK_ID}
+- Task title: {TASK_TITLE}
+- Task content: {TASK_CONTENT}
+- Files to check: {TASK_FILES}
+- Related memories: {MEMORY_IDS}
+
+KNOWN FAILURES (DO NOT SUGGEST THESE):
+{KNOWN_FAILURES_TEXT}
+
+PREVIOUS FAILED ATTEMPTS:
+{FAILURE_PATTERNS_TEXT}
+
+MISSION: CODE QUALITY
+1. Read EACH file from TASK_FILES
+2. Check: logic errors, architecture violations, breaking changes
+3. Check: type safety (missing types, nullable without null checks)
+4. Check: algorithmic complexity (nested loops on data, O(n²))
+5. Run quality gates (composer test, composer analyse)
+6. Fix cosmetic issues inline
+
+Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], quality_gate_results: {}}'),
+                TaskTool::agent('explore', '
+CONTEXT (provided by validator):
+- Task ID: {TASK_ID}
+- Task title: {TASK_TITLE}
+- Task content: {TASK_CONTENT}
+- Files to check: {TASK_FILES}
+
+KNOWN FAILURES (DO NOT SUGGEST THESE):
+{KNOWN_FAILURES_TEXT}
+
+MISSION: TESTING
+1. Find test files for TASK_FILES (tests/*Test.php, tests/**/*Test.php)
+2. Check: tests exist (coverage >=80%, critical paths =100%)
+3. Run tests, check they pass
+4. Check: meaningful assertions (not just "no exception thrown")
+5. Check: edge cases covered (null, empty, boundary values)
+6. Check: slow tests (unit >500ms, integration >2s)
+7. If suspect flaky → run 2x to confirm
+
+If test approach mentioned in KNOWN_FAILURES → find ALTERNATIVE approach
+
+Return JSON: {test_files_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: []}'),
+                TaskTool::agent('explore', '
+CONTEXT (provided by validator):
+- Task ID: {TASK_ID}
+- Task title: {TASK_TITLE}
+- Task content: {TASK_CONTENT}
+- Files to check: {TASK_FILES}
+
+KNOWN FAILURES:
+{KNOWN_FAILURES_TEXT}
+
+MISSION: SECURITY & PERFORMANCE
+SECURITY (check each file):
+1. Injection: SQL (parameterized?), command (escaped?), template
+2. XSS: output escaping in HTML/JS context
+3. Secrets: grep for password, api_key, token, secret, credential
+4. Auth/authz: missing checks, IDOR, privilege escalation
+5. Sensitive data: PII in logs, data in error messages
+
+PERFORMANCE (check each file):
+1. N+1 queries: loop with DB/API call inside
+2. Memory: loading unbounded data, missing pagination
+3. If new dependencies added → run audit
+
+Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: []}'),
             ]))
 
             // 5. Finalize (IRON LAW: fix-task created = "pending" ALWAYS. MCP will reset status anyway when child starts. NO "validated" with children.)
