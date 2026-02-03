@@ -39,6 +39,18 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
         $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns/practices. -y flag: auto-select best. No -y: present options to user.');
 
+        // FAILURE-AWARE EXECUTION (CRITICAL - prevents repeating same mistakes)
+        $this->rule('failure-history-mandatory')->critical()
+            ->text('BEFORE planning: search memory category "debugging" for KNOWN FAILURES related to this task/problem. DO NOT attempt solutions that already failed.')
+            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
+            ->onViolation('Search debugging memories FIRST. Block known-failed approaches.');
+        $this->rule('sibling-task-check')->high()
+            ->text('BEFORE execution: fetch sibling tasks (same parent_id, status=completed/stopped). Check comments for what was tried and failed.')
+            ->why('Previous attempts on same problem contain valuable "what not to do" information.');
+        $this->rule('escalate-stuck-problems')->high()
+            ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives, ask user, or delegate to web-research-master.')
+            ->why('Definition of insanity: doing same thing expecting different results.');
+
         // SYNC EXECUTION RULES (sync = blocking, not "no agents")
         $this->rule('sync-meaning')->medium()->text('Sync = synchronous/blocking execution (vs async/background). Agent delegation IS allowed for research - keeps main context clean.');
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
@@ -180,9 +192,31 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND $HAS_AUTO_APPROVE', 'Auto-select BEST: fit with existing code > simplicity > best practices'))
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND NOT $HAS_AUTO_APPROVE', 'Present: "Found N approaches: 1)... 2)... Which? (or your variant)"'))
 
-            // 4. Context gathering (memory + local docs)
+            // 4. Context gathering (memory + local docs + FAILURES)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → past solutions')
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
             ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 3}') . ' → related tasks')
+            ->phase(Operator::if(
+                Store::get('TASK') . '.parent_id',
+                [
+                    VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' ' . Store::as('SIBLING_TASKS'),
+                    // CRITICAL: Search vector memory for EACH sibling task to get stored insights/failures
+                    Operator::forEach('sibling in ' . Store::get('SIBLING_TASKS'), [
+                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title}", limit: 3}') . ' → ALL memories for this sibling (failures, solutions, insights)',
+                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title} failed error not working", limit: 3}') . ' → specifically failure-related memories',
+                        'Append results to ' . Store::as('SIBLING_MEMORIES'),
+                    ]),
+                    'Extract from siblings comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked',
+                    Store::as('FAILURE_PATTERNS', 'solutions that were tried and failed (from sibling comments + sibling memories)'),
+                ]
+            ))
+            ->phase(Operator::if(
+                Store::get('KNOWN_FAILURES') . ' OR ' . Store::get('FAILURE_PATTERNS') . ' not empty',
+                [
+                    'BLOCKED APPROACHES: ' . Store::get('KNOWN_FAILURES') . ' + ' . Store::get('FAILURE_PATTERNS'),
+                    'If planned solution matches blocked approach → STOP, research alternative or escalate',
+                ]
+            ))
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' → project docs')
             ->phase(Operator::if('docs found', ReadTool::call('{doc.path}')))
 

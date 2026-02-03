@@ -53,6 +53,20 @@ class TaskValidateInclude extends IncludeArchetype
             ->text('Flaky tests (pass/fail inconsistently) = fix-task. Run test 2-3 times if suspect. Causes: shared state, time-dependent logic, race conditions, external dependencies without mocks.')
             ->why('Flaky tests erode trust in test suite and waste CI resources.');
 
+        // FAILURE-AWARE VALIDATION (CRITICAL - prevents repeating same mistakes)
+        $this->rule('failure-history-mandatory')->critical()
+            ->text('BEFORE validation: search memory category "debugging" for KNOWN FAILURES related to this task/problem. Pass failures to agents. Agents MUST NOT suggest solutions that already failed.')
+            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
+            ->onViolation('Search debugging memories. Include KNOWN_FAILURES in agent prompts.');
+        $this->rule('sibling-task-check')->high()
+            ->text('BEFORE validation: fetch sibling tasks (same parent_id, status=completed/stopped). Analyze their comments for what was tried and failed. Pass context to agents.')
+            ->why('Previous attempts on same problem contain valuable "what not to do" information.')
+            ->onViolation('task_list with parent_id, extract failure patterns from comments.');
+        $this->rule('no-repeat-failures')->critical()
+            ->text('BEFORE creating fix-task: check if proposed solution matches known failure. If memory says "X does NOT work for Y" - DO NOT create task suggesting X. Escalate or research alternative.')
+            ->why('Creating fix-task with known-failed solution = guaranteed failure + wasted effort.')
+            ->onViolation('Search memory for proposed fix. Match found in debugging = BLOCK task creation, suggest alternative or escalate.');
+
         // SECURITY VALIDATION (language-agnostic)
         $this->rule('security-injection')->critical()
             ->text('Injection vulnerabilities = fix-task. Check: SQL/NoSQL injection (parameterized queries?), command injection (shell escaping?), template injection, LDAP injection, XPath injection. ANY user input in query/command = suspect.')
@@ -182,9 +196,24 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
-            // 2. Context gathering (memory + docs + related tasks)
+            // 2. Context gathering (memory + docs + related tasks + FAILURES)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
             ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' ' . Store::as('RELATED_TASKS'))
+            ->phase(Operator::if(
+                Store::get('TASK') . '.parent_id',
+                [
+                    VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' ' . Store::as('SIBLING_TASKS') . ' ← previous attempts on same problem',
+                    // CRITICAL: Search vector memory for EACH sibling task to get stored insights/failures
+                    Operator::forEach('sibling in ' . Store::get('SIBLING_TASKS'), [
+                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title}", limit: 3}') . ' → ALL memories for this sibling (failures, solutions, insights)',
+                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title} failed error not working", limit: 3}') . ' → specifically failure-related memories',
+                        'Append results to ' . Store::as('SIBLING_MEMORIES'),
+                    ]),
+                ]
+            ))
+            ->phase('Extract from ' . Store::get('SIBLING_TASKS') . ' comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked')
+            ->phase(Store::as('FAILURE_PATTERNS', 'solutions that were tried and failed (from sibling comments + sibling memories + debugging memories)'))
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' ' . Store::as('DOCS_INDEX'))
 
             // 3. Approval (skip if -y)
@@ -216,11 +245,13 @@ class TaskValidateInclude extends IncludeArchetype
             ))
 
             // 4. Validate (4 parallel agents) - TASK SCOPE ONLY - FULL VALIDATION PATH
+            // CRITICAL: Pass KNOWN_FAILURES to ALL agents so they don't repeat failed solutions
+            ->phase('Prepare agent context: KNOWN_FAILURES=' . Store::get('KNOWN_FAILURES') . ', FAILURE_PATTERNS=' . Store::get('FAILURE_PATTERNS'))
             ->phase(Operator::parallel([
-                TaskTool::agent('explore', 'COMPLETION CHECK: Parse task.content → list requirements → verify each done. Check ONLY task files. Detect garbage (unused imports, dead code, debug statements, commented code). Fix cosmetic inline. Return JSON: {missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
-                TaskTool::agent('explore', 'CODE QUALITY: Task scope only. Check: logic errors, architecture violations, breaking changes, type safety (missing types, nullable without checks), algorithmic complexity (nested loops, O(n²)). Run quality gates. Fix cosmetic inline. Return JSON: {logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: []}'),
-                TaskTool::agent('explore', 'TESTING: Task scope only. Check: tests exist (coverage >=80%, critical=100%), tests pass, meaningful assertions (not just "no exception"), edge cases covered (null, empty, boundary), slow tests (unit >500ms, integration >2s), flaky tests (run 2x if suspect). Return JSON: {missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: []}'),
-                TaskTool::agent('explore', 'SECURITY & PERFORMANCE: Task scope only. Security: injection (SQL, command, template), XSS (output escaping), hardcoded secrets (grep: password, api_key, token, secret), auth/authz gaps, sensitive data in logs. Performance: N+1 queries (loop+DB call), memory issues (unbounded loading), missing pagination. Dependency audit if new deps added. Return JSON: {injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: []}'),
+                TaskTool::agent('explore', 'COMPLETION CHECK: Parse task.content → list requirements → verify each done. Check ONLY task files. Detect garbage (unused imports, dead code, debug statements, commented code). Fix cosmetic inline. KNOWN FAILURES (DO NOT SUGGEST THESE): {$KNOWN_FAILURES}. Return JSON: {missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
+                TaskTool::agent('explore', 'CODE QUALITY: Task scope only. Check: logic errors, architecture violations, breaking changes, type safety (missing types, nullable without checks), algorithmic complexity (nested loops, O(n²)). Run quality gates. Fix cosmetic inline. KNOWN FAILURES (DO NOT SUGGEST THESE): {$KNOWN_FAILURES}. PREVIOUS FAILED ATTEMPTS: {$FAILURE_PATTERNS}. Return JSON: {logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: []}'),
+                TaskTool::agent('explore', 'TESTING: Task scope only. Check: tests exist (coverage >=80%, critical=100%), tests pass, meaningful assertions (not just "no exception"), edge cases covered (null, empty, boundary), slow tests (unit >500ms, integration >2s), flaky tests (run 2x if suspect). KNOWN FAILURES (DO NOT SUGGEST THESE): {$KNOWN_FAILURES}. If test approach in KNOWN_FAILURES - find ALTERNATIVE. Return JSON: {missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: []}'),
+                TaskTool::agent('explore', 'SECURITY & PERFORMANCE: Task scope only. Security: injection (SQL, command, template), XSS (output escaping), hardcoded secrets (grep: password, api_key, token, secret), auth/authz gaps, sensitive data in logs. Performance: N+1 queries (loop+DB call), memory issues (unbounded loading), missing pagination. Dependency audit if new deps added. KNOWN FAILURES: {$KNOWN_FAILURES}. Return JSON: {injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: []}'),
             ]))
 
             // 5. Finalize (IRON LAW: fix-task created = "pending" ALWAYS. MCP will reset status anyway when child starts. NO "validated" with children.)
@@ -229,11 +260,36 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('  MAJOR: logic bugs, missing tests for critical paths, N+1 queries, type safety violations, failing tests')
             ->phase('  MINOR: missing edge case tests, complexity warnings, weak assertions, slow tests')
             ->phase('FILTER: Remove false positives (issue outside task scope). Store final list ' . Store::as('ISSUES'))
+
+            // 5.5 PRE-FIX-TASK CHECK - verify proposed fixes are NOT in known failures
             ->phase(Operator::if(
-                'issues=0 AND no fix-task needed',
+                Store::get('ISSUES') . ' not empty',
+                [
+                    'For EACH proposed fix in issues:',
+                    VectorMemoryMcp::call('search_memories', '{query: "{proposed_fix_description} failed not working broken error", limit: 3}') . ' → check if this fix already failed',
+                    Operator::if(
+                        'memory says this approach FAILED before',
+                        [
+                            'BLOCK this fix from task creation',
+                            'Search for ALTERNATIVE approach: ' . VectorMemoryMcp::call('search_memories', '{query: "{problem} alternative solution", limit: 5, category: "code-solution"}'),
+                            Operator::if(
+                                'no alternative found',
+                                [
+                                    'ESCALATE: "Problem {X} has no known working solution. Previous attempts failed: {list}. Needs research or human decision."',
+                                    'Add to task comment instead of creating fix-task',
+                                ]
+                            ),
+                        ]
+                    ),
+                ]
+            ))
+            ->phase(Store::as('FILTERED_ISSUES', 'issues with known-failed fixes removed, alternatives added where found'))
+
+            ->phase(Operator::if(
+                Store::get('FILTERED_ISSUES') . '=0 AND no fix-task needed',
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
                 [
-                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: issues_list, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
+                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
                     VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',
                 ]
             ))

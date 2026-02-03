@@ -34,6 +34,18 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
         $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns. -y flag: auto-select best approach for delegation. No -y: present options to user.');
 
+        // FAILURE-AWARE DELEGATION (CRITICAL - prevents repeating same mistakes)
+        $this->rule('failure-history-mandatory')->critical()
+            ->text('BEFORE delegation: search memory category "debugging" for KNOWN FAILURES related to this task/problem. Pass failures to agents. Agents MUST NOT attempt solutions that already failed.')
+            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
+            ->onViolation('Search debugging memories FIRST. Include KNOWN_FAILURES in agent prompts.');
+        $this->rule('sibling-task-check')->high()
+            ->text('BEFORE delegation: fetch sibling tasks (same parent_id, status=completed/stopped). Check comments for what was tried and failed. Pass context to agents.')
+            ->why('Previous attempts on same problem contain valuable "what not to do" information.');
+        $this->rule('escalate-stuck-problems')->high()
+            ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT delegate same approach. Research alternatives via web-research-master or escalate to user.')
+            ->why('Definition of insanity: doing same thing expecting different results.');
+
         // ASYNC EXECUTION RULES
         $this->rule('never-execute-directly')->critical()->text('Brain NEVER calls Edit/Write/Glob/Grep/Read for implementation. ALL work via Task() to agents.');
         $this->rule('atomic-tasks')->critical()->text('Each agent task: 1-2 files (max 3-5 if same feature). NO broad changes.');
@@ -163,9 +175,32 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND $HAS_AUTO_APPROVE', 'Auto-select BEST approach for delegation'))
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND NOT $HAS_AUTO_APPROVE', 'Present: "Found N approaches: 1)... 2)... Which? (or your variant)"'))
 
-            // 4. Context gathering (memory + local docs)
+            // 4. Context gathering (memory + local docs + FAILURES)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
             ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 3}') . ' ' . Store::as('RELATED'))
+            ->phase(Operator::if(
+                Store::get('TASK') . '.parent_id',
+                [
+                    VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' ' . Store::as('SIBLING_TASKS'),
+                    // CRITICAL: Search vector memory for EACH sibling task to get stored insights/failures
+                    Operator::forEach('sibling in ' . Store::get('SIBLING_TASKS'), [
+                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title}", limit: 3}') . ' → ALL memories for this sibling (failures, solutions, insights)',
+                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title} failed error not working", limit: 3}') . ' → specifically failure-related memories',
+                        'Append results to ' . Store::as('SIBLING_MEMORIES'),
+                    ]),
+                    'Extract from siblings comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked',
+                    Store::as('FAILURE_PATTERNS', 'solutions that were tried and failed (from sibling comments + sibling memories)'),
+                ]
+            ))
+            ->phase(Operator::if(
+                Store::get('KNOWN_FAILURES') . ' OR ' . Store::get('FAILURE_PATTERNS') . ' not empty',
+                [
+                    Store::as('BLOCKED_APPROACHES', Store::get('KNOWN_FAILURES') . ' + ' . Store::get('FAILURE_PATTERNS')),
+                    'If planned delegation uses blocked approach → STOP, research alternative or escalate',
+                    'Pass BLOCKED_APPROACHES to ALL agents in their prompts',
+                ]
+            ))
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' ' . Store::as('DOCS'))
             ->phase(Operator::if('docs found', TaskTool::agent('explore', 'Read docs: {doc.paths}')))
 
@@ -313,10 +348,11 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('Every Task() delegation MUST include these sections:')
             ->text('1. TASK: Clear description of what to do')
             ->text('2. FILES: Specific file scope (1-2 files, max 3-5 for feature)')
-            ->text('3. MEMORY: "Search memory for: {terms}. Store learnings after."')
-            ->text('4. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
-            ->text('5. VALIDATION: "Verify syntax. Run linter if configured. Run related tests. Fix before completion."')
-            ->text('6. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
-            ->text('7. DEPS: "If dependencies needed: detect package manager, install, run audit."');
+            ->text('3. BLOCKED APPROACHES: "KNOWN FAILURES (DO NOT USE): {$BLOCKED_APPROACHES}. If your solution matches - find alternative."')
+            ->text('4. MEMORY: "Search memory for: {terms}. Check debugging category for failures. Store learnings after."')
+            ->text('5. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
+            ->text('6. VALIDATION: "Verify syntax. Run linter if configured. Run related tests. Fix before completion."')
+            ->text('7. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
+            ->text('8. DEPS: "If dependencies needed: detect package manager, install, run audit."');
     }
 }
