@@ -96,6 +96,37 @@ trait TaskCommandCommonTrait
         $this->rule('docs-over-existing-code')->high()
             ->text('Conflict between docs and existing code? DOCS WIN. Existing code may be: WIP, placeholder, wrong, outdated. Docs define WHAT SHOULD BE.')
             ->why('Code is implementation, docs are specification. Spec > current impl.');
+
+        $this->rule('aggressive-docs-search')->critical()
+            ->text('NEVER search docs with single exact query. Generate 3-5 keyword variations: 1) split CamelCase (FocusModeTest → "FocusMode", "Focus Mode", "Focus"), 2) remove technical suffixes (Test, Controller, Service, Repository, Command, Handler, Provider), 3) extract domain words, 4) try singular/plural. Search until found OR 3+ variations tried.')
+            ->why('Docs may be named differently than code. "FocusModeTest" code → "Focus Mode" doc. Single exact search = missed docs = wrong decisions.')
+            ->onViolation('Generate keyword variations. Search each. Only conclude "no docs" after 3+ failed searches.');
+
+        // Include the search guideline
+        $this->defineAggressiveDocsSearchGuideline();
+    }
+
+    /**
+     * Define aggressive documentation search guideline.
+     * Ensures multiple search attempts with keyword variations before concluding no docs exist.
+     * Used by: ALL task execution and validation commands.
+     */
+    protected function defineAggressiveDocsSearchGuideline(): void
+    {
+        $this->guideline('aggressive-docs-search')
+            ->goal('Find documentation even if named differently than task/code')
+            ->example()
+            ->phase('Generate keyword variations from task title/content:')
+            ->phase('  1. Original: "FocusModeTest" → search "FocusModeTest"')
+            ->phase('  2. Split CamelCase: "FocusModeTest" → search "FocusMode", "Focus Mode"')
+            ->phase('  3. Remove suffix: "FocusModeTest" → search "Focus" (remove Mode, Test)')
+            ->phase('  4. Domain words: extract meaningful nouns → search each')
+            ->phase('  5. Parent context: if task has parent → include parent title keywords')
+            ->phase('Common suffixes to STRIP: Test, Tests, Controller, Service, Repository, Command, Handler, Provider, Factory, Manager, Helper, Validator, Processor')
+            ->phase('Search ORDER: most specific → most general. STOP when found.')
+            ->phase('Minimum 3 search attempts before concluding "no documentation".')
+            ->phase('WRONG: brain docs "UserAuthenticationServiceTest" → not found → done')
+            ->phase('RIGHT: brain docs "UserAuthenticationServiceTest" → not found → brain docs "UserAuthentication" → not found → brain docs "Authentication" → FOUND!');
     }
 
     // =========================================================================
