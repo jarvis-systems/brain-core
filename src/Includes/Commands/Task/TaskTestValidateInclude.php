@@ -45,6 +45,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineAutoApprovalFlagRule();
         $this->defineVectorTaskIdRequiredRule('/do:test-validate');
 
+        // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
+        $this->defineDocumentationIsLawRules();
+
         $this->rule('scale-agents')->high()
             ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
 

@@ -39,6 +39,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->rule('auto-approve')->high()
             ->text('-y flag = auto-approve. Skip "Proceed?" but show progress.');
 
+        // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
+        $this->defineDocumentationIsLawRules();
+
         // PARENT INHERITANCE
         $this->rule('parent-id-mandatory')->critical()
             ->text('ALL fix-tasks MUST have parent_id = $VECTOR_TASK_ID. No orphans.')

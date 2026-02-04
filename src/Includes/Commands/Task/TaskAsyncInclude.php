@@ -29,6 +29,9 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
 
+        // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
+        $this->defineDocumentationIsLawRules();
+
         // CRITICAL THINKING FOR DELEGATION
         $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
         $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');

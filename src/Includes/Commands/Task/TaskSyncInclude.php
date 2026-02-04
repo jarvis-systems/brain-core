@@ -34,6 +34,9 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
 
+        // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
+        $this->defineDocumentationIsLawRules();
+
         // CRITICAL THINKING RULES
         $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
         $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -175,6 +178,22 @@ class TaskSyncInclude extends IncludeArchetype
                 Store::as('PENDING_SUBTASKS', 'filter SUBTASKS where status=pending, order by priority,order,created_at'),
                 Operator::if('$HAS_AUTO_APPROVE', 'Execute subtasks sequentially before parent'),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N pending subtasks. Execute them first?"'),
+            ]))
+
+            // 1.7 Documentation check (MANDATORY before any work)
+            ->phase(BashTool::call(BrainCLI::DOCS('{task keywords}')) . ' ' . Store::as('TASK_DOCS'))
+            ->phase(Operator::if(Store::get('TASK_DOCS') . ' found', [
+                ReadTool::call('{doc_paths}') . ' ' . Store::as('DOCUMENTATION'),
+                'Documentation is LAW. All execution MUST follow docs. No alternatives unless docs are ambiguous.',
+            ]))
+
+            // 1.8 Partial implementation check
+            ->phase('Scan target files for existing implementation')
+            ->phase(Operator::if('partial implementation exists', [
+                'MANDATORY: Re-read ' . Store::get('DOCUMENTATION') . ' to understand FULL target state',
+                'Compare: current state vs documented target state',
+                Store::as('REMAINING_WORK', 'difference between current and documented target'),
+                'Continue implementation per docs. DO NOT ask "keep/rewrite/both" - docs define target.',
             ]))
 
             // 2. Fast-path check (simple tasks skip to step 4)
@@ -357,6 +376,13 @@ class TaskSyncInclude extends IncludeArchetype
                 ]),
             ]))
             ->phase(Operator::if('user rejects plan', 'Accept modifications, rebuild plan, re-present'))
+            ->phase(Operator::if('partial implementation AND tempted to ask "keep/rewrite/both"', [
+                'STOP. This is FORBIDDEN question.',
+                'Read documentation again',
+                'Documentation defines target state',
+                'Implement REMAINING parts per docs',
+                'NEVER ask about non-existent alternatives',
+            ]))
             ->phase(Operator::if('dependency install fails', [
                 'Check: network, permissions, version conflicts',
                 Operator::if('$HAS_AUTO_APPROVE', VectorTaskMcp::call('task_update', '{status: "pending", comment: "Dependency install failed: {error}"}') . ' + abort'),

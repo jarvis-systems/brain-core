@@ -44,6 +44,9 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->rule('auto-approve')->high()
             ->text('-y flag = auto-approve. Skip "Proceed?" but show progress.');
 
+        // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
+        $this->defineDocumentationIsLawRules();
+
         // =========================================================================
         // DECOMPOSITION-SPECIFIC RULES
         // =========================================================================

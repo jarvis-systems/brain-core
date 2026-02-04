@@ -68,6 +68,37 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // DOCUMENTATION IS LAW (CRITICAL FOUNDATION)
+    // =========================================================================
+
+    /**
+     * Define documentation-is-law rules.
+     * These rules ensure agents follow documentation/ТЗ exactly without inventing alternatives.
+     * Used by: ALL task execution and validation commands.
+     */
+    protected function defineDocumentationIsLawRules(): void
+    {
+        $this->rule('docs-are-law')->critical()
+            ->text('Documentation/ТЗ is the SINGLE SOURCE OF TRUTH. If docs exist for task - FOLLOW THEM EXACTLY. No deviations, no "alternatives", no "options" that docs don\'t mention.')
+            ->why('User wrote docs for a reason. Asking about non-existent alternatives wastes time and shows you didn\'t read the docs.')
+            ->onViolation('Re-read documentation. Execute ONLY what docs specify.');
+
+        $this->rule('no-phantom-options')->critical()
+            ->text('FORBIDDEN: Asking "keep as is / rewrite / both?" when docs specify ONE approach. If docs say HOW to do it - do it. Don\'t invent alternatives.')
+            ->why('Docs are the holy grail. Phantom options confuse user and delay work.')
+            ->onViolation('Check docs again. If docs are clear - execute. If genuinely ambiguous - ask about THAT ambiguity, not made-up options.');
+
+        $this->rule('partial-work-continue')->critical()
+            ->text('Partial implementation exists? Read DOCS first, understand FULL spec. Continue from where it stopped ACCORDING TO DOCS. Never ask "keep partial or rewrite" - docs define target state.')
+            ->why('Partial work means someone started following docs. Continue following docs, not inventing alternatives.')
+            ->onViolation('Read docs → understand target state → implement remaining parts per docs.');
+
+        $this->rule('docs-over-existing-code')->high()
+            ->text('Conflict between docs and existing code? DOCS WIN. Existing code may be: WIP, placeholder, wrong, outdated. Docs define WHAT SHOULD BE.')
+            ->why('Code is implementation, docs are specification. Spec > current impl.');
+    }
+
+    // =========================================================================
     // COMMON RULES
     // =========================================================================
 

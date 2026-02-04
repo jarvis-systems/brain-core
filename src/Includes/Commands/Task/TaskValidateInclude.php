@@ -28,6 +28,9 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
         $this->rule('auto-approve')->high()->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress. User sees everything, just no approval prompts.');
 
+        // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
+        $this->defineDocumentationIsLawRules();
+
         // PARENT INHERITANCE (IRON LAW)
         $this->rule('parent-id-mandatory')->critical()
             ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
