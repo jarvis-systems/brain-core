@@ -6,8 +6,11 @@ namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
+use BrainCore\Compilation\Tools\BashTool;
+use BrainCore\Compilation\Tools\ReadTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\SequentialThinkingMcp;
@@ -26,7 +29,15 @@ class TaskCreateInclude extends IncludeArchetype
             ->text('MUST analyze input thoroughly before creating. Extract: objective, scope, requirements, type (feature/bugfix/refactor/research/docs).');
 
         $this->rule('research-before-create')->critical()
-            ->text('MUST research context: 1) existing tasks (duplicates?), 2) vector memory (prior work), 3) codebase (if code-related), 4) context7 (if unknown lib/pattern).');
+            ->text('MUST research context: 1) existing tasks (duplicates?), 2) vector memory (prior work), 3) PROJECT DOCUMENTATION (.docs/), 4) codebase (if code-related), 5) context7 (if unknown lib/pattern).');
+
+        // DOCUMENTATION IS LAW
+        $this->defineDocumentationIsLawRules();
+
+        $this->rule('docs-define-task-scope')->critical()
+            ->text('If documentation exists for task domain → task.content MUST reference docs. Estimate based on FULL spec from docs, not brief description.')
+            ->why('Documentation contains complete requirements. Task without doc reference = incomplete context for executor.')
+            ->onViolation('Search docs first. If found → include doc reference in task.content and comment.');
 
         $this->rule('estimate-required')->critical()
             ->text('MUST provide time estimate. 1-8h normal. >8h = recommend /task:decompose after creation.');
@@ -60,7 +71,14 @@ class TaskCreateInclude extends IncludeArchetype
             ->phase('Parse ' . Store::get('TASK_DESCRIPTION') . ' → ' . Store::as('TASK_SCOPE', '{objective, domain, type, requirements}'))
             ->phase(Store::as('IS_SIMPLE', 'description <140 chars AND no architecture/integration/multi-module keywords'))
 
-            // 2. Research (conditional depth)
+            // 2. Documentation check (ALWAYS - even for simple tasks)
+            ->phase(BashTool::call(BrainCLI::DOCS('{domain} {objective}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
+                ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
+                'DOCUMENTATION = COMPLETE specification. Use for: requirements, estimate, acceptance criteria.',
+            ]))
+
+            // 3. Research (conditional depth)
             ->phase(Operator::if(Store::get('IS_SIMPLE'), [
                 VectorTaskMcp::call('task_list', '{query: "{objective}", limit: 5}') . ' → check duplicates',
                 VectorMemoryMcp::call('search_memories', '{query: "{domain}", limit: 3}'),
@@ -73,31 +91,31 @@ class TaskCreateInclude extends IncludeArchetype
             ]))
             ->phase(Operator::if('duplicate found', 'STOP. Ask: update existing or create new?'))
 
-            // 3. Analyze
+            // 4. Analyze (use DOCUMENTATION as primary source for requirements)
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
-                thought: "Analyzing: complexity, estimate, priority, dependencies, acceptance criteria",
+                thought: "Analyzing: IF DOCS exist → extract full requirements from DOCS. Complexity, estimate (based on DOCS), priority, dependencies, acceptance criteria (from DOCS).",
                 thoughtNumber: 1,
                 totalThoughts: 2,
                 nextThoughtNeeded: true
             }'))
-            ->phase(Store::as('ANALYSIS', '{complexity, estimate, priority, dependencies, criteria}'))
+            ->phase(Store::as('ANALYSIS', '{complexity, estimate, priority, dependencies, criteria, doc_requirements}'))
 
-            // 4. Formulate
+            // 5. Formulate
             ->phase(Store::as('TASK_SPEC', '{
                 title: "concise, max 10 words",
-                content: "objective, context, acceptance criteria, hints",
+                content: "objective, context, acceptance criteria, hints. IF DOCS exist: See documentation: {doc_paths}",
                 priority: "critical|high|medium|low",
-                estimate: "hours (1-8, >8 needs decompose)",
+                estimate: "hours based on DOCUMENTATION (if exists) or description (1-8, >8 needs decompose)",
                 tags: ["category", "domain"],
-                comment: "Memory: #IDs. Files: paths. Related: #task_ids."
+                comment: "Docs: {doc_paths or none}. Memory: #IDs. Files: paths. Related: #task_ids."
             }'))
 
-            // 5. Approve
-            ->phase('Show: Title, Priority, Estimate, Tags, Content preview')
+            // 6. Approve
+            ->phase('Show: Title, Priority, Estimate, Tags, Content preview, Doc reference (if any)')
             ->phase(Operator::if('estimate > 8', 'WARN: >8h, recommend /task:decompose after creation'))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create? (yes/no/modify)"'))
 
-            // 6. Create
+            // 7. Create
             ->phase(VectorTaskMcp::call('task_create', '{title, content, priority, tags, estimate, comment}') . ' → ' . Store::as('CREATED_ID'))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Created task #{id}: {title}, {domain}, {estimate}h", category: "tool-usage"}'))
             ->phase(Operator::if('estimate > 8', 'Recommend: /task:decompose ' . Store::get('CREATED_ID')))

@@ -10,6 +10,7 @@ use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
+use BrainCore\Compilation\Tools\ReadTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\VectorMemoryMcp;
@@ -38,6 +39,11 @@ class TaskBrainstormInclude extends IncludeArchetype
         $this->rule('research-on-demand')->high()
             ->text('Delegate research ONLY when needed. Unknown tech → context7. Codebase analysis → explore agent. Simple topics → no delegation.');
 
+        $this->rule('docs-provide-context')->high()
+            ->text('If documentation exists for topic → READ IT FIRST. Docs contain: constraints, decisions, rejected alternatives. Ideas must NOT contradict documented architecture/decisions.')
+            ->why('Brainstorming without doc context = reinventing wheel or proposing already-rejected ideas.')
+            ->onViolation('Search and read docs before generating ideas. Note constraints from docs.');
+
         $this->rule('modification-user-approved')->high()
             ->text('Modify task or create subtasks ONLY when user explicitly requests. Options: update content, rewrite, append, create subtasks.');
 
@@ -61,17 +67,22 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->phase('Ask: "What aspect would you like to brainstorm?"')
             ->phase('WAIT for user topic → ' . Store::as('TOPIC'))
 
-            // 2. Context gathering
+            // 2. Context gathering (DOCS FIRST - provide constraints for ideas)
+            ->phase(BashTool::call(BrainCLI::DOCS('{TOPIC} {TASK.title}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
+                ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
+                'DOCUMENTATION provides: constraints, existing decisions, rejected alternatives. Ideas MUST respect documented architecture.',
+            ]))
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} {TOPIC}", limit: 5}') . ' → ' . Store::as('MEMORY'))
-            ->phase(BashTool::call(BrainCLI::DOCS('{TOPIC}')) . ' → ' . Store::as('DOCS'))
             ->phase(Operator::if('unknown library/tech in TOPIC', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand first'))
             ->phase(Operator::if('needs codebase analysis', TaskTool::agent('explore', 'Analyze codebase for {TOPIC}. Find: relevant files, patterns, implementations.') . ' → ' . Store::as('CODE_CONTEXT')))
             ->phase(Operator::if('needs external research', TaskTool::agent('web-research-master', 'Research {TOPIC}: best practices, patterns, pitfalls.') . ' → ' . Store::as('WEB_RESEARCH')))
 
-            // 3. Initial ideation
+            // 3. Initial ideation (respecting DOCUMENTATION constraints)
             ->phase('Present structured ideas:')
             ->phase(Operator::do([
-                '## Approaches - 2-4 potential approaches',
+                '## Constraints from Docs - IF DOCUMENTATION exists, list: architecture decisions, rejected alternatives, hard limits',
+                '## Approaches - 2-4 potential approaches (MUST NOT contradict docs)',
                 '## Pros/Cons - for each approach',
                 '## Recommendation - top choice with rationale',
                 '## Open Questions - needs user input',

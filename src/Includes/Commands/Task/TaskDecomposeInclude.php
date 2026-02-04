@@ -6,9 +6,12 @@ namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
+use BrainCore\Compilation\Tools\BashTool;
+use BrainCore\Compilation\Tools\ReadTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\SequentialThinkingMcp;
@@ -46,6 +49,11 @@ class TaskDecomposeInclude extends IncludeArchetype
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
+
+        $this->rule('docs-define-structure')->critical()
+            ->text('Documentation defines STRUCTURE for decomposition. If docs describe modules/components/phases → decompose ACCORDING TO DOCS. Code exploration is SECONDARY.')
+            ->why('Docs contain planned architecture. Code may be incomplete WIP. Decomposing by code misses planned structure.')
+            ->onViolation('Read docs FIRST. Decompose per documented structure. Code exploration fills gaps.');
 
         // =========================================================================
         // DECOMPOSITION-SPECIFIC RULES
@@ -104,29 +112,50 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
             ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_AUTO_APPROVE', 'Ask: "(1) Add more, (2) Replace all, (3) Abort"'))
 
-            // Stage 2: Research (parallel)
+            // Stage 2: Documentation (PRIMARY source for structure)
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
+                ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
+                'DOCUMENTATION defines decomposition structure: modules, components, phases, dependencies',
+            ]))
+
+            // Stage 3: Research (parallel - code exploration is SECONDARY)
             ->phase(Operator::if('unknown library/pattern in task', Context7Mcp::call('query-docs', '{query: "{library/pattern}"}') . ' → understand before decomposing'))
             ->phase(Operator::parallel([
-                TaskTool::agent('explore', 'DECOMPOSE RESEARCH: task #{$TASK.id}. Find: files, components, dependencies, split boundaries. EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . '. Return: {files, components, boundaries}'),
+                TaskTool::agent('explore', '
+DECOMPOSE RESEARCH for task #{$TASK.id}.
+
+DOCUMENTATION PROVIDED (if exists): {$DOCUMENTATION}
+- If docs define structure → USE IT as primary decomposition source
+- Code exploration fills gaps and validates feasibility
+
+FIND: files, components, dependencies, split boundaries.
+EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . '.
+
+CRITICAL: If DOCUMENTATION defines modules/components/phases → subtasks MUST align with documented structure.
+Code may be incomplete - docs define PLANNED architecture.
+
+Return: {docs_structure: [], code_structure: [], recommended_split: [], conflicts: []}'),
                 VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),
             ]))
             ->phase(Store::as('CODE_INSIGHTS', '{from explore agent}'))
 
-            // Stage 3: Plan
+            // Stage 4: Plan (DOCUMENTATION is PRIMARY)
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
-                thought: "Synthesizing: CODE_INSIGHTS + MEMORY_INSIGHTS. Identify: boundaries, dependencies, parallel opportunities, order.",
+                thought: "Synthesizing: DOCUMENTATION (primary) + CODE_INSIGHTS (secondary) + MEMORY_INSIGHTS. If docs define structure → USE IT. Code fills gaps. Identify: boundaries, dependencies, parallel opportunities, order.",
                 thoughtNumber: 1,
                 totalThoughts: 2,
                 nextThoughtNeeded: true
             }'))
-            ->phase('Group by component, order by dependency, estimate each')
-            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order}]'))
+            ->phase('If DOCUMENTATION exists: subtasks MUST align with documented modules/components/phases')
+            ->phase('Group by component (per docs), order by dependency, estimate each')
+            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, doc_reference}]'))
 
-            // Stage 4: Approve
-            ->phase('Show: | Order | Subtask | Est | Priority |')
+            // Stage 5: Approve
+            ->phase('Show: | Order | Subtask | Est | Priority | Doc Ref |')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create {count} subtasks? (yes/no/modify)"'))
 
-            // Stage 5: Create
+            // Stage 6: Create
             ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, tags: ["decomposed"]}]}'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Decomposed #{$TASK.id} into {count} subtasks", category: "tool-usage"}'))

@@ -204,8 +204,11 @@ class TaskAsyncInclude extends IncludeArchetype
                     'Pass BLOCKED_APPROACHES to ALL agents in their prompts',
                 ]
             ))
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' ' . Store::as('DOCS'))
-            ->phase(Operator::if('docs found', TaskTool::agent('explore', 'Read docs: {doc.paths}')))
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' ' . Store::as('DOCS_INDEX'))
+            ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
+                TaskTool::agent('explore', 'Read docs: {doc.paths}. Return full content.') . ' → ' . Store::as('DOCS_CONTENT'),
+                'DOCS_CONTENT = COMPLETE specification. Pass to ALL agents. Documentation > task.content.',
+            ]))
 
             // 4.5 Pre-delegation git check
             ->phase(BashTool::call('git status --porcelain 2>/dev/null || echo "NO_GIT"') . ' ' . Store::as('GIT_STATUS'))
@@ -351,11 +354,12 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('Every Task() delegation MUST include these sections:')
             ->text('1. TASK: Clear description of what to do')
             ->text('2. FILES: Specific file scope (1-2 files, max 3-5 for feature)')
-            ->text('3. BLOCKED APPROACHES: "KNOWN FAILURES (DO NOT USE): {$BLOCKED_APPROACHES}. If your solution matches - find alternative."')
-            ->text('4. MEMORY: "Search memory for: {terms}. Check debugging category for failures. Store learnings after."')
-            ->text('5. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
-            ->text('6. VALIDATION: "Verify syntax. Run linter if configured. Run related tests. Fix before completion."')
-            ->text('7. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
-            ->text('8. DEPS: "If dependencies needed: detect package manager, install, run audit."');
+            ->text('3. DOCUMENTATION: "If docs exist: {$DOCS_CONTENT}. Documentation = COMPLETE spec. task.content may be summary. Follow DOCS."')
+            ->text('4. BLOCKED APPROACHES: "KNOWN FAILURES (DO NOT USE): {$BLOCKED_APPROACHES}. If your solution matches - find alternative."')
+            ->text('5. MEMORY: "Search memory for: {terms}. Check debugging category for failures. Store learnings after."')
+            ->text('6. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
+            ->text('7. VALIDATION: "Verify syntax. Run linter if configured. Run related tests. Fix before completion."')
+            ->text('8. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
+            ->text('9. DEPS: "If dependencies needed: detect package manager, install, run audit."');
     }
 }
