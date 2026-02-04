@@ -6,6 +6,7 @@ namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
@@ -49,7 +50,12 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // VALIDATION SCOPE (same as async)
         $this->rule('task-scope-only')->critical()
-            ->text('Validate ONLY task.content requirements. Do NOT expand scope.');
+            ->text('Validate ONLY task.content + documentation requirements. Do NOT expand scope.');
+
+        $this->rule('docs-are-complete-spec')->critical()
+            ->text('Documentation (.docs/) = COMPLETE specification. task.content may be brief. ALWAYS read docs if exist. Validate against DOCUMENTATION.')
+            ->why('task.content is often summary. Full spec in docs. Validating only task.content misses requirements.')
+            ->onViolation('brain docs {keywords} → if docs exist → read → validate against docs.');
 
         $this->rule('task-complete')->critical()
             ->text('ALL requirements MUST be done. Missing = fix-task.');
@@ -112,11 +118,13 @@ class TaskValidateSyncInclude extends IncludeArchetype
             // 3. Context
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title}", limit: 5, category: "code-solution"}') . ' → ' . Store::as('MEMORY'))
             ->phase(VectorTaskMcp::call('task_list', '{query: "{TASK.title}", limit: 5}') . ' → ' . Store::as('RELATED'))
+            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION') . ' (COMPLETE spec)'))
             ->phase(Operator::if('unknown library/pattern', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand before validating'))
 
             // 4. Direct validation (TASK SCOPE ONLY)
             ->phase(Store::as('COSMETIC_FIXES', '0'))
-            ->phase('4.1 COMPLETION: Parse task.content → list requirements → verify each done')
+            ->phase('4.1 COMPLETION: Extract requirements from DOCUMENTATION (primary) + task.content (secondary) → list ALL requirements → verify each done')
             ->phase(GlobTool::describe('Find task-related files'))
             ->phase(ReadTool::describe('Read files, confirm implementation'))
             ->phase('Detect garbage: unused imports, dead code, debug statements')

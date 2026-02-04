@@ -39,7 +39,11 @@ class TaskValidateInclude extends IncludeArchetype
 
         // VALIDATION RULES
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
-        $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content describes. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
+        $this->rule('docs-are-complete-spec')->critical()
+            ->text('Documentation (.docs/) = COMPLETE specification. task.content may be brief summary. ALWAYS read and validate against DOCUMENTATION if exists. Missing from docs = not a requirement. In docs but not done = MISSING.')
+            ->why('task.content is often summary. Full spec lives in documentation. Validating only task.content misses requirements.')
+            ->onViolation('Check DOCS_PATHS. If docs exist → read them → extract full requirements → validate against docs.');
+        $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content + documentation describes. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
         $this->rule('task-complete')->critical()->text('ALL task requirements MUST be done. Parse task.content → list requirements → verify each. Missing = fix-task.');
         $this->rule('no-garbage')->critical()->text('Garbage code in task scope = fix-task.');
         $this->rule('cosmetic-inline')->critical()->text('Cosmetic issues = AGENTS fix inline during validation. NO task created. Cosmetic: whitespace, typos, formatting, comments, docblocks, naming (non-breaking), import sorting.');
@@ -241,18 +245,29 @@ CONTEXT (provided by validator):
 - Files to check: {TASK_FILES}
 - Parent goal: {PARENT_CONTEXT}
 - Related memories: {MEMORY_IDS}
+- Documentation paths: {DOCS_PATHS}
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
 
-MISSION: COMPLETION CHECK
-1. Parse task content → extract ALL requirements as checklist
-2. For EACH requirement → verify done in task files
-3. Check ONLY files from TASK_FILES list
-4. Detect garbage: unused imports, dead code, debug statements, commented code
-5. Fix cosmetic issues inline (whitespace, formatting)
+CRITICAL: DOCUMENTATION = LAW
+- task.content may be brief summary
+- Documentation (.docs/) = COMPLETE specification
+- ALWAYS read docs if DOCS_PATHS provided
+- Validate against DOCUMENTATION, not just task.content
+- If docs say X but code does Y → MISSING REQUIREMENT
+- If code does Z but docs don\'t mention Z → verify if needed or garbage
 
-Return JSON: {requirements_checklist: [{requirement, status, evidence}], missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
+MISSION: COMPLETION CHECK
+1. IF DOCS_PATHS exist → Read ALL documentation files FIRST
+2. Extract FULL requirements from: documentation (primary) + task.content (secondary)
+3. Create checklist: combine docs requirements + task.content requirements
+4. For EACH requirement → verify done in task files
+5. Check ONLY files from TASK_FILES list
+6. Detect garbage: unused imports, dead code, debug statements, commented code
+7. Fix cosmetic issues inline (whitespace, formatting)
+
+Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
