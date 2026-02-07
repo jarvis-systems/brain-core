@@ -37,6 +37,10 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('Task hierarchy integrity. Orphan tasks break traceability and workflow.')
             ->onViolation('ABORT task_create if parent_id missing or wrong. Verify parent_id = $VECTOR_TASK_ID in EVERY task_create call.');
 
+        $this->rule('estimate-mandatory')->critical()
+            ->text('task_create MUST include estimate (hours). Pessimistic > optimistic. Realistic range, not fantasy.')
+            ->onViolation('ABORT. Add estimate. Unsure? Take gut feeling × 1.5.');
+
         // VALIDATION RULES
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
         $this->rule('docs-are-complete-spec')->critical()
