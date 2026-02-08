@@ -218,7 +218,7 @@ class TaskValidateInclude extends IncludeArchetype
                         'basic checks pass',
                         VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Light validation passed (trivial task)", append_comment: true}'),
                         [
-                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
+                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, parallel: true, tags: ["validation-fix"]}'),
                             VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}'),
                         ]
                     ),
@@ -378,7 +378,7 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                 Store::get('FILTERED_ISSUES') . '=0 AND no fix-task needed',
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
                 [
-                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, tags: ["validation-fix"]}'),
+                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, parallel: true, tags: ["validation-fix"]}'),
                     VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',
                 ]
             ))

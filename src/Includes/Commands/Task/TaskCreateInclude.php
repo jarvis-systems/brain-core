@@ -106,6 +106,7 @@ class TaskCreateInclude extends IncludeArchetype
                 content: "objective, context, acceptance criteria, hints. IF DOCS exist: See documentation: {doc_paths}",
                 priority: "critical|high|medium|low",
                 estimate: "hours based on DOCUMENTATION (if exists) or description (1-8, >8 needs decompose)",
+                parallel: "true if task is independent of siblings (different files, no shared state). false if depends on siblings or is standalone.",
                 tags: ["category", "domain"],
                 comment: "Docs: {doc_paths or none}. Memory: #IDs. Files: paths. Related: #task_ids."
             }'))
@@ -116,7 +117,7 @@ class TaskCreateInclude extends IncludeArchetype
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create? (yes/no/modify)"'))
 
             // 7. Create
-            ->phase(VectorTaskMcp::call('task_create', '{title, content, priority, tags, estimate, comment}') . ' → ' . Store::as('CREATED_ID'))
+            ->phase(VectorTaskMcp::call('task_create', '{title, content, priority, tags, estimate, parallel, comment}') . ' → ' . Store::as('CREATED_ID'))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Created task #{id}: {title}, {domain}, {estimate}h", category: "tool-usage"}'))
             ->phase(Operator::if('estimate > 8', 'Recommend: /task:decompose ' . Store::get('CREATED_ID')))
             ->phase('STOP. Do NOT execute. Return control to user.');

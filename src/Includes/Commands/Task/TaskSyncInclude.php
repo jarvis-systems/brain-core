@@ -131,9 +131,9 @@ class TaskSyncInclude extends IncludeArchetype
 
         // SUBTASKS HANDLING
         $this->rule('subtasks-before-parent')->high()
-            ->text('Parent task with pending subtasks: complete subtasks FIRST. Order by: priority > order field > creation date. -y = execute sequentially, no -y = show list and ask.');
+            ->text('Parent task with pending subtasks: complete subtasks FIRST. Order by: order field (strict). -y = execute per parallel flags, no -y = show list and ask.');
         $this->rule('subtasks-parallel-option')->medium()
-            ->text('Independent subtasks (no dependencies): -y = execute in parallel if possible, no -y = ask "Execute N subtasks in parallel?"');
+            ->text('USE parallel field from subtask data. Subtasks with parallel=true AND adjacent order = can execute concurrently. -y = auto-execute per parallel flags, no -y = show grouping and ask.');
 
         // BREAKING CHANGES
         $this->rule('breaking-change-detection')->high()

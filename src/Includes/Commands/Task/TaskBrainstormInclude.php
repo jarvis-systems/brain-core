@@ -119,8 +119,9 @@ class TaskBrainstormInclude extends IncludeArchetype
             // 5c. Create subtasks (optional)
             ->phase(Operator::if('user wants subtasks', [
                 'List actionable items from brainstorm',
+                'Analyze independence: items targeting different files/components with no shared state = parallel: true',
                 'Ask: "Create these subtasks? (yes/no/modify)"',
-                Operator::if('confirmed', VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $VECTOR_TASK_ID, priority, estimate}]}')),
+                Operator::if('confirmed', VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $VECTOR_TASK_ID, priority, estimate, order, parallel}]}')),
             ]))
 
             // 6. Complete

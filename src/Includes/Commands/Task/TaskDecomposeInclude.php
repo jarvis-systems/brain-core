@@ -73,14 +73,14 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->defineMandatoryUserApprovalRule();
 
         $this->rule('order-mandatory')->critical()
-            ->text('EVERY subtask MUST have explicit order field set. Sequential: 1, 2, 3. Parallel-safe: same order.')
-            ->why('Order defines execution priority. Missing order = ambiguous sequence = blocked user.')
-            ->onViolation('Set order parameter in EVERY task_create call. Never omit.');
+            ->text('EVERY subtask MUST have unique order (1,2,3,4) AND explicit parallel flag. Independent subtasks that CAN run concurrently = parallel: true. Dependent subtasks = parallel: false.')
+            ->why('Order defines strict sequence. Parallel flag enables executor to run independent tasks concurrently without re-analyzing dependencies.')
+            ->onViolation('Set order (unique) + parallel (bool) in EVERY task_create call. Never omit either.');
 
         $this->rule('sequence-analysis')->critical()
-            ->text('When creating 2+ subtasks: STOP and THINK about optimal sequence. Consider: dependencies, data flow, setup requirements, parallel opportunities.')
-            ->why('Wrong sequence wastes time. User executes in order - if task 3 needs output from task 5, user is blocked.')
-            ->onViolation('Use SequentialThinking to analyze dependencies. Reorder before creation.');
+            ->text('When creating 2+ subtasks: STOP and THINK about optimal sequence AND parallel marking. Consider: dependencies, data flow, setup requirements, file overlap. Independent tasks (different files, no shared state, no data flow between them) = parallel: true. Dependent tasks = parallel: false.')
+            ->why('Wrong sequence wastes time. Wrong parallel marking causes race conditions. Correct parallel flags enable concurrent execution by executor.')
+            ->onViolation('Use SequentialThinking to analyze dependencies AND independence. Set order + parallel before creation.');
 
         $this->rule('logical-order')->high()
             ->text('Subtasks MUST be in logical execution order. Dependencies first, dependents after.')
@@ -142,21 +142,27 @@ Return: {docs_structure: [], code_structure: [], recommended_split: [], conflict
 
             // Stage 4: Plan (DOCUMENTATION is PRIMARY)
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
-                thought: "Synthesizing: DOCUMENTATION (primary) + CODE_INSIGHTS (secondary) + MEMORY_INSIGHTS. If docs define structure → USE IT. Code fills gaps. Identify: boundaries, dependencies, parallel opportunities, order.",
+                thought: "Synthesizing: DOCUMENTATION (primary) + CODE_INSIGHTS (secondary) + MEMORY_INSIGHTS. If docs define structure → USE IT. Code fills gaps. Identify: boundaries, dependencies, parallel opportunities, order. For EACH subtask pair: do they share files? Does B need output of A? Same DB tables? If NO to all → both can be parallel: true.",
                 thoughtNumber: 1,
                 totalThoughts: 2,
                 nextThoughtNeeded: true
             }'))
             ->phase('If DOCUMENTATION exists: subtasks MUST align with documented modules/components/phases')
             ->phase('Group by component (per docs), order by dependency, estimate each')
-            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, doc_reference}]'))
+            ->phase('PARALLEL ANALYSIS: For each adjacent pair of subtasks, determine independence:')
+            ->phase('  - Different files/components, no shared state → parallel: true')
+            ->phase('  - Subtask B needs output/result of subtask A → parallel: false')
+            ->phase('  - Same files or shared database tables → parallel: false')
+            ->phase('  - Setup/foundation tasks → always parallel: false (others depend on them)')
+            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, parallel, doc_reference}]'))
 
             // Stage 5: Approve
-            ->phase('Show: | Order | Subtask | Est | Priority | Doc Ref |')
+            ->phase('Show: | Order | Parallel | Subtask | Est | Priority | Doc Ref |')
+            ->phase('Visualize parallel groups: sequential tasks = "→", parallel tasks = "⇉"')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create {count} subtasks? (yes/no/modify)"'))
 
             // Stage 6: Create
-            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, tags: ["decomposed"]}]}'))
+            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, parallel, tags: ["decomposed"]}]}'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Decomposed #{$TASK.id} into {count} subtasks", category: "tool-usage"}'))
             ->phase('STOP: Do NOT execute. Return control to user.');
