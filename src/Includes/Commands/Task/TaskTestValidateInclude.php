@@ -70,11 +70,14 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('IS_TDD', 'TASK.status === "pending"'))
             ->phase(Store::as('IS_SIMPLE', 'TASK.estimate ≤4 AND priority !== "critical"'))
             ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → context'))
+
+            // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started test validation", append_comment: true}'))
+
             ->phase('Show: Task #{id}, title, status, mode (TDD/Validation), simple={IS_SIMPLE}')
 
             // 2. Approval
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask confirmation, WAIT'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Test validation started", append_comment: true}'))
 
             // 3. Context gathering
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} tests", limit: 5}') . ' → ' . Store::as('MEMORY'))

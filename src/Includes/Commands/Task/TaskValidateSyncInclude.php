@@ -110,10 +110,12 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('SUBTASKS'))
             ->phase(Store::as('TASK_PARENT_ID', '$VECTOR_TASK_ID'))
 
+            // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started validation", append_comment: true}'))
+
             // 2. Approve
             ->phase('Show: Task #{id}, title, status, subtasks count')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Validate? (yes/no)"'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Sync validation started", append_comment: true}'))
 
             // 3. Context
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title}", limit: 5, category: "code-solution"}') . ' → ' . Store::as('MEMORY'))

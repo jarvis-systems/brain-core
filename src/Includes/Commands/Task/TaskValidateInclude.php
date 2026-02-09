@@ -179,6 +179,9 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
+            // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started validation", append_comment: true}'))
+
             // 2. Context gathering (memory + docs + related tasks + FAILURES)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY_CONTEXT'))
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
@@ -205,7 +208,6 @@ class TaskValidateInclude extends IncludeArchetype
                 Operator::skip('approval'),
                 'show task info, wait "yes"'
             ))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress"}'))
 
             // 3.5 Light validation check - skip heavy validation for trivial tasks
             ->phase(Store::as('IS_LIGHT_VALIDATION', 'task.tags matches light-validation intent (light, trivial, docs-only, minor, cosmetic, etc.)'))
