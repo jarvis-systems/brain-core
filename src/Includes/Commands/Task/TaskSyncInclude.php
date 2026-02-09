@@ -173,6 +173,9 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Operator::if('parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
+            // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
+
             // 1.5 Subtasks check
             ->phase(Operator::if(Store::get('SUBTASKS') . ' has pending items', [
                 Store::as('PENDING_SUBTASKS', 'filter SUBTASKS where status=pending, order by priority,order,created_at'),
@@ -251,7 +254,6 @@ class TaskSyncInclude extends IncludeArchetype
             }'))
             ->phase(Store::as('PLAN', '[{step, file, action, changes, rationale}]'))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'execute immediately', 'show plan, wait "yes"'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started", append_comment: true}'))
 
             // 5.5 Dependency check & install
             ->phase(Operator::if('PLAN requires new dependencies', [
@@ -273,7 +275,6 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Store::as('CHANGED_FILES', '[]'))
 
             // 6. Execute with tracking
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Executing...", append_comment: true}'))
             ->phase(Operator::forEach('step in ' . Store::get('PLAN'), [
                 Store::as('CURRENT_STEP', '{step_index}'),
                 ReadTool::call('{step.file}'),

@@ -154,6 +154,9 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if('parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
+            // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
+
             // 1.5 Subtasks check
             ->phase(Operator::if(Store::get('SUBTASKS') . ' has pending items', [
                 'Analyze subtask dependencies for parallel/sequential execution',
@@ -228,7 +231,6 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Store::as('PLAN', '[{agent, subtask, files, parallel: bool, order, is_critical: bool}]'))
             ->phase('Each agent prompt MUST include: task description, file scope, memory hints, security rules, validation requirements')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'execute immediately', 'show plan, wait "yes"'))
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Delegating to agents...", append_comment: true}'))
             ->phase(Store::as('DELEGATION_STATE', '{agent_tasks: [], started_at: timestamp}'))
 
             // 6. Execute via agents with tracking
