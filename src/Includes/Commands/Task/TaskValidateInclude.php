@@ -111,6 +111,9 @@ class TaskValidateInclude extends IncludeArchetype
             ->why('One agent failure should not block entire validation. Partial results > no results.')
             ->onViolation('Log failed agent, include warning in final report, suggest manual review of uncovered area.');
 
+        // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
+        $this->defineParallelIsolationRules();
+
         // COSMETIC ROLLBACK
         $this->rule('cosmetic-atomic')->medium()
             ->text('Cosmetic fixes by agents MUST be atomic with validation. If validation creates fix-task (functional issues found), cosmetic changes STILL committed. Cosmetic improvements are always safe to keep.')
@@ -220,7 +223,7 @@ class TaskValidateInclude extends IncludeArchetype
                         'basic checks pass',
                         VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Light validation passed (trivial task)", append_comment: true}'),
                         [
-                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, parallel: true, tags: ["validation-fix"]}'),
+                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["validation-fix"]}'),
                             VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}'),
                         ]
                     ),
@@ -288,15 +291,16 @@ KNOWN FAILURES (DO NOT SUGGEST THESE):
 PREVIOUS FAILED ATTEMPTS:
 {FAILURE_PATTERNS_TEXT}
 
-MISSION: CODE QUALITY
+MISSION: CODE QUALITY (static analysis only, NO test execution)
 1. Read EACH file from TASK_FILES
 2. Check: logic errors, architecture violations, breaking changes
 3. Check: type safety (missing types, nullable without null checks)
 4. Check: algorithmic complexity (nested loops on data, O(n²))
-5. Run quality gates (composer test, composer analyse)
+5. Run ONLY static analysis gate: composer analyse
 6. Fix cosmetic issues inline
+7. FORBIDDEN: running composer test or phpunit — Testing agent handles all test execution
 
-Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], quality_gate_results: {}}'),
+Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], static_analysis_result: {}}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
@@ -307,10 +311,10 @@ CONTEXT (provided by validator):
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
 
-MISSION: TESTING
+MISSION: TESTING (EXCLUSIVE test executor — only this agent runs tests)
 1. Find test files for TASK_FILES (tests/*Test.php, tests/**/*Test.php)
 2. Check: tests exist (coverage >=80%, critical paths =100%)
-3. Run tests, check they pass
+3. Run quality gate: composer test — this is the ONLY agent that executes tests
 4. Check: meaningful assertions (not just "no exception thrown")
 5. Check: edge cases covered (null, empty, boundary values)
 6. Check: slow tests (unit >500ms, integration >2s)
@@ -318,7 +322,7 @@ MISSION: TESTING
 
 If test approach mentioned in KNOWN_FAILURES → find ALTERNATIVE approach
 
-Return JSON: {test_files_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: []}'),
+Return JSON: {test_files_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: [], quality_gate_test_result: {}}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
@@ -380,7 +384,7 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                 Store::get('FILTERED_ISSUES') . '=0 AND no fix-task needed',
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
                 [
-                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, parallel: true, tags: ["validation-fix"]}'),
+                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["validation-fix"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
                     VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',
                 ]
             ))

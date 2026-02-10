@@ -129,11 +129,14 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('session-recovery-action')->high()
             ->text('Crashed session: -y = continue from last completed step, no -y = ask "Continue from step N or restart?" Stale session: reset to pending, start fresh.');
 
+        // PARALLEL ISOLATION (from trait - strict criteria for parallel execution)
+        $this->defineParallelIsolationRules();
+
         // SUBTASKS HANDLING
         $this->rule('subtasks-before-parent')->high()
             ->text('Parent task with pending subtasks: complete subtasks FIRST. Order by: order field (strict). -y = execute per parallel flags, no -y = show list and ask.');
         $this->rule('subtasks-parallel-option')->medium()
-            ->text('USE parallel field from subtask data. Subtasks with parallel=true AND adjacent order = can execute concurrently. -y = auto-execute per parallel flags, no -y = show grouping and ask.');
+            ->text('USE parallel field from subtask data BUT verify isolation before concurrent execution. Apply parallel-isolation-checklist: list files per subtask, cross-reference for overlap. Override parallel: true → false if isolation violated. -y = auto-execute, no -y = show grouping and ask.');
 
         // BREAKING CHANGES
         $this->rule('breaking-change-detection')->high()

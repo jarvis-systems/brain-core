@@ -57,6 +57,10 @@ class TaskCreateInclude extends IncludeArchetype
         $this->rule('auto-approve')->high()
             ->text('-y flag = auto-approve. Skip "Proceed?" but show task spec before creation.');
 
+        // PARALLEL ISOLATION (from trait - strict criteria for parallel: true)
+        $this->defineParallelIsolationRules();
+        $this->defineParallelIsolationChecklistGuideline();
+
         // INPUT CAPTURE
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
@@ -106,7 +110,7 @@ class TaskCreateInclude extends IncludeArchetype
                 content: "objective, context, acceptance criteria, hints. IF DOCS exist: See documentation: {doc_paths}",
                 priority: "critical|high|medium|low",
                 estimate: "hours based on DOCUMENTATION (if exists) or description (1-8, >8 needs decompose)",
-                parallel: "true if task is independent of siblings (different files, no shared state). false if depends on siblings or is standalone.",
+                parallel: "Apply parallel-isolation-checklist against existing siblings. Default: false. Only true when ALL 5 isolation conditions proven.",
                 tags: ["category", "domain"],
                 comment: "Docs: {doc_paths or none}. Memory: #IDs. Files: paths. Related: #task_ids."
             }'))

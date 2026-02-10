@@ -81,6 +81,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->rule('slow-test-detection')->high()
             ->text('Slow tests = fix-task. Unit >500ms, integration >2s, any >5s = CRITICAL.');
 
+        // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
+        $this->defineParallelIsolationRules();
+
         // Quality gates
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
         if (!empty($qualityCommands)) {
@@ -153,7 +156,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{query: "fix {TASK.title}", limit: 10}') . ' → check duplicates')
             ->phase(Store::as('TOTAL_ESTIMATE', 'critical*2h + major*1.5h + minor*0.5h + missing*4h'))
             ->phase(Operator::if('TOTAL_ESTIMATE <= 8 AND no duplicate', [
-                VectorTaskMcp::call('task_create', '{title: "Validation fixes: #{TASK.id}", content: "{issues}", parent_id: $TASK_PARENT_ID, priority: "{critical>0 ? high : medium}", estimate: {TOTAL_ESTIMATE}, parallel: true, tags: ["validation-fix"]}'),
+                VectorTaskMcp::call('task_create', '{title: "Validation fixes: #{TASK.id}", content: "{issues}", parent_id: $TASK_PARENT_ID, priority: "{critical>0 ? high : medium}", estimate: {TOTAL_ESTIMATE}, parallel: false, tags: ["validation-fix"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
                 Store::as('CREATED_TASKS[]', '{id}'),
             ]))
             ->phase(Operator::if('TOTAL_ESTIMATE > 8', 'Split into 5-8h batches, create multiple tasks'))

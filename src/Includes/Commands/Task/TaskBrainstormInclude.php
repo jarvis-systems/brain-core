@@ -50,6 +50,10 @@ class TaskBrainstormInclude extends IncludeArchetype
         $this->rule('parent-id-mandatory')->critical()
             ->text('ALL subtasks MUST have parent_id = $VECTOR_TASK_ID. No orphan tasks.');
 
+        // PARALLEL ISOLATION (from trait - strict criteria for parallel: true)
+        $this->defineParallelIsolationRules();
+        $this->defineParallelIsolationChecklistGuideline();
+
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();
 
@@ -119,9 +123,9 @@ class TaskBrainstormInclude extends IncludeArchetype
             // 5c. Create subtasks (optional)
             ->phase(Operator::if('user wants subtasks', [
                 'List actionable items from brainstorm',
-                'Analyze independence: items targeting different files/components with no shared state = parallel: true',
+                'Apply parallel-isolation-checklist for each subtask pair: list files, cross-reference, verify ALL 5 isolation conditions. Default: parallel: false.',
                 'Ask: "Create these subtasks? (yes/no/modify)"',
-                Operator::if('confirmed', VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $VECTOR_TASK_ID, priority, estimate, order, parallel}]}')),
+                Operator::if('confirmed', VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $VECTOR_TASK_ID, priority, estimate, order, parallel, file_manifest: [files]}]}')),
             ]))
 
             // 6. Complete

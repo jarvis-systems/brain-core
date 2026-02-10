@@ -52,7 +52,9 @@ class TaskAsyncInclude extends IncludeArchetype
         // ASYNC EXECUTION RULES
         $this->rule('never-execute-directly')->critical()->text('Brain NEVER calls Edit/Write/Glob/Grep/Read for implementation. ALL work via Task() to agents.');
         $this->rule('atomic-tasks')->critical()->text('Each agent task: 1-2 files (max 3-5 if same feature). NO broad changes.');
-        $this->rule('parallel-when-safe')->high()->text('Parallel: independent tasks, different files, no data flow. Multiple Task() in ONE message.');
+
+        // PARALLEL ISOLATION (from trait - strict criteria for parallel execution)
+        $this->defineParallelIsolationRules();
 
         // AUTO-APPROVE MODE (-y flag behavior for delegation)
         $this->rule('auto-approve-autonomy')->high()
@@ -106,7 +108,7 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // SUBTASKS HANDLING (async-specific)
         $this->rule('subtasks-parallel-assessment')->high()
-            ->text('Parent task with subtasks: analyze dependencies. Independent subtasks: delegate in parallel. Dependent: delegate in order. -y = auto-decide, no -y = show plan.');
+            ->text('Parent task with subtasks: use parallel flag from subtask data BUT verify isolation before concurrent execution. Apply parallel-isolation-checklist: list files per subtask, cross-reference for overlap. Override parallel: true → false if isolation violated. -y = auto-decide, no -y = show plan.');
         $this->rule('subtasks-agent-assignment')->medium()
             ->text('Each subtask gets dedicated agent delegation. Track: {subtask_id, agent, status, files_touched}. Update parent progress.');
 

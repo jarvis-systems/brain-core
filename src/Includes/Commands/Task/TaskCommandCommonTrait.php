@@ -500,6 +500,65 @@ trait TaskCommandCommonTrait
     // STATUS/PRIORITY FILTERS (for list/status commands)
     // =========================================================================
 
+    // =========================================================================
+    // PARALLEL ISOLATION (SHARED ACROSS ALL TASK COMMANDS)
+    // =========================================================================
+
+    /**
+     * Define parallel isolation rules.
+     * Strict criteria for marking tasks as parallel: true.
+     * Prevents race conditions, file conflicts, and lost changes between concurrent tasks.
+     * Used by: ALL task commands that create or execute parallel tasks.
+     */
+    protected function defineParallelIsolationRules(): void
+    {
+        $this->rule('parallel-isolation-mandatory')->critical()
+            ->text('Before setting parallel: true, ALL isolation conditions MUST be verified: 1) ZERO file overlap — tasks touch completely different files, 2) ZERO import chain — file A does NOT import/use/require anything from file B scope, 3) ZERO shared model/table — tasks do NOT modify same DB table/migration/model, 4) ZERO shared config — tasks do NOT modify same config key/.env variable, 5) ZERO output→input — task B does NOT need result/output of task A. ALL five MUST be TRUE.')
+            ->why('Parallel tasks with shared files or dependencies cause race conditions, lost changes, and merge conflicts. LLM agents cannot lock files.')
+            ->onViolation('Set parallel: false. When in doubt, sequential is always safe.');
+
+        $this->rule('parallel-file-manifest')->critical()
+            ->text('Before marking ANY task parallel: true, EXPLICITLY list ALL files each task will read/write/create. Cross-reference lists. If ANY file appears in 2+ tasks → parallel: false for ALL overlapping tasks. No exceptions.')
+            ->why('Implicit file overlap is the #1 cause of parallel task conflicts. Explicit manifest prevents it.')
+            ->onViolation('Create file manifest per task. Cross-reference. Overlap found = parallel: false.');
+
+        $this->rule('parallel-conservative-default')->high()
+            ->text('Default is parallel: false. Only set parallel: true when ALL isolation conditions are PROVEN. Uncertain about independence = sequential. Cost of wrong parallel (lost work, conflicts) far exceeds cost of wrong sequential (slower execution).')
+            ->why('False negative (missing parallelism) = slower. False positive (wrong parallelism) = data loss. Asymmetric risk demands conservative default.')
+            ->onViolation('Revert to parallel: false.');
+
+        $this->rule('parallel-transitive-deps')->high()
+            ->text('Check transitive dependencies: if task A modifies file X, and file X is imported by file Y, and task B modifies file Y — tasks A and B are NOT independent. Follow import/use/require chains one level deep minimum.')
+            ->why('Indirect dependencies through shared modules cause subtle race conditions and inconsistent state.')
+            ->onViolation('Trace import chain one level. Any indirect overlap = parallel: false.');
+    }
+
+    /**
+     * Define parallel isolation checklist guideline.
+     * Step-by-step verification procedure for task independence.
+     * Used by: TaskDecomposeInclude, TaskCreateInclude, TaskBrainstormInclude (task creation workflows).
+     */
+    protected function defineParallelIsolationChecklistGuideline(): void
+    {
+        $this->guideline('parallel-isolation-checklist')
+            ->goal('Systematic verification of task independence before setting parallel: true')
+            ->example()
+            ->phase('For EACH pair of tasks being considered for parallel execution:')
+            ->phase('  1. FILE MANIFEST: List ALL files each task will read/write/create')
+            ->phase('  2. FILE OVERLAP: Cross-reference manifests → shared file = parallel: false for BOTH')
+            ->phase('  3. IMPORT CHAIN: Check if any file in task A imports/uses files from task B scope (and vice versa)')
+            ->phase('  4. SHARED MODEL: Check if tasks modify same DB table, model, or migration')
+            ->phase('  5. SHARED CONFIG: Check if tasks modify same config key, .env variable, or shared state')
+            ->phase('  6. OUTPUT→INPUT: Check if task B needs any result/artifact/output from task A')
+            ->phase('  7. TRANSITIVE: Follow imports one level deep — indirect overlap = NOT independent')
+            ->phase('  RESULT: ALL checks pass → parallel: true | ANY check fails → parallel: false')
+            ->phase('  DEFAULT: When analysis is uncertain or incomplete → parallel: false (safe default)');
+    }
+
+    // =========================================================================
+    // STATUS/PRIORITY FILTERS
+    // =========================================================================
+
     /**
      * Define status and priority icon mappings.
      * Used by: TaskListInclude, TaskStatusInclude

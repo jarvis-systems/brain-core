@@ -78,9 +78,13 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->onViolation('Set order (unique) + parallel (bool) in EVERY task_create call. Never omit either.');
 
         $this->rule('sequence-analysis')->critical()
-            ->text('When creating 2+ subtasks: STOP and THINK about optimal sequence AND parallel marking. Consider: dependencies, data flow, setup requirements, file overlap. Independent tasks (different files, no shared state, no data flow between them) = parallel: true. Dependent tasks = parallel: false.')
-            ->why('Wrong sequence wastes time. Wrong parallel marking causes race conditions. Correct parallel flags enable concurrent execution by executor.')
-            ->onViolation('Use SequentialThinking to analyze dependencies AND independence. Set order + parallel before creation.');
+            ->text('When creating 2+ subtasks: STOP and THINK about optimal sequence. Use SequentialThinking to analyze dependencies before setting order and parallel flags.')
+            ->why('Wrong sequence wastes time. Wrong parallel marking causes race conditions.')
+            ->onViolation('Use SequentialThinking to analyze dependencies. Set order + parallel before creation.');
+
+        // PARALLEL ISOLATION (from trait - strict criteria for parallel: true)
+        $this->defineParallelIsolationRules();
+        $this->defineParallelIsolationChecklistGuideline();
 
         $this->rule('logical-order')->high()
             ->text('Subtasks MUST be in logical execution order. Dependencies first, dependents after.')
@@ -149,12 +153,8 @@ Return: {docs_structure: [], code_structure: [], recommended_split: [], conflict
             }'))
             ->phase('If DOCUMENTATION exists: subtasks MUST align with documented modules/components/phases')
             ->phase('Group by component (per docs), order by dependency, estimate each')
-            ->phase('PARALLEL ANALYSIS: For each adjacent pair of subtasks, determine independence:')
-            ->phase('  - Different files/components, no shared state → parallel: true')
-            ->phase('  - Subtask B needs output/result of subtask A → parallel: false')
-            ->phase('  - Same files or shared database tables → parallel: false')
-            ->phase('  - Setup/foundation tasks → always parallel: false (others depend on them)')
-            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, parallel, doc_reference}]'))
+            ->phase('PARALLEL ISOLATION: Apply parallel-isolation-checklist for each subtask pair. Setup/foundation tasks → always parallel: false.')
+            ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, parallel, file_manifest: [files], doc_reference}]'))
 
             // Stage 5: Approve
             ->phase('Show: | Order | Parallel | Subtask | Est | Priority | Doc Ref |')
