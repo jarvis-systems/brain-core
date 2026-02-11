@@ -104,8 +104,12 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('post-exec-linter')->high()
             ->text('After syntax OK: run linter if configured (eslint, phpcs, pylint, clippy, golint). Errors: -y = auto-fix if possible, no -y = show and ask. Cannot auto-fix = manual fix.');
         $this->rule('post-exec-tests')->high()
-            ->text('After linter OK: run related tests. Detect test files: same directory, *Test/*_test suffix, test/ mirror structure. -y = run automatically, no -y = ask "Run tests?"')
-            ->why('Code without test verification is not done.');
+            ->text('After linter OK: run ONLY related tests. Detect test files: same directory, *Test/*_test suffix, test/ mirror structure. ONLY files directly related to CHANGED_FILES. -y = run automatically, no -y = ask "Run tests?"')
+            ->why('Related tests give fast feedback on changed code. Full suite = validator job.');
+        $this->rule('no-full-test-suite')->critical()
+            ->text('NEVER run full test suite (composer test, php artisan test without --filter, phpunit without path). Sync executor runs ONLY related tests scoped to changed files. Full test suite is EXCLUSIVELY the validator\'s responsibility (task:validate). Brain-level quality gates (QUALITY_COMMAND) do NOT apply during sync execution — they apply during validation phase ONLY.')
+            ->why('Full suite on 15-min task = overkill. Related tests already cover risk zone. Validator will run full suite anyway. Running it twice wastes 2+ minutes and risks timeouts.')
+            ->onViolation('ABORT full suite command. Scope to --filter or specific test file paths only.');
         $this->rule('post-exec-test-failure')->high()
             ->text('Tests fail: analyze failure, attempt fix (max 2 attempts). Still fails: -y = mark task pending with error comment, no -y = ask user for guidance.');
 
@@ -313,10 +317,10 @@ class TaskSyncInclude extends IncludeArchetype
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'Show issues, ask "Auto-fix/Manual/Ignore?"'),
                 Operator::if('cannot auto-fix critical errors', 'Fix manually or rollback'),
             ]))
-            ->phase('7.3 TESTS: Detect related test files for ' . Store::get('CHANGED_FILES'))
-            ->phase(Store::as('RELATED_TESTS', 'test files in same dir, *Test suffix, test/ mirror'))
+            ->phase('7.3 TESTS: Detect ONLY related test files for ' . Store::get('CHANGED_FILES') . ' (NEVER full suite)')
+            ->phase(Store::as('RELATED_TESTS', 'test files in same dir, *Test suffix, test/ mirror — ONLY for CHANGED_FILES'))
             ->phase(Operator::if(Store::get('RELATED_TESTS') . ' exist', [
-                Operator::if('$HAS_AUTO_APPROVE', 'Run tests automatically'),
+                Operator::if('$HAS_AUTO_APPROVE', 'Run ONLY related tests with --filter or specific paths'),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Run related tests? Files: {list}"'),
                 Operator::if('tests fail', [
                     'Analyze failure, attempt fix (max 2 tries)',
