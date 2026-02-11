@@ -113,6 +113,32 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('SUBTASKS'))
             ->phase(Store::as('TASK_PARENT_ID', '$VECTOR_TASK_ID'))
 
+            // 1.3 SUBTASKS FAST-PATH: all subtasks validated → aggregation only, NO re-execution
+            ->phase(Operator::if(
+                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated"',
+                [
+                    'AGGREGATION-ONLY MODE: All subtasks already validated.',
+                    'Read subtask comments → extract validation results (test counts, issues found, fixes applied)',
+                    'Parse parent task.content → list ALL parent requirements',
+                    'Cross-reference: does each parent requirement map to at least one validated subtask?',
+                    Operator::if(
+                        'all parent requirements covered by subtask results',
+                        [
+                            VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Aggregation validation: all {N} subtasks validated. Requirements covered: {list}.", append_comment: true}'),
+                            Operator::output('task, subtask results summary, all requirements covered, status=validated'),
+                            Operator::skip('full validation — subtasks already did the work'),
+                        ]
+                    ),
+                    Operator::if(
+                        'gaps found: some parent requirements NOT covered by any subtask',
+                        [
+                            Store::as('UNCOVERED_REQUIREMENTS', '[requirements not mapped to any subtask]'),
+                            'Proceed to FULL VALIDATION below, but scope to UNCOVERED_REQUIREMENTS only',
+                        ]
+                    ),
+                ]
+            ))
+
             // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started validation", append_comment: true}'))
 

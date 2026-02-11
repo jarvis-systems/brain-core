@@ -28,6 +28,11 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
         $this->rule('auto-approve')->high()->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress. User sees everything, just no approval prompts.');
 
+        $this->rule('no-direct-test-execution')->critical()
+            ->text('Brain NEVER runs tests or quality gates directly via Bash during validation. ALL test execution MUST go through validation agents ONLY. Brain role = orchestrate agents + aggregate results. ZERO exceptions.')
+            ->why('Brain running tests directly duplicates agent work, wastes tokens and time, risks timeouts, and bypasses structured validation. Agents already ran these tests.')
+            ->onViolation('ABORT direct Bash test call. If tests needed — delegate to Testing agent. If subtasks already validated — trust their results.');
+
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
 
@@ -181,6 +186,32 @@ class TaskValidateInclude extends IncludeArchetype
                 VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT') . ' (READ-ONLY context, NEVER modify)'
             ))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
+
+            // 1.3 SUBTASKS FAST-PATH: all subtasks validated → aggregation only, NO agents, NO test re-execution
+            ->phase(Operator::if(
+                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated"',
+                [
+                    'AGGREGATION-ONLY MODE: All subtasks already validated by their own agents.',
+                    'Read subtask comments → extract validation results (test counts, issues found, fixes applied)',
+                    'Parse parent task.content → list ALL parent requirements',
+                    'Cross-reference: does each parent requirement map to at least one validated subtask?',
+                    Operator::if(
+                        'all parent requirements covered by subtask results',
+                        [
+                            VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Aggregation validation: all {N} subtasks validated. Requirements covered: {list}.", append_comment: true}'),
+                            Operator::output('task, subtask results summary, all requirements covered, status=validated'),
+                            Operator::skip('full validation — subtasks already did the work'),
+                        ]
+                    ),
+                    Operator::if(
+                        'gaps found: some parent requirements NOT covered by any subtask',
+                        [
+                            Store::as('UNCOVERED_REQUIREMENTS', '[requirements not mapped to any subtask]'),
+                            'Proceed to FULL VALIDATION below, but scope agents to UNCOVERED_REQUIREMENTS only',
+                        ]
+                    ),
+                ]
+            ))
 
             // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started validation", append_comment: true}'))
