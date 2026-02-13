@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore;
 
 use BackedEnum;
+use BrainCore\Support\Brain;
 
 class XmlBuilder
 {
@@ -58,6 +59,10 @@ class XmlBuilder
         $sccNext = $scc+1;
 
         if ($element === '') {
+            return '';
+        }
+
+        if (Brain::getEnv('BRAIN_COMPILE_WITHOUT_META') && in_array($element, ['meta', 'metadata'], true)) {
             return '';
         }
 
