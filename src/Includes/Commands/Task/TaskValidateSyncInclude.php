@@ -110,6 +110,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // Quality gates
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+        $testGateCmd = $qualityCommands['TEST'] ?? '';
         if (!empty($qualityCommands)) {
             $this->rule('quality-gates-mandatory')->critical()
                 ->text('ALL quality commands MUST PASS. Any error OR warning = fix-task.');
@@ -213,10 +214,15 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('TASK.parent_id (subtask)', [
                 'Find test files that directly test classes/modules from task files',
                 GrepTool::describe('Search test directory for imports/uses of changed classes → consumer tests'),
-                'Run ONLY scoped test files (direct + consumer tests)',
+                !empty($testGateCmd)
+                    ? "Extract test runner from QUALITY GATE [TEST]: {$testGateCmd} — use runner with specific file paths/filters. NEVER run {$testGateCmd} directly (full suite)."
+                    : 'Detect test runner from project config (composer.json, package.json, Makefile)',
+                'Run ONLY scoped test files via runner with specific file paths/filters — FORBIDDEN: unscoped full suite commands',
             ]))
             ->phase(Operator::if('NOT TASK.parent_id (root task)', [
-                BashTool::describe('{test QUALITY_COMMAND gate}', 'Run FULL test suite via test quality gate'),
+                !empty($testGateCmd)
+                    ? BashTool::describe($testGateCmd, 'Run FULL test suite via QUALITY GATE [TEST]')
+                    : BashTool::describe('{project test command}', 'Detect and run full test suite from project config'),
             ]))
             ->phase('Check: tests exist (>=80%), pass, edge cases. Slow tests = issue.')
 

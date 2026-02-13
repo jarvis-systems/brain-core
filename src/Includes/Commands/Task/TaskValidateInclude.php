@@ -164,11 +164,14 @@ class TaskValidateInclude extends IncludeArchetype
 
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
-        $testGateCmd = !empty($qualityCommands['TEST']) ? $qualityCommands['TEST'] : 'project test runner';
+        $testGateCmd = $qualityCommands['TEST'] ?? '';
         $nonTestGateCmds = array_diff_key($qualityCommands, ['TEST' => true]);
         $nonTestGateList = !empty($nonTestGateCmds)
             ? implode(', ', array_map(static fn($k, $v) => "[{$k}]: {$v}", array_keys($nonTestGateCmds), $nonTestGateCmds))
             : 'none configured';
+        $testScopingInstruction = !empty($testGateCmd)
+            ? "Project test command: {$testGateCmd}. For SUBTASK: extract underlying test runner from this command, run ONLY specific test files via runner with paths/filters. NEVER run {$testGateCmd} directly for subtasks — it runs the FULL suite. For ROOT task: run {$testGateCmd} for full suite."
+            : 'No test command configured. Detect test runner from project config (composer.json, package.json, Makefile). For SUBTASK: run specific test files only via runner. For ROOT: run full test suite.';
 
         if (!empty($qualityCommands)) {
             $this->rule('quality-gates-mandatory')->critical()
@@ -367,19 +370,21 @@ KNOWN FAILURES (DO NOT SUGGEST THESE):
 
 MISSION: TESTING (EXCLUSIVE test executor — only this agent runs tests)
 
-TEST SCOPING (CRITICAL — read before doing anything):
+TEST RUNNER & SCOPING (CRITICAL — read before doing anything):
+' . $testScopingInstruction . '
 - IF subtask (HAS_PARENT = true) → SCOPED execution:
   a) Find test files that directly test classes/modules from TASK_FILES
   b) Grep test directory for imports/uses of TASK_FILES classes → find consumer/dependent tests
-  c) Run ONLY these scoped test files (direct + consumer), NOT the full suite
-- IF root task (HAS_PARENT = false) → run FULL test suite command: ' . $testGateCmd . '
+  c) Run ONLY these scoped test files via runner with specific file paths/filters
+  d) FORBIDDEN: running full suite commands for subtasks
+- IF root task (HAS_PARENT = false) → run FULL test suite (use project test command if known)
 
 STEPS:
 1. Determine scope: check HAS_PARENT
 2. Find test files related to TASK_FILES (search test directories for matching names, patterns, namespaces)
 3. IF scoped: Grep test directory for classes/modules from TASK_FILES → find dependent/consumer tests
 4. Check: tests exist (coverage >=80%, critical paths =100%)
-5. Run tests: scoped files only (subtask) OR full suite: ' . $testGateCmd . ' (root task)
+5. Run tests: scoped files via runner + specific paths (subtask) OR full suite (root task)
 6. Check: meaningful assertions (not just "no exception thrown")
 7. Check: edge cases covered (null, empty, boundary values)
 8. Check: slow tests (unit >500ms, integration >2s)

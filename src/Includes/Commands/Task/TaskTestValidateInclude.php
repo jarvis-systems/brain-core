@@ -73,12 +73,15 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->rule('idempotent')->high()
             ->text('Re-running produces same result. No duplicates, no repeated fixes.');
 
-        // Quality gate commands (for agent prompts - agents don't see Brain rules)
-        $qualityCommands = $this->groupVars('QUALITY_COMMAND');
-        $testGateCmd = !empty($qualityCommands['TEST']) ? $qualityCommands['TEST'] : 'project test runner';
-
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();
+
+        // Quality gate - test command for scoping
+        $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+        $testGateCmd = $qualityCommands['TEST'] ?? '';
+        $testScopingInstruction = !empty($testGateCmd)
+            ? "Project test command: {$testGateCmd}. For SUBTASK: extract underlying test runner from this command, run ONLY specific test files via runner with paths/filters. NEVER run {$testGateCmd} directly for subtasks — it runs the FULL suite. For ROOT task: run {$testGateCmd} for full suite."
+            : 'No test command configured. Detect test runner from project config (composer.json, package.json, Makefile). For SUBTASK: run specific test files only via runner. For ROOT: run full test suite.';
 
         // WORKFLOW
         $this->guideline('workflow')
@@ -132,14 +135,14 @@ class TaskTestValidateInclude extends IncludeArchetype
                     // Simple: 2 agents
                     Operator::parallel([
                         TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs requirements vs tests. WRITE missing tests inline. Return: {gaps_fixed, tests_created}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite: ' . $testGateCmd . '. FIX failing inline. Return: {scoped, passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): ' . $testScopingInstruction . ' IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite. FIX failing inline. Return: {scoped, passed, failed, fixed}.'),
                     ]),
                 ], [
                     // Complex: 3 agents
                     Operator::parallel([
                         TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs vs tests. WRITE missing inline. Fix cosmetic. Return: {gaps_fixed, created, cosmetic_fixed}.'),
                         TaskTool::agent('explore', 'QUALITY + FIX: Check bloat (>3 mocks, >50 lines, copy-paste). REFACTOR inline. Return: {bloated_fixed, refactored}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite: ' . $testGateCmd . '. FIX failing/flaky inline. Return: {scoped, passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): ' . $testScopingInstruction . ' IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite. FIX failing/flaky inline. Return: {scoped, passed, failed, fixed}.'),
                     ]),
                 ]),
                 Store::as('VALIDATION_RESULT', '{aggregated from agents}'),
