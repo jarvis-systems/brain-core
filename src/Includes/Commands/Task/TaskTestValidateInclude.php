@@ -80,8 +80,8 @@ class TaskTestValidateInclude extends IncludeArchetype
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
         $testGateCmd = $qualityCommands['TEST'] ?? '';
         $testScopingInstruction = !empty($testGateCmd)
-            ? "Project test command: {$testGateCmd}. For SUBTASK: extract underlying test runner from this command, run ONLY specific test files via runner with paths/filters. NEVER run {$testGateCmd} directly for subtasks — it runs the FULL suite. For ROOT task: run {$testGateCmd} for full suite."
-            : 'No test command configured. Detect test runner from project config (composer.json, package.json, Makefile). For SUBTASK: run specific test files only via runner. For ROOT: run full test suite.';
+            ? "Project test command (FULL SUITE ONLY): {$testGateCmd}. FOR SUBTASKS: this command runs ALL tests — ABSOLUTELY FORBIDDEN to run it or any equivalent without explicit file path or --filter. FOR ROOT TASKS: run {$testGateCmd}."
+            : 'No project test command configured. Detect test runner from project config. FOR SUBTASKS: run by explicit file path or --filter ONLY. FOR ROOT TASKS: run full suite.';
 
         // WORKFLOW
         $this->guideline('workflow')
@@ -135,14 +135,14 @@ class TaskTestValidateInclude extends IncludeArchetype
                     // Simple: 2 agents
                     Operator::parallel([
                         TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs requirements vs tests. WRITE missing tests inline. Return: {gaps_fixed, tests_created}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): ' . $testScopingInstruction . ' IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite. FIX failing inline. Return: {scoped, passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}). ' . $testScopingInstruction . ' SUBTASK: find related test files by class name/path, run by EXPLICIT file path or --filter. FORBIDDEN: any test command without file path or --filter (composer test, php artisan test, phpunit without args). ROOT: run full suite. FIX failing inline. Return: {scoped, passed, failed, fixed}.'),
                     ]),
                 ], [
                     // Complex: 3 agents
                     Operator::parallel([
                         TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs vs tests. WRITE missing inline. Fix cosmetic. Return: {gaps_fixed, created, cosmetic_fixed}.'),
                         TaskTool::agent('explore', 'QUALITY + FIX: Check bloat (>3 mocks, >50 lines, copy-paste). REFACTOR inline. Return: {bloated_fixed, refactored}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): ' . $testScopingInstruction . ' IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite. FIX failing/flaky inline. Return: {scoped, passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}). ' . $testScopingInstruction . ' SUBTASK: find related test files by class name/path, run by EXPLICIT file path or --filter. FORBIDDEN: any test command without file path or --filter (composer test, php artisan test, phpunit without args). ROOT: run full suite. FIX failing/flaky inline. Return: {scoped, passed, failed, fixed}.'),
                     ]),
                 ]),
                 Store::as('VALIDATION_RESULT', '{aggregated from agents}'),

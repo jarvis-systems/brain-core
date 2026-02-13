@@ -225,12 +225,12 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
             ->phase('4.4 TESTING (scoped by hierarchy)')
             ->phase(Operator::if('TASK.parent_id (subtask)', [
-                'Find test files that directly test classes/modules from task files',
+                'Find test files: grep tests/ for changed class names, check mirror directory structure',
                 GrepTool::describe('Search test directory for imports/uses of changed classes → consumer tests'),
+                'Run ONLY found test files by EXPLICIT file path or --filter (e.g., phpunit tests/Unit/FooTest.php, php artisan test --filter=Foo)',
                 !empty($testGateCmd)
-                    ? "Extract test runner from QUALITY GATE [TEST]: {$testGateCmd} — use runner with specific file paths/filters. NEVER run {$testGateCmd} directly (full suite)."
-                    : 'Detect test runner from project config (composer.json, package.json, Makefile)',
-                'Run ONLY scoped test files via runner with specific file paths/filters — FORBIDDEN: unscoped full suite commands',
+                    ? "FORBIDDEN: running {$testGateCmd} or any unscoped test command (php artisan test, phpunit without path). This is a FULL SUITE command."
+                    : 'FORBIDDEN: running any test command without explicit file path or --filter',
             ]))
             ->phase(Operator::if('NOT TASK.parent_id (root task)', [
                 !empty($testGateCmd)

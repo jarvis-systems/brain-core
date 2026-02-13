@@ -170,8 +170,8 @@ class TaskValidateInclude extends IncludeArchetype
             ? implode(', ', array_map(static fn($k, $v) => "[{$k}]: {$v}", array_keys($nonTestGateCmds), $nonTestGateCmds))
             : 'none configured';
         $testScopingInstruction = !empty($testGateCmd)
-            ? "Project test command: {$testGateCmd}. For SUBTASK: extract underlying test runner from this command, run ONLY specific test files via runner with paths/filters. NEVER run {$testGateCmd} directly for subtasks — it runs the FULL suite. For ROOT task: run {$testGateCmd} for full suite."
-            : 'No test command configured. Detect test runner from project config (composer.json, package.json, Makefile). For SUBTASK: run specific test files only via runner. For ROOT: run full test suite.';
+            ? "Project test command (FULL SUITE ONLY): {$testGateCmd}. FOR SUBTASKS: this command runs ALL tests — ABSOLUTELY FORBIDDEN to run it or any equivalent without explicit file path or --filter. FOR ROOT TASKS: run {$testGateCmd}."
+            : 'No project test command configured. Detect test runner from project config. FOR SUBTASKS: run by explicit file path or --filter ONLY. FOR ROOT TASKS: run full suite.';
 
         if (!empty($qualityCommands)) {
             $this->rule('quality-gates-mandatory')->critical()
@@ -383,25 +383,37 @@ KNOWN FAILURES (DO NOT SUGGEST THESE):
 
 MISSION: TESTING (EXCLUSIVE test executor — only this agent runs tests)
 
-TEST RUNNER & SCOPING (CRITICAL — read before doing anything):
+TEST SCOPING — IRON RULE:
 ' . $testScopingInstruction . '
-- IF subtask (HAS_PARENT = true) → SCOPED execution:
-  a) Find test files that directly test classes/modules from TASK_FILES
-  b) Grep test directory for imports/uses of TASK_FILES classes → find consumer/dependent tests
-  c) Run ONLY these scoped test files via runner with specific file paths/filters
-  d) FORBIDDEN: running full suite commands for subtasks
-- IF root task (HAS_PARENT = false) → run FULL test suite (use project test command if known)
 
-STEPS:
-1. Determine scope: check HAS_PARENT
-2. Find test files related to TASK_FILES (search test directories for matching names, patterns, namespaces)
-3. IF scoped: Grep test directory for classes/modules from TASK_FILES → find dependent/consumer tests
-4. Check: tests exist (coverage >=80%, critical paths =100%)
-5. Run tests: scoped files via runner + specific paths (subtask) OR full suite (root task)
-6. Check: meaningful assertions (not just "no exception thrown")
-7. Check: edge cases covered (null, empty, boundary values)
-8. Check: slow tests (unit >500ms, integration >2s)
-9. If suspect flaky → run 2x to confirm
+=== SUBTASK (HAS_PARENT = true) — SCOPED EXECUTION ===
+STEP 1: Find test files related to TASK_FILES:
+  - Grep tests/ for TASK_FILES class names and method names
+  - Check mirror directory structure (src/Services/Foo.php → tests/Unit/Services/FooTest.php)
+STEP 2: Grep test directory for imports/uses of TASK_FILES classes → consumer tests
+STEP 3: Run ONLY found files by EXPLICIT file path. Examples:
+  - phpunit tests/Unit/Services/FooTest.php
+  - php artisan test --filter=FooService
+  - jest src/__tests__/foo.test.js
+  - pytest tests/test_foo.py
+STEP 4: If no direct files found → use --filter with class/method name
+
+ABSOLUTELY FORBIDDEN for subtasks (CRITICAL VIOLATION):
+  × ANY test command WITHOUT explicit file path or --filter
+  × composer test / npm test / pytest (no args)
+  × php artisan test / php artisan test --parallel (no --filter)
+  × phpunit / ./vendor/bin/phpunit (no path, no --filter)
+  × "running full suite to get summary" or "checking all tests pass"
+
+=== ROOT TASK (HAS_PARENT = false) — FULL SUITE ===
+Run project test command for complete coverage.
+
+QUALITY CHECKS (both scoped and root):
+1. Tests exist (coverage >=80%, critical paths =100%)
+2. Meaningful assertions (not just "no exception thrown")
+3. Edge cases covered (null, empty, boundary values)
+4. Slow tests (unit >500ms, integration >2s)
+5. If suspect flaky → run 2x to confirm
 
 If test approach mentioned in KNOWN_FAILURES → find ALTERNATIVE approach
 

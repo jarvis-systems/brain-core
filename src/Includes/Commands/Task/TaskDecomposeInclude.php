@@ -68,6 +68,11 @@ class TaskDecomposeInclude extends IncludeArchetype
         // DECOMPOSITION-SPECIFIC RULES
         // =========================================================================
 
+        $this->rule('always-decompose')->critical()
+            ->text('If this command was called — you MUST decompose. NEVER refuse, NEVER say "decomposition not recommended", NEVER exit without creating subtasks. Even small/atomic tasks have logical steps — find them and create subtasks. Automated workflows depend on subtask creation to proceed. Refusing = infinite retry loop.')
+            ->why('Automated orchestration calls decompose based on estimate threshold. Exit without subtasks = automation retries endlessly. Your job is to decompose, not to judge whether decomposition is needed.')
+            ->onViolation('Find logical steps in ANY task and create subtasks. 1.5h task with 3 steps = 3 subtasks of 30min.');
+
         $this->rule('create-only')->critical()
             ->text('This command ONLY creates subtasks. NEVER execute any subtask after creation.')
             ->why('Decomposition and execution are separate concerns. User decides what to execute next.')
@@ -155,7 +160,9 @@ Code may be incomplete - docs define PLANNED architecture.
 
 FORBIDDEN SUBTASKS: Do NOT recommend subtasks for "Write tests", "Add test coverage", "Run quality gates", "Verify implementation". Tests and quality gates are handled AUTOMATICALLY by executors and validators for EACH subtask. Decompose ONLY into functional work units.
 
-Return: {docs_structure: [], code_structure: [], recommended_split: [], conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
+MANDATORY: You MUST return a split. Never say "no decomposition needed". Find logical steps.
+
+Return: {docs_structure: [], code_structure: [], split: [], conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
                 VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),
             ]))
             ->phase(Store::as('CODE_INSIGHTS', '{from explore agent}'))
