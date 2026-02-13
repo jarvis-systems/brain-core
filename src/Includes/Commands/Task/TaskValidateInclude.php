@@ -45,6 +45,9 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineCodeHallucinationPreventionRule();
         $this->defineCleanupAfterChangesRule();
 
+        // TEST SCOPING (from trait - scoped tests for subtasks, full suite for root)
+        $this->defineTestScopingRule();
+
         // PARENT INHERITANCE (IRON LAW)
         $this->rule('parent-id-mandatory')->critical()
             ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
@@ -161,6 +164,11 @@ class TaskValidateInclude extends IncludeArchetype
 
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+        $testGateCmd = !empty($qualityCommands['TEST']) ? $qualityCommands['TEST'] : 'project test runner';
+        $nonTestGateCmds = array_diff_key($qualityCommands, ['TEST' => true]);
+        $nonTestGateList = !empty($nonTestGateCmds)
+            ? implode(', ', array_map(static fn($k, $v) => "[{$k}]: {$v}", array_keys($nonTestGateCmds), $nonTestGateCmds))
+            : 'none configured';
 
         if (!empty($qualityCommands)) {
             $this->rule('quality-gates-mandatory')->critical()
@@ -284,6 +292,7 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('  - KNOWN_FAILURES_TEXT: full text from ' . Store::get('KNOWN_FAILURES') . ' — what NOT to suggest')
             ->phase('  - FAILURE_PATTERNS_TEXT: full text from ' . Store::get('FAILURE_PATTERNS') . ' — previous failed attempts')
             ->phase('  - DOCS_PATHS: file paths from ' . Store::get('DOCS_INDEX') . ' (if relevant)')
+            ->phase('  - HAS_PARENT: ' . Store::get('TASK') . '.parent_id exists (true = subtask = scoped tests, false = root task = full suite)')
             ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data'))
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', '
@@ -340,9 +349,9 @@ MISSION: CODE QUALITY (static analysis only, NO test execution)
 5. HALLUCINATION CHECK: Verify ALL method/function/class calls reference REAL code. Read source files to confirm methods exist with correct signatures. Flag phantom API calls.
 6. IMPACT RADIUS: For each changed file, Grep who imports/uses/extends it. Verify consumers are NOT broken by changes. Changed public signature → all callers must be updated.
 7. LOGIC EDGE CASES: For each changed function, verify: what happens with null input? empty collection? boundary values (0, -1, MAX)? error path?
-8. Run ONLY static analysis gate: composer analyse
+8. Run ONLY these non-test quality gates: ' . $nonTestGateList . '
 9. Fix cosmetic issues inline
-10. FORBIDDEN: running composer test or phpunit — Testing agent handles all test execution
+10. FORBIDDEN: running test commands — Testing agent handles ALL test execution exclusively
 
 Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], hallucinated_calls: [], broken_consumers: [], edge_case_issues: [], static_analysis_result: {}}'),
                 TaskTool::agent('explore', '
@@ -351,22 +360,34 @@ CONTEXT (provided by validator):
 - Task title: {TASK_TITLE}
 - Task content: {TASK_CONTENT}
 - Files to check: {TASK_FILES}
+- Has parent: {HAS_PARENT} (true = subtask, false = root task)
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
 
 MISSION: TESTING (EXCLUSIVE test executor — only this agent runs tests)
-1. Find test files for TASK_FILES (tests/*Test.php, tests/**/*Test.php)
-2. Check: tests exist (coverage >=80%, critical paths =100%)
-3. Run quality gate: composer test — this is the ONLY agent that executes tests
-4. Check: meaningful assertions (not just "no exception thrown")
-5. Check: edge cases covered (null, empty, boundary values)
-6. Check: slow tests (unit >500ms, integration >2s)
-7. If suspect flaky → run 2x to confirm
+
+TEST SCOPING (CRITICAL — read before doing anything):
+- IF subtask (HAS_PARENT = true) → SCOPED execution:
+  a) Find test files that directly test classes/modules from TASK_FILES
+  b) Grep test directory for imports/uses of TASK_FILES classes → find consumer/dependent tests
+  c) Run ONLY these scoped test files (direct + consumer), NOT the full suite
+- IF root task (HAS_PARENT = false) → run FULL test suite command: ' . $testGateCmd . '
+
+STEPS:
+1. Determine scope: check HAS_PARENT
+2. Find test files related to TASK_FILES (search test directories for matching names, patterns, namespaces)
+3. IF scoped: Grep test directory for classes/modules from TASK_FILES → find dependent/consumer tests
+4. Check: tests exist (coverage >=80%, critical paths =100%)
+5. Run tests: scoped files only (subtask) OR full suite: ' . $testGateCmd . ' (root task)
+6. Check: meaningful assertions (not just "no exception thrown")
+7. Check: edge cases covered (null, empty, boundary values)
+8. Check: slow tests (unit >500ms, integration >2s)
+9. If suspect flaky → run 2x to confirm
 
 If test approach mentioned in KNOWN_FAILURES → find ALTERNATIVE approach
 
-Return JSON: {test_files_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: [], quality_gate_test_result: {}}'),
+Return JSON: {scoped: bool, test_files_found: [], consumer_tests_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: [], quality_gate_result: {}}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}

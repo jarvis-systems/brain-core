@@ -51,6 +51,9 @@ class TaskSyncInclude extends IncludeArchetype
         $this->defineCodeHallucinationPreventionRule();
         $this->defineCleanupAfterChangesRule();
 
+        // TEST COVERAGE (from trait - write tests alongside implementation to pass validator on first try)
+        $this->defineTestCoverageDuringExecutionRule();
+
         // CRITICAL THINKING RULES
         $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
         $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -359,7 +362,7 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase('7.2.6 PERFORMANCE REVIEW: Check ' . Store::get('CHANGED_FILES') . ' for: nested loops over data (O(n²)), query/I/O inside loops (N+1), loading full datasets without pagination, unnecessary serialization')
             ->phase(Operator::if('performance anti-pattern found', 'Refactor: batch queries, optimize algorithm, add pagination. Re-run syntax check after fix.'))
 
-            ->phase('7.3 TESTS: Detect ONLY related test files for ' . Store::get('CHANGED_FILES') . ' (NEVER full suite)')
+            ->phase('7.3 TESTS: Detect related test files for ' . Store::get('CHANGED_FILES') . ' (scoped, NEVER full suite)')
             ->phase(Store::as('RELATED_TESTS', 'test files in same dir, *Test suffix, test/ mirror — ONLY for CHANGED_FILES'))
             ->phase(Operator::if(Store::get('RELATED_TESTS') . ' exist', [
                 Operator::if('$HAS_AUTO_APPROVE', 'Run ONLY related tests with --filter or specific paths'),
@@ -374,6 +377,28 @@ class TaskSyncInclude extends IncludeArchetype
                         Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Tests fail. Fix/Skip/Rollback?"'),
                     ]),
                 ]),
+                'Check coverage: existing tests cover >=80% of changed code? Critical paths 100%?',
+                Operator::if('coverage insufficient', [
+                    'WRITE additional tests to reach threshold: >=80%, critical paths 100%',
+                    'Follow existing test patterns, meaningful assertions, edge cases',
+                    'Run new tests to verify passing',
+                ]),
+            ]))
+            ->phase(Operator::if(Store::get('RELATED_TESTS') . ' empty (NO tests for changed code)', [
+                'WRITE TESTS for ' . Store::get('CHANGED_FILES') . ' — validator expects >=80% coverage',
+                'Detect test framework from project (existing tests, config files, test runner)',
+                'Follow existing test patterns: directory structure, naming conventions, base test classes',
+                'Write tests with: meaningful assertions, edge cases (null, empty, boundary, error paths)',
+                'Target: >=80% coverage, critical paths 100%',
+                'Run written tests to verify passing',
+                Operator::if('written tests fail', [
+                    'Fix test or implementation (max 2 tries)',
+                    Operator::if('still fails', [
+                        Operator::if('$HAS_AUTO_APPROVE', 'Mark in comment: "Tests written but failing: {details}". Continue.'),
+                        Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Written tests fail. Fix/Skip tests/Rollback?"'),
+                    ]),
+                ]),
+                'Append test files to ' . Store::get('CHANGED_FILES'),
             ]))
 
             // 7.4 CLEANUP: Remove artifacts from changes

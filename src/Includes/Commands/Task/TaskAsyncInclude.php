@@ -44,6 +44,9 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->defineCodeHallucinationPreventionRule();
         $this->defineCleanupAfterChangesRule();
 
+        // TEST COVERAGE (from trait - agents must write tests alongside implementation)
+        $this->defineTestCoverageDuringExecutionRule();
+
         // CRITICAL THINKING FOR DELEGATION
         $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
         $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -378,7 +381,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('4. BLOCKED APPROACHES: "KNOWN FAILURES (DO NOT USE): {$BLOCKED_APPROACHES}. If your solution matches - find alternative."')
             ->text('5. MEMORY: "Search memory for: {terms}. Check debugging category for failures. Store learnings after."')
             ->text('6. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
-            ->text('7. VALIDATION: "Verify syntax. Run linter if configured. Run related tests. Fix before completion."')
+            ->text('7. VALIDATION: "Verify syntax. Run linter if configured. Run ONLY related tests (scoped, never full suite). Fix before completion."')
             ->text('8. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
             ->text('9. DEPS: "If dependencies needed: detect package manager, install, run audit."')
             ->text('10. PATTERNS: "BEFORE coding: search codebase for similar implementations. Grep analogous class names, method patterns. Found → follow same approach, reuse helpers. NEVER reinvent existing patterns."')
@@ -386,6 +389,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('12. LOGIC: "After coding: verify logic for each function. What happens with null? empty? boundary (0, -1, MAX)? error path? off-by-one?"')
             ->text('13. PERFORMANCE: "Avoid: nested loops over data (O(n²)), query/I/O inside loops (N+1), loading full datasets, missing pagination. Batch operations."')
             ->text('14. HALLUCINATION: "Verify EVERY method/class/function call exists with correct signature. Read source to confirm. NEVER assume API from naming convention."')
-            ->text('15. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."');
+            ->text('15. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."')
+            ->text('16. TEST COVERAGE: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework from project, follow existing test patterns/structure. Run written tests to verify passing. NEVER skip — validator will reject without tests."');
     }
 }

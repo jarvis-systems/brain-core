@@ -64,6 +64,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->defineCodeHallucinationPreventionRule();
         $this->defineCleanupAfterChangesRule();
 
+        // TEST SCOPING (from trait - scoped tests for subtasks, full suite for root)
+        $this->defineTestScopingRule();
+
         // PARENT INHERITANCE
         $this->rule('parent-id-mandatory')->critical()
             ->text('ALL fix-tasks MUST have parent_id = $VECTOR_TASK_ID. No orphans.')
@@ -202,11 +205,19 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase('4.2.3 IMPACT RADIUS: For each changed file, Grep who imports/uses/extends it. Verify consumers NOT broken.')
             ->phase('4.2.4 LOGIC EDGE CASES: For each changed function, verify: null/empty handling, boundary values, off-by-one, error paths.')
 
-            ->phase('4.3 QUALITY GATES')
-            ->phase(BashTool::describe('{QUALITY_COMMAND}', 'Run quality gates'))
+            ->phase('4.3 QUALITY GATES (non-test)')
+            ->phase(BashTool::describe('{non-test QUALITY_COMMAND gates}', 'Run static analysis, linting quality gates (EXCLUDE test gate)'))
             ->phase('Gate FAIL = fix-task')
 
-            ->phase('4.4 TESTING: Task scope only')
+            ->phase('4.4 TESTING (scoped by hierarchy)')
+            ->phase(Operator::if('TASK.parent_id (subtask)', [
+                'Find test files that directly test classes/modules from task files',
+                GrepTool::describe('Search test directory for imports/uses of changed classes → consumer tests'),
+                'Run ONLY scoped test files (direct + consumer tests)',
+            ]))
+            ->phase(Operator::if('NOT TASK.parent_id (root task)', [
+                BashTool::describe('{test QUALITY_COMMAND gate}', 'Run FULL test suite via test quality gate'),
+            ]))
             ->phase('Check: tests exist (>=80%), pass, edge cases. Slow tests = issue.')
 
             ->phase('4.5 CLEANUP: Scan for unused imports, dead code, orphaned helpers, debug statements')

@@ -64,11 +64,18 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineCodeHallucinationPreventionRule();
         $this->defineCleanupAfterChangesRule();
 
+        // TEST SCOPING (from trait - scoped tests for subtasks, full suite for root)
+        $this->defineTestScopingRule();
+
         $this->rule('scale-agents')->high()
             ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
 
         $this->rule('idempotent')->high()
             ->text('Re-running produces same result. No duplicates, no repeated fixes.');
+
+        // Quality gate commands (for agent prompts - agents don't see Brain rules)
+        $qualityCommands = $this->groupVars('QUALITY_COMMAND');
+        $testGateCmd = !empty($qualityCommands['TEST']) ? $qualityCommands['TEST'] : 'project test runner';
 
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();
@@ -85,6 +92,7 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed → continue OR abort'))
             ->phase(Store::as('IS_TDD', 'TASK.status === "pending"'))
             ->phase(Store::as('IS_SIMPLE', 'TASK.estimate ≤4 AND priority !== "critical"'))
+            ->phase(Store::as('IS_SUBTASK', 'TASK.parent_id !== null'))
             ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → context'))
 
             // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
@@ -117,21 +125,21 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 5. VALIDATION MODE (completed tasks)
             ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), [
                 // 5a. Test discovery
-                TaskTool::agent('explore', 'TEST DISCOVERY for #{TASK.id}: Find all test files (tests/, spec/). Return: [{file, type, methods}].') . ' → ' . Store::as('TESTS'),
+                TaskTool::agent('explore', 'TEST DISCOVERY for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find test files related to task files + consumer tests ONLY. IF root → find all test files. Search: tests/, spec/. Return: [{file, type, methods, scope: "direct|consumer|all"}].') . ' → ' . Store::as('TESTS'),
 
                 // 5b. Parallel validation (scaled to complexity)
                 Operator::if(Store::get('IS_SIMPLE'), [
                     // Simple: 2 agents
                     Operator::parallel([
                         TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs requirements vs tests. WRITE missing tests inline. Return: {gaps_fixed, tests_created}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX: Run tests. FIX failing inline. Return: {passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite: ' . $testGateCmd . '. FIX failing inline. Return: {scoped, passed, failed, fixed}.'),
                     ]),
                 ], [
                     // Complex: 3 agents
                     Operator::parallel([
                         TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs vs tests. WRITE missing inline. Fix cosmetic. Return: {gaps_fixed, created, cosmetic_fixed}.'),
                         TaskTool::agent('explore', 'QUALITY + FIX: Check bloat (>3 mocks, >50 lines, copy-paste). REFACTOR inline. Return: {bloated_fixed, refactored}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX: Run tests. FIX failing/flaky inline. Return: {passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find and run ONLY test files related to task files + consumer tests. IF root → run full test suite: ' . $testGateCmd . '. FIX failing/flaky inline. Return: {scoped, passed, failed, fixed}.'),
                     ]),
                 ]),
                 Store::as('VALIDATION_RESULT', '{aggregated from agents}'),

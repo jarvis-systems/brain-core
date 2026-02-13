@@ -703,6 +703,44 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // TEST COVERAGE DURING EXECUTION
+    // =========================================================================
+
+    /**
+     * Define test coverage during execution rule.
+     * Ensures executors write tests alongside implementation to meet validator thresholds.
+     * Prevents round-trip: implement → validate → fix-task for tests → implement tests.
+     * The executor who just wrote the code understands it best — better tests than a cold-read agent.
+     * Used by: TaskSyncInclude, TaskAsyncInclude.
+     */
+    protected function defineTestCoverageDuringExecutionRule(): void
+    {
+        $this->rule('test-coverage-during-execution')->critical()
+            ->text('After implementation: check if changed code has test coverage. If NO tests exist for changed files → WRITE tests. If tests exist but coverage insufficient → ADD missing tests. Target thresholds (MUST match validator expectations): >=80% coverage, critical paths 100%, meaningful assertions (not just "no exception"), edge cases (null, empty, boundary). Follow existing test patterns in the project (detect framework, mirror directory structure, reuse base test classes). NEVER skip — missing tests = guaranteed fix-task from validator = wasted round-trip.')
+            ->why('Validator expects >=80% coverage with edge cases. Missing tests = validator creates fix-task = another execution cycle. The executor understands context best and writes better tests than a cold-read agent later.')
+            ->onViolation('BEFORE marking task complete: verify test coverage for ALL changed files. No tests = write them NOW. Insufficient coverage = add tests NOW.');
+    }
+
+    // =========================================================================
+    // TEST SCOPING (SCOPED VS FULL SUITE)
+    // =========================================================================
+
+    /**
+     * Define test scoping rule.
+     * Ensures test execution is scoped to task-related files for subtasks,
+     * while root tasks run the full test suite.
+     * Prevents wasting time running entire test suite for every small task.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineTestScopingRule(): void
+    {
+        $this->rule('test-scoping')->critical()
+            ->text('Test execution MUST be scoped based on task hierarchy level. SUBTASK (has parent_id): run ONLY tests related to changed files — a) test files that directly test changed classes/modules, b) test files that import/use/depend on changed classes (reverse dependency in test directory). ROOT TASK (no parent_id): run the FULL test suite via quality gate command. NEVER run full test suite for subtasks — it wastes more time than the task itself.')
+            ->why('Full test suite for a 1-hour subtask can take longer than the task execution itself. Scoped tests catch 95%+ of regressions at 10% of the cost. Full suite runs at root aggregation level and manually before push.')
+            ->onViolation('Check task.parent_id. Has parent → scoped tests only. No parent → full suite allowed.');
+    }
+
+    // =========================================================================
     // STATUS/PRIORITY FILTERS
     // =========================================================================
 
