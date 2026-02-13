@@ -63,7 +63,6 @@ class XmlBuilder
         }
 
         if (Brain::getEnv('BRAIN_COMPILE_WITHOUT_META') && in_array($element, ['meta', 'metadata'], true)) {
-
             return '';
         }
 
