@@ -207,11 +207,24 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
-            // 1.3 SUBTASKS FAST-PATH: all subtasks validated → aggregation only, NO agents, NO test re-execution
+            // 1.3 SUBTASKS CHECK
+            ->phase(Store::as('HAS_FIX_SUBTASKS', Store::get('SUBTASKS') . ' contains ANY subtask with tag "validation-fix"'))
+
+            // 1.3a FIX-TASKS PRESENT → MANDATORY FULL RE-VALIDATION (never trust fast-path after fixes)
             ->phase(Operator::if(
-                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated"',
+                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated" AND ' . Store::get('HAS_FIX_SUBTASKS'),
                 [
-                    'AGGREGATION-ONLY MODE: All subtasks already validated by their own agents.',
+                    'FIX-TASKS COMPLETED: Previous validation created fix-tasks, all now done.',
+                    'MANDATORY FULL RE-VALIDATION: fixes may have introduced new issues, original validation may have missed gaps.',
+                    'Proceed to FULL VALIDATION below — all agents run from scratch on the ENTIRE task scope.',
+                ]
+            ))
+
+            // 1.3b DECOMPOSITION SUBTASKS ONLY → aggregation fast-path (no fix-tasks = independent pieces, each validated)
+            ->phase(Operator::if(
+                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated" AND NOT ' . Store::get('HAS_FIX_SUBTASKS'),
+                [
+                    'AGGREGATION-ONLY MODE: All decomposition subtasks validated (no fix-tasks).',
                     'Read subtask comments → extract validation results (test counts, issues found, fixes applied)',
                     'Parse parent task.content → list ALL parent requirements',
                     'Cross-reference: does each parent requirement map to at least one validated subtask?',
@@ -220,7 +233,7 @@ class TaskValidateInclude extends IncludeArchetype
                         [
                             VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Aggregation validation: all {N} subtasks validated. Requirements covered: {list}.", append_comment: true}'),
                             Operator::output('task, subtask results summary, all requirements covered, status=validated'),
-                            Operator::skip('full validation — subtasks already did the work'),
+                            Operator::skip('full validation — decomposition subtasks already did the work'),
                         ]
                     ),
                     Operator::if(

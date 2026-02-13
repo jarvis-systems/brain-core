@@ -100,6 +100,11 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->why('Prevents blocked work. User can execute subtasks sequentially without dependency issues.')
             ->onViolation('Reorder subtasks. Use SequentialThinking for complex dependencies.');
 
+        $this->rule('no-test-quality-subtasks')->critical()
+            ->text('FORBIDDEN: Creating subtasks for "Write tests", "Add test coverage", "Run quality gates", "Code quality checks", "Verify implementation", or similar. These are ALREADY handled automatically: 1) Executors (sync/async) write tests during implementation (>=80% coverage, edge cases). 2) Validators run ALL quality gates and check coverage. Decompose ONLY into functional work units.')
+            ->why('Each executor writes tests inline. Each validator runs quality gates. Separate test/quality subtasks are always redundant — executor sees them and says "already done", wasting tokens and time.')
+            ->onViolation('Remove test/quality/verification subtasks from plan. Tests are part of EACH implementation subtask, not a separate subtask.');
+
         $this->rule('exclude-brain-directory')->high()
             ->text('NEVER analyze '.Runtime::BRAIN_DIRECTORY.' when decomposing code tasks.')
             ->why('Brain system internals are not project code.')
@@ -147,6 +152,8 @@ EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . '.
 
 CRITICAL: If DOCUMENTATION defines modules/components/phases → subtasks MUST align with documented structure.
 Code may be incomplete - docs define PLANNED architecture.
+
+FORBIDDEN SUBTASKS: Do NOT recommend subtasks for "Write tests", "Add test coverage", "Run quality gates", "Verify implementation". Tests and quality gates are handled AUTOMATICALLY by executors and validators for EACH subtask. Decompose ONLY into functional work units.
 
 Return: {docs_structure: [], code_structure: [], recommended_split: [], conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
                 VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),

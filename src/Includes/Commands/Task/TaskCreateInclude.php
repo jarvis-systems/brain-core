@@ -57,6 +57,11 @@ class TaskCreateInclude extends IncludeArchetype
         // Common rule from trait
         $this->defineMandatoryUserApprovalRule();
 
+        $this->rule('no-test-quality-tasks')->high()
+            ->text('Do NOT create standalone tasks for "Write tests", "Add test coverage", "Run quality gates" if they relate to work covered by another task. Tests and quality gates are handled automatically by executors and validators. EXCEPTION: user EXPLICITLY requests a dedicated test task.')
+            ->why('Executors write tests during implementation (>=80% coverage). Validators run quality gates. Standalone test tasks duplicate this work.')
+            ->onViolation('If user describes test/quality task for existing work → explain that executors/validators handle this. Create only if user insists.');
+
         $this->rule('fast-path')->high()
             ->text('Simple task (<140 chars, no "architecture/integration/multi-module"): skip heavy research, check duplicates + memory only.');
 
