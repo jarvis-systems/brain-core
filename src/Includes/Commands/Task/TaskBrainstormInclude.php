@@ -39,6 +39,9 @@ class TaskBrainstormInclude extends IncludeArchetype
         $this->rule('research-on-demand')->high()
             ->text('Delegate research ONLY when needed. Unknown tech → context7. Codebase analysis → explore agent. Simple topics → no delegation.');
 
+        // CODEBASE PATTERN REUSE (from trait - consider existing patterns during brainstorm)
+        $this->defineCodebasePatternReuseRule();
+
         $this->rule('docs-provide-context')->high()
             ->text('If documentation exists for topic → READ IT FIRST. Docs contain: constraints, decisions, rejected alternatives. Ideas must NOT contradict documented architecture/decisions.')
             ->why('Brainstorming without doc context = reinventing wheel or proposing already-rejected ideas.')

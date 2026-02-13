@@ -37,6 +37,20 @@ class TaskSyncInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
 
+        // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
+        $this->defineCodebasePatternReuseRule();
+        $this->defineCodebasePatternReuseGuideline();
+
+        // IMPACT RADIUS (from trait - check reverse dependencies before editing)
+        $this->defineImpactRadiusAnalysisRule();
+        $this->defineImpactRadiusAnalysisGuideline();
+
+        // CODE QUALITY DURING EXECUTION (from trait - prevent common AI code issues)
+        $this->defineLogicEdgeCaseVerificationRule();
+        $this->definePerformanceAwarenessRule();
+        $this->defineCodeHallucinationPreventionRule();
+        $this->defineCleanupAfterChangesRule();
+
         // CRITICAL THINKING RULES
         $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
         $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -249,12 +263,29 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' → project docs')
             ->phase(Operator::if('docs found', ReadTool::call('{doc.path}')))
 
+            // 4.5 Codebase similarity search (reuse > reinvent)
+            ->phase('4.5 PATTERN REUSE: Extract class type/feature domain from task → search for similar implementations in codebase')
+            ->phase(GrepTool::describe('Search for analogous: class names, method patterns, trait usage, helper utilities'))
+            ->phase(Operator::if('similar code found', [
+                ReadTool::call('{similar_files}') . ' → study approach, conventions, base classes',
+                Store::as('EXISTING_PATTERNS', '{files, approach, conventions, base_classes, reusable_utilities}'),
+                'USE $EXISTING_PATTERNS as implementation blueprint. Follow same conventions, extend existing helpers.',
+            ]))
+
             // 5. Explore & Plan
             ->phase(GlobTool::describe('Find relevant files'))
             ->phase(GrepTool::describe('Search existing patterns'))
             ->phase(ReadTool::describe('Read target files'))
+
+            // 5.1 Impact radius (who depends on target files?)
+            ->phase('5.1 IMPACT RADIUS: For each target file, Grep who imports/uses/extends/implements it → ' . Store::as('DEPENDENTS_MAP'))
+            ->phase(Operator::if(Store::get('DEPENDENTS_MAP') . ' has entries', [
+                'Classify: NONE (internal) | LOW (private) | MEDIUM (few consumers) | HIGH (widely used)',
+                'HIGH impact → review all callers, plan signature-compatible changes or include dependents in PLAN',
+            ]))
+
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
-                thought: "Planning: 1) INTENT (not literal text)? 2) Fit with existing code? 3) Minimal change? 4) Follow existing patterns?",
+                thought: "Planning: 1) INTENT? 2) $EXISTING_PATTERNS? → follow same approach. 3) $DEPENDENTS_MAP? → ensure compatibility with consumers. 4) Fit with existing code? 5) Minimal change? 6) Reuse helpers/base classes?",
                 thoughtNumber: 1,
                 totalThoughts: 2,
                 nextThoughtNeeded: true
@@ -311,12 +342,23 @@ class TaskSyncInclude extends IncludeArchetype
                     Operator::if('NOT $HAS_AUTO_APPROVE', 'Show errors, ask for guidance'),
                 ]),
             ]))
+
+            ->phase('7.1.5 HALLUCINATION CHECK: Verify all method/class/function calls in ' . Store::get('CHANGED_FILES') . ' reference REAL code. Read source to confirm methods exist with correct signatures.')
+            ->phase(Operator::if('non-existent method/class found', 'Fix: replace with actual method from source. Re-read target file to find correct API.'))
+
             ->phase('7.2 LINTER: Run project linter if configured')
             ->phase(Operator::if('linter errors', [
                 Operator::if('$HAS_AUTO_APPROVE', 'Auto-fix if possible (--fix flag)'),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'Show issues, ask "Auto-fix/Manual/Ignore?"'),
                 Operator::if('cannot auto-fix critical errors', 'Fix manually or rollback'),
             ]))
+
+            ->phase('7.2.5 LOGIC VERIFICATION: Review each changed function in ' . Store::get('CHANGED_FILES') . '. For each: what happens with null input? empty collection? boundary value (0, -1, MAX)? error path? off-by-one?')
+            ->phase(Operator::if('logic issues found', 'Fix immediately: add guards, fix boundaries, handle edge cases'))
+
+            ->phase('7.2.6 PERFORMANCE REVIEW: Check ' . Store::get('CHANGED_FILES') . ' for: nested loops over data (O(n²)), query/I/O inside loops (N+1), loading full datasets without pagination, unnecessary serialization')
+            ->phase(Operator::if('performance anti-pattern found', 'Refactor: batch queries, optimize algorithm, add pagination. Re-run syntax check after fix.'))
+
             ->phase('7.3 TESTS: Detect ONLY related test files for ' . Store::get('CHANGED_FILES') . ' (NEVER full suite)')
             ->phase(Store::as('RELATED_TESTS', 'test files in same dir, *Test suffix, test/ mirror — ONLY for CHANGED_FILES'))
             ->phase(Operator::if(Store::get('RELATED_TESTS') . ' exist', [
@@ -333,6 +375,10 @@ class TaskSyncInclude extends IncludeArchetype
                     ]),
                 ]),
             ]))
+
+            // 7.4 CLEANUP: Remove artifacts from changes
+            ->phase('7.4 CLEANUP: Scan ' . Store::get('CHANGED_FILES') . ' for: unused imports/use/require, dead code from refactoring, orphaned helpers no longer called, commented-out blocks')
+            ->phase(Operator::if('cleanup needed', 'Remove dead code, re-run syntax check on cleaned files'))
 
             // 8. Complete
             ->phase(Operator::if(Store::get('GIT_STATUS') . ' had stash', BashTool::call('git stash pop') . ' (restore user changes)'))

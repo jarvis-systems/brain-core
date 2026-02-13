@@ -43,6 +43,27 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
 
+        // FAILURE-AWARE VALIDATION (prevent repeating failed solutions)
+        $this->rule('failure-history-mandatory')->critical()
+            ->text('BEFORE validation: search memory category "debugging" for KNOWN FAILURES. DO NOT create fix-tasks with solutions that already failed.')
+            ->why('Repeating failed solutions wastes time.')
+            ->onViolation('Search debugging memories FIRST. Block known-failed approaches in fix-task creation.');
+        $this->rule('sibling-task-check')->high()
+            ->text('BEFORE validation: fetch sibling tasks (same parent_id, status=completed/stopped). Extract what was tried and failed from comments.')
+            ->why('Previous attempts contain valuable failure context.');
+        $this->rule('no-repeat-failures')->critical()
+            ->text('BEFORE creating fix-task: verify proposed solution is NOT in known failures. Match found → research alternative or escalate.')
+            ->why('Creating fix-task with known-failed solution = guaranteed waste.');
+
+        // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
+        $this->defineCodebasePatternReuseRule();
+
+        // IMPACT & QUALITY (from trait - verify changes don't break consumers, catch AI code issues)
+        $this->defineImpactRadiusAnalysisRule();
+        $this->defineLogicEdgeCaseVerificationRule();
+        $this->defineCodeHallucinationPreventionRule();
+        $this->defineCleanupAfterChangesRule();
+
         // PARENT INHERITANCE
         $this->rule('parent-id-mandatory')->critical()
             ->text('ALL fix-tasks MUST have parent_id = $VECTOR_TASK_ID. No orphans.')
@@ -146,23 +167,40 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase('Show: Task #{id}, title, status, subtasks count')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Validate? (yes/no)"'))
 
-            // 3. Context
+            // 3. Context (including failure history)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title}", limit: 5, category: "code-solution"}') . ' → ' . Store::as('MEMORY'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← what already FAILED')
             ->phase(VectorTaskMcp::call('task_list', '{query: "{TASK.title}", limit: 5}') . ' → ' . Store::as('RELATED'))
+            ->phase(Operator::if(
+                Store::get('TASK') . '.parent_id',
+                [
+                    VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' → ' . Store::as('SIBLING_TASKS'),
+                    'Extract from sibling comments: what was tried, what failed',
+                    Store::as('FAILURE_PATTERNS', 'known failed approaches from siblings + debugging memories'),
+                ]
+            ))
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION') . ' (COMPLETE spec)'))
             ->phase(Operator::if('unknown library/pattern', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand before validating'))
+
+            // 3.5 Codebase pattern check (verify code follows existing conventions)
+            ->phase(GrepTool::describe('Search for similar implementations: analogous class names, method patterns, trait usage'))
+            ->phase(Store::as('EXISTING_PATTERNS', '{similar implementations found in codebase}'))
 
             // 4. Direct validation (TASK SCOPE ONLY)
             ->phase(Store::as('COSMETIC_FIXES', '0'))
             ->phase('4.1 COMPLETION: Extract requirements from DOCUMENTATION (primary) + task.content (secondary) → list ALL requirements → verify each done')
             ->phase(GlobTool::describe('Find task-related files'))
             ->phase(ReadTool::describe('Read files, confirm implementation'))
-            ->phase('Detect garbage: unused imports, dead code, debug statements')
+            ->phase('Detect garbage: unused imports, dead code, debug statements, commented-out blocks')
 
             ->phase('4.2 CODE QUALITY: Task scope only')
             ->phase(GrepTool::describe('Search patterns, potential issues'))
             ->phase('Check: logic, security, architecture. Unknown lib → context7.')
+            ->phase('4.2.1 PATTERN CONSISTENCY: Compare implementation against $EXISTING_PATTERNS. Code should follow established project conventions.')
+            ->phase('4.2.2 HALLUCINATION CHECK: Verify ALL method/class/function calls reference REAL code. Read source to confirm methods exist with correct signatures.')
+            ->phase('4.2.3 IMPACT RADIUS: For each changed file, Grep who imports/uses/extends it. Verify consumers NOT broken.')
+            ->phase('4.2.4 LOGIC EDGE CASES: For each changed function, verify: null/empty handling, boundary values, off-by-one, error paths.')
 
             ->phase('4.3 QUALITY GATES')
             ->phase(BashTool::describe('{QUALITY_COMMAND}', 'Run quality gates'))
@@ -171,7 +209,10 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase('4.4 TESTING: Task scope only')
             ->phase('Check: tests exist (>=80%), pass, edge cases. Slow tests = issue.')
 
+            ->phase('4.5 CLEANUP: Scan for unused imports, dead code, orphaned helpers, debug statements')
+
             ->phase('During validation: cosmetic found → Edit → fix → COSMETIC_FIXES++ → continue')
+            ->phase(Operator::if(Store::get('KNOWN_FAILURES') . ' not empty', 'Before creating fix-task: verify proposed fix is NOT in known failures. Match → research alternative.'))
 
             // 5. Aggregate
             ->phase(Store::as('ISSUES', '{critical, major, minor, missing_requirements}'))

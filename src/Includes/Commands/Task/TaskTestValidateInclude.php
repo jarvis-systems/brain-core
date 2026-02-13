@@ -48,6 +48,22 @@ class TaskTestValidateInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
 
+        // FAILURE-AWARE VALIDATION (prevent repeating failed test approaches)
+        $this->rule('failure-history-mandatory')->critical()
+            ->text('BEFORE test validation: search memory category "debugging" for KNOWN FAILURES related to this task. Pass to agents. Agents MUST NOT use test approaches that already failed.')
+            ->why('Repeating failed test patterns wastes time. Memory contains "this test approach does NOT work" knowledge.')
+            ->onViolation('Search debugging memories. Include known failures in agent prompts.');
+        $this->rule('sibling-task-check')->high()
+            ->text('BEFORE test validation: fetch sibling tasks (same parent_id). Check comments for failed test approaches.')
+            ->why('Previous test attempts contain "what not to do" information.');
+
+        // CODEBASE CONSISTENCY (from trait - tests should follow existing test patterns)
+        $this->defineCodebasePatternReuseRule();
+
+        // CODE QUALITY (from trait - verify test code correctness)
+        $this->defineCodeHallucinationPreventionRule();
+        $this->defineCleanupAfterChangesRule();
+
         $this->rule('scale-agents')->high()
             ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
 
@@ -79,8 +95,13 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 2. Approval
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask confirmation, WAIT'))
 
-            // 3. Context gathering
+            // 3. Context gathering (including failure history)
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} tests", limit: 5}') . ' → ' . Store::as('MEMORY'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} test failed broken not working", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← failed test approaches')
+            ->phase(Operator::if(
+                Store::get('TASK') . '.parent_id',
+                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' → check sibling comments for failed test attempts'
+            ))
             ->phase(BashTool::call(BrainCLI::DOCS('{TASK keywords}')) . ' → ' . Store::as('DOCS'))
             ->phase(Operator::if('unknown testing pattern', Context7Mcp::call('query-docs', '{query: "{pattern}"}') . ' → understand first'))
 

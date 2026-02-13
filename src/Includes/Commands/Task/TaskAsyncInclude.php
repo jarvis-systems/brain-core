@@ -32,6 +32,18 @@ class TaskAsyncInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
 
+        // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
+        $this->defineCodebasePatternReuseRule();
+
+        // IMPACT RADIUS (from trait - agents must check reverse dependencies)
+        $this->defineImpactRadiusAnalysisRule();
+
+        // CODE QUALITY (from trait - prevent common AI code issues in agents)
+        $this->defineLogicEdgeCaseVerificationRule();
+        $this->definePerformanceAwarenessRule();
+        $this->defineCodeHallucinationPreventionRule();
+        $this->defineCleanupAfterChangesRule();
+
         // CRITICAL THINKING FOR DELEGATION
         $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
         $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -215,6 +227,10 @@ class TaskAsyncInclude extends IncludeArchetype
                 'DOCS_CONTENT = COMPLETE specification. Pass to ALL agents. Documentation > task.content.',
             ]))
 
+            // 4.3 Codebase similarity search (find existing patterns for agents)
+            ->phase(TaskTool::agent('explore', 'Find SIMILAR/ANALOGOUS implementations in codebase for: {task.title}. Search: analogous class names, method patterns, trait usage, helper utilities, base classes. Return: {similar_files, approach, conventions, reusable_code}. Exclude: .brain/') . ' → ' . Store::as('EXISTING_PATTERNS'))
+            ->phase(Operator::if(Store::get('EXISTING_PATTERNS') . ' found', 'Include in ALL agent prompts: "Similar code exists at {files}. FOLLOW same approach/conventions. REUSE helpers/base classes."'))
+
             // 4.5 Pre-delegation git check
             ->phase(BashTool::call('git status --porcelain 2>/dev/null || echo "NO_GIT"') . ' ' . Store::as('GIT_STATUS'))
             ->phase(Operator::if(Store::get('GIT_STATUS') . ' has uncommitted changes', [
@@ -364,6 +380,12 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('6. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
             ->text('7. VALIDATION: "Verify syntax. Run linter if configured. Run related tests. Fix before completion."')
             ->text('8. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
-            ->text('9. DEPS: "If dependencies needed: detect package manager, install, run audit."');
+            ->text('9. DEPS: "If dependencies needed: detect package manager, install, run audit."')
+            ->text('10. PATTERNS: "BEFORE coding: search codebase for similar implementations. Grep analogous class names, method patterns. Found → follow same approach, reuse helpers. NEVER reinvent existing patterns."')
+            ->text('11. IMPACT: "BEFORE editing: Grep who imports/uses/extends target file. Dependents found → ensure changes are compatible. Changing public API → update all callers."')
+            ->text('12. LOGIC: "After coding: verify logic for each function. What happens with null? empty? boundary (0, -1, MAX)? error path? off-by-one?"')
+            ->text('13. PERFORMANCE: "Avoid: nested loops over data (O(n²)), query/I/O inside loops (N+1), loading full datasets, missing pagination. Batch operations."')
+            ->text('14. HALLUCINATION: "Verify EVERY method/class/function call exists with correct signature. Read source to confirm. NEVER assume API from naming convention."')
+            ->text('15. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."');
     }
 }

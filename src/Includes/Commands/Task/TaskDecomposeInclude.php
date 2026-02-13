@@ -50,6 +50,15 @@ class TaskDecomposeInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
 
+        // CODEBASE PATTERN REUSE (from trait - consistency in decomposition)
+        $this->defineCodebasePatternReuseRule();
+
+        // IMPACT RADIUS (from trait - helps scope subtasks by blast radius)
+        $this->defineImpactRadiusAnalysisRule();
+
+        // PERFORMANCE AWARENESS (from trait - identify performance-critical subtasks)
+        $this->definePerformanceAwarenessRule();
+
         $this->rule('docs-define-structure')->critical()
             ->text('Documentation defines STRUCTURE for decomposition. If docs describe modules/components/phases → decompose ACCORDING TO DOCS. Code exploration is SECONDARY.')
             ->why('Docs contain planned architecture. Code may be incomplete WIP. Decomposing by code misses planned structure.')
@@ -133,13 +142,13 @@ DOCUMENTATION PROVIDED (if exists): {$DOCUMENTATION}
 - If docs define structure → USE IT as primary decomposition source
 - Code exploration fills gaps and validates feasibility
 
-FIND: files, components, dependencies, split boundaries.
+FIND: files, components, dependencies, split boundaries, SIMILAR existing implementations, REVERSE DEPENDENCIES (who imports/uses target files), performance-critical paths.
 EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . '.
 
 CRITICAL: If DOCUMENTATION defines modules/components/phases → subtasks MUST align with documented structure.
 Code may be incomplete - docs define PLANNED architecture.
 
-Return: {docs_structure: [], code_structure: [], recommended_split: [], conflicts: []}'),
+Return: {docs_structure: [], code_structure: [], recommended_split: [], conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
                 VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),
             ]))
             ->phase(Store::as('CODE_INSIGHTS', '{from explore agent}'))

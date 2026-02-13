@@ -556,6 +556,153 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // CODEBASE PATTERN REUSE (CONSISTENCY & DRY)
+    // =========================================================================
+
+    /**
+     * Define codebase pattern reuse rule.
+     * Ensures agents search for similar existing implementations before writing new code.
+     * Prevents reinventing the wheel and maintains codebase consistency.
+     * Used by: TaskSyncInclude, TaskAsyncInclude, TaskDecomposeInclude, TaskCreateInclude, TaskBrainstormInclude.
+     */
+    protected function defineCodebasePatternReuseRule(): void
+    {
+        $this->rule('codebase-pattern-reuse')->critical()
+            ->text('BEFORE implementing: search codebase for similar/analogous implementations. Grep for: similar class names, method signatures, trait usage, helper utilities. Found → REUSE approach, follow same patterns, extend existing code. Not found → proceed independently. NEVER reinvent what already exists in the project.')
+            ->why('Codebase consistency > personal style. Duplicate implementations create maintenance burden, inconsistency, and confusion. Existing patterns are battle-tested.')
+            ->onViolation('STOP. Search codebase for analogous code. Found → study and follow the pattern. Only then proceed.');
+    }
+
+    /**
+     * Define codebase pattern reuse workflow guideline.
+     * Step-by-step search procedure for finding and reusing existing implementations.
+     * Used by: TaskSyncInclude, TaskAsyncInclude (as agent instruction).
+     */
+    protected function defineCodebasePatternReuseGuideline(): void
+    {
+        $this->guideline('codebase-pattern-reuse')
+            ->goal('Find and reuse existing patterns before implementing anything new')
+            ->example()
+            ->phase('1. IDENTIFY: From task extract: class type, feature domain, architectural pattern')
+            ->phase('2. SEARCH SIMILAR: Grep for analogous class names, method names, trait usage')
+            ->phase('   Creating new Service → Grep *Service.php → Read → extract pattern')
+            ->phase('   Adding validation → Grep existing validation → follow same approach')
+            ->phase('   New API endpoint → Find existing endpoints → follow same structure')
+            ->phase('3. SEARCH HELPERS: Grep for existing utilities, traits, base classes to reuse')
+            ->phase('4. EVALUATE: ' . Store::as('EXISTING_PATTERNS', '{files, approach, utilities, base classes, conventions}'))
+            ->phase('5. APPLY: Use $EXISTING_PATTERNS as blueprint. Follow conventions, extend helpers, reuse base classes.')
+            ->phase('6. NOT FOUND: Proceed independently. Still follow project conventions from other code.');
+    }
+
+    // =========================================================================
+    // IMPACT RADIUS ANALYSIS (REVERSE DEPENDENCY)
+    // =========================================================================
+
+    /**
+     * Define impact radius analysis rule.
+     * Ensures proactive reverse dependency check BEFORE editing files.
+     * Prevents cascade failures from changing code that others depend on.
+     * Used by: TaskSyncInclude, TaskAsyncInclude, TaskDecomposeInclude, TaskCreateInclude.
+     */
+    protected function defineImpactRadiusAnalysisRule(): void
+    {
+        $this->rule('impact-radius-analysis')->critical()
+            ->text('BEFORE editing any file: check WHO DEPENDS on it. Grep for imports/use/require/extends/implements of target file. Dependents found → plan changes to not break them. Changing public method/function signature → update ALL callers or flag as breaking change.')
+            ->why('Changing code without knowing its consumers causes cascade failures. Proactive impact analysis prevents breaking downstream code.')
+            ->onViolation('STOP. Grep for reverse dependencies of target file. Assess impact BEFORE editing.');
+    }
+
+    /**
+     * Define impact radius analysis workflow guideline.
+     * Step-by-step procedure for assessing change blast radius.
+     * Used by: TaskSyncInclude (inline), TaskAsyncInclude (via agent instructions).
+     */
+    protected function defineImpactRadiusAnalysisGuideline(): void
+    {
+        $this->guideline('impact-radius-analysis')
+            ->goal('Understand blast radius before making changes')
+            ->example()
+            ->phase('1. For EACH file in change plan: Grep for imports/use/require/extends/implements referencing it')
+            ->phase('2. Map dependents: {file → [consumers]}')
+            ->phase('3. Classify: NONE (internal-only change) | LOW (private/unused externally) | MEDIUM (few consumers) | HIGH (widely used)')
+            ->phase('4. HIGH impact → review all callers, ensure signature compatibility, include dependents in plan')
+            ->phase('5. ' . Store::as('DEPENDENTS_MAP', '{file → [consumers], impact_level}'))
+            ->phase('6. Changing interface/trait/abstract/base class → ALL implementors/users MUST be checked');
+    }
+
+    // =========================================================================
+    // LOGIC & EDGE CASE VERIFICATION
+    // =========================================================================
+
+    /**
+     * Define logic and edge case verification rule.
+     * Ensures explicit logic correctness review after implementation.
+     * AI code has 75% more logic bugs - this rule counteracts that.
+     * Used by: TaskSyncInclude, TaskAsyncInclude (via agent instructions).
+     */
+    protected function defineLogicEdgeCaseVerificationRule(): void
+    {
+        $this->rule('logic-edge-case-verification')->high()
+            ->text('After implementation: explicitly verify logic correctness for each changed function/method. Check: null/empty inputs, boundary values (0, -1, MAX, empty collection), off-by-one errors, error/exception paths, type coercion edge cases, concurrent access if applicable. Ask: "what happens if input is null? empty? maximum?"')
+            ->why('AI-generated code has 75% more logic bugs than human code. Syntax and linter pass but logic fails silently. Most missed category in code reviews.')
+            ->onViolation('Review each changed function: what happens with null? empty? boundary? error path? Fix before proceeding.');
+    }
+
+    // =========================================================================
+    // PERFORMANCE AWARENESS
+    // =========================================================================
+
+    /**
+     * Define performance awareness rule.
+     * Prevents common performance anti-patterns during coding.
+     * AI code has 8x more performance issues, especially I/O.
+     * Used by: TaskSyncInclude, TaskAsyncInclude (via agent instructions), TaskDecomposeInclude.
+     */
+    protected function definePerformanceAwarenessRule(): void
+    {
+        $this->rule('performance-awareness')->high()
+            ->text('During implementation: avoid known performance anti-patterns. Check for: nested loops over data (O(n²)), query-per-item patterns (N+1), I/O operations inside loops, loading entire datasets when subset needed, blocking operations where async possible, missing pagination for large collections, unnecessary serialization/deserialization.')
+            ->why('AI-generated code has 8x more performance issues than human code, especially I/O patterns. Catching during coding is cheaper than fixing after validation.')
+            ->onViolation('Review loops: is there a query/I/O inside? Can it be batched? Is the algorithm optimal for expected data size?');
+    }
+
+    // =========================================================================
+    // CODE HALLUCINATION PREVENTION
+    // =========================================================================
+
+    /**
+     * Define code hallucination prevention rule.
+     * Ensures generated code references real methods/classes/functions.
+     * Different from no-hallucination (tool results) - this is about CODE content.
+     * Used by: TaskSyncInclude, TaskAsyncInclude (via agent instructions).
+     */
+    protected function defineCodeHallucinationPreventionRule(): void
+    {
+        $this->rule('code-hallucination-prevention')->critical()
+            ->text('Before using any method/function/class in generated code: VERIFY it actually exists with correct signature. Read the source or use Grep to confirm. NEVER assume API exists based on naming convention. Common hallucinations: wrong method names, incorrect parameter order/count, non-existent helper functions, invented framework methods, deprecated APIs used as current.')
+            ->why('AI generates plausible-looking code referencing non-existent APIs. Parses and lints OK but fails at runtime. Most dangerous because it looks correct.')
+            ->onViolation('Read actual source for EVERY external method/class used. Verify name + parameter signature before writing.');
+    }
+
+    // =========================================================================
+    // CLEANUP AFTER CHANGES
+    // =========================================================================
+
+    /**
+     * Define cleanup after changes rule.
+     * Ensures dead code and artifacts are removed after edits.
+     * AI refactoring often leaves unused imports and orphaned code.
+     * Used by: TaskSyncInclude, TaskAsyncInclude (via agent instructions).
+     */
+    protected function defineCleanupAfterChangesRule(): void
+    {
+        $this->rule('cleanup-after-changes')->medium()
+            ->text('After all edits: scan changed files for artifacts. Remove: unused imports/use/require statements, unreachable code after refactoring, orphaned helper functions no longer called, commented-out code blocks, stale TODO/FIXME without actionable context.')
+            ->why('AI refactoring often leaves dead imports, orphaned functions, commented-out code. Accumulates technical debt and confuses future readers.')
+            ->onViolation('Scan changed files for unused imports and unreachable code. Remove confirmed dead code.');
+    }
+
+    // =========================================================================
     // STATUS/PRIORITY FILTERS
     // =========================================================================
 

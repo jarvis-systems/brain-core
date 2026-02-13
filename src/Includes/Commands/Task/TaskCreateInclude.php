@@ -34,6 +34,12 @@ class TaskCreateInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW
         $this->defineDocumentationIsLawRules();
 
+        // CODEBASE PATTERN REUSE (from trait - helps estimate and scope)
+        $this->defineCodebasePatternReuseRule();
+
+        // IMPACT RADIUS (from trait - note blast radius in task description)
+        $this->defineImpactRadiusAnalysisRule();
+
         $this->rule('docs-define-task-scope')->critical()
             ->text('If documentation exists for task domain → task.content MUST reference docs. Estimate based on FULL spec from docs, not brief description.')
             ->why('Documentation contains complete requirements. Task without doc reference = incomplete context for executor.')
@@ -90,7 +96,7 @@ class TaskCreateInclude extends IncludeArchetype
                 // Full research for complex tasks
                 TaskTool::agent('explore', 'Search existing tasks for duplicates/related. Objective: {' . Store::get('TASK_SCOPE') . '}. Return: duplicates, potential parent, dependencies.') . ' → ' . Store::as('EXISTING_TASKS'),
                 VectorMemoryMcp::call('search_memories', '{query: "{domain} {objective}", limit: 5, category: "code-solution"}') . ' → ' . Store::as('PRIOR_WORK'),
-                Operator::if('code-related task', TaskTool::agent('explore', 'Scan codebase for {domain}. Find: files, patterns, dependencies. Return: paths, architecture notes.') . ' → ' . Store::as('CODEBASE_CONTEXT')),
+                Operator::if('code-related task', TaskTool::agent('explore', 'Scan codebase for {domain}. Find: files, patterns, dependencies, SIMILAR existing implementations. Return: paths, architecture notes, analogous code to reference.') . ' → ' . Store::as('CODEBASE_CONTEXT')),
                 Operator::if('unknown library/pattern', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand before formulating'),
             ]))
             ->phase(Operator::if('duplicate found', 'STOP. Ask: update existing or create new?'))
@@ -107,7 +113,7 @@ class TaskCreateInclude extends IncludeArchetype
             // 5. Formulate
             ->phase(Store::as('TASK_SPEC', '{
                 title: "concise, max 10 words",
-                content: "objective, context, acceptance criteria, hints. IF DOCS exist: See documentation: {doc_paths}",
+                content: "objective, context, acceptance criteria, hints. IF DOCS exist: See documentation: {doc_paths}. IF SIMILAR code: Reference: {similar_files}",
                 priority: "critical|high|medium|low",
                 estimate: "hours based on DOCUMENTATION (if exists) or description (1-8, >8 needs decompose)",
                 parallel: "Apply parallel-isolation-checklist against existing siblings. Default: false. Only true when ALL 5 isolation conditions proven.",

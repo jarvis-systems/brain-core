@@ -36,6 +36,15 @@ class TaskValidateInclude extends IncludeArchetype
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
 
+        // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
+        $this->defineCodebasePatternReuseRule();
+
+        // IMPACT & QUALITY (from trait - verify changes don't break consumers, catch AI code issues)
+        $this->defineImpactRadiusAnalysisRule();
+        $this->defineLogicEdgeCaseVerificationRule();
+        $this->defineCodeHallucinationPreventionRule();
+        $this->defineCleanupAfterChangesRule();
+
         // PARENT INHERITANCE (IRON LAW)
         $this->rule('parent-id-mandatory')->critical()
             ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
@@ -305,9 +314,10 @@ MISSION: COMPLETION CHECK
 4. For EACH requirement → verify done in task files
 5. Check ONLY files from TASK_FILES list
 6. Detect garbage: unused imports, dead code, debug statements, commented code
-7. Fix cosmetic issues inline (whitespace, formatting)
+7. PATTERN CONSISTENCY: Grep for similar classes/methods in codebase — verify implementation follows established project patterns and conventions
+8. Fix cosmetic issues inline (whitespace, formatting)
 
-Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], cosmetic_fixed: []}'),
+Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: []}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
@@ -327,11 +337,14 @@ MISSION: CODE QUALITY (static analysis only, NO test execution)
 2. Check: logic errors, architecture violations, breaking changes
 3. Check: type safety (missing types, nullable without null checks)
 4. Check: algorithmic complexity (nested loops on data, O(n²))
-5. Run ONLY static analysis gate: composer analyse
-6. Fix cosmetic issues inline
-7. FORBIDDEN: running composer test or phpunit — Testing agent handles all test execution
+5. HALLUCINATION CHECK: Verify ALL method/function/class calls reference REAL code. Read source files to confirm methods exist with correct signatures. Flag phantom API calls.
+6. IMPACT RADIUS: For each changed file, Grep who imports/uses/extends it. Verify consumers are NOT broken by changes. Changed public signature → all callers must be updated.
+7. LOGIC EDGE CASES: For each changed function, verify: what happens with null input? empty collection? boundary values (0, -1, MAX)? error path?
+8. Run ONLY static analysis gate: composer analyse
+9. Fix cosmetic issues inline
+10. FORBIDDEN: running composer test or phpunit — Testing agent handles all test execution
 
-Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], static_analysis_result: {}}'),
+Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], hallucinated_calls: [], broken_consumers: [], edge_case_issues: [], static_analysis_result: {}}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
@@ -377,7 +390,13 @@ PERFORMANCE (check each file):
 2. Memory: loading unbounded data, missing pagination
 3. If new dependencies added → run audit
 
-Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: []}'),
+CLEANUP (check each file):
+1. Unused imports/use/require statements
+2. Dead code: unreachable after refactoring, orphaned functions/methods
+3. Commented-out code blocks (not doc comments)
+4. Debug/temporary statements left behind
+
+Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: [], dead_code: [], debug_statements: []}'),
             ]))
 
             // 5. Finalize (IRON LAW: fix-task created = "pending" ALWAYS. MCP will reset status anyway when child starts. NO "validated" with children.)
