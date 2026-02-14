@@ -492,7 +492,10 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
 
             // 6. Report
             ->phase(Operator::output('task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: validation_summary, category: "code-solution"}'));
+            ->phase(Operator::if(
+                Store::get('FILTERED_ISSUES') . ' not empty',
+                VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_pattern_summary}. Root causes and fix approaches for future reference.", category: "debugging", tags: ["validation-issues"]}') . ' ← ONLY issue patterns, not operational status'
+            ));
 
         // Error handling
         $this->guideline('error-handling')->example()

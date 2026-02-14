@@ -265,7 +265,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('CREATED_TASKS.count > 0', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation found issues. Fix-tasks: {count}", append_comment: true}'),
             ]))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Validated #{TASK.id}: {status}. Issues: {counts}. Fix-tasks: {count}.", category: "code-solution"}'))
+            ->phase(Operator::if('FUNCTIONAL_COUNT > 0', VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_patterns}. Root causes and fix approaches for future reference.", category: "debugging", tags: ["validation-issues"]}') . ' ← ONLY issue patterns, not operational status'))
             ->phase('Report: task, status, issues counts, cosmetic fixes, fix-tasks created');
 
         // ERROR HANDLING

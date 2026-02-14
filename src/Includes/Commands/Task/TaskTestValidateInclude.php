@@ -121,7 +121,6 @@ class TaskTestValidateInclude extends IncludeArchetype
                 TaskTool::agent('explore', 'TDD TEST CREATION for #{TASK.id}: 1) Analyze requirements from docs + task.content, 2) Search memory for test patterns, 3) CREATE test files (unit, feature, integration), 4) Tests MUST fail initially (not implemented). Return: {created_tests: [{file, methods}], total_methods}.'),
                 Store::as('TDD_RESULT', '{created tests}'),
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "TDD MODE: Tests created.\\nFiles: {list}\\nMethods: {count}\\nNext: /task:sync or /task:async to implement.", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "TDD tests for #{TASK.id}: {summary}", category: "code-solution", tags: ["tdd"]}'),
                 'Report: TDD complete, tests created, next steps. STOP.',
             ]))
 
@@ -151,7 +150,6 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 6. Complete (validation mode)
             ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "Test validation PASSED. Fixes: {summary}", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "Test validation #{TASK.id}: {summary}", category: "code-solution", tags: ["test-validation"]}'),
                 'Report: created={N}, fixed={N}, cosmetic={N}. STOP.',
             ]));
 

@@ -133,7 +133,6 @@ class TaskCreateInclude extends IncludeArchetype
 
             // 7. Create
             ->phase(VectorTaskMcp::call('task_create', '{title, content, priority, tags, estimate, parallel, comment}') . ' → ' . Store::as('CREATED_ID'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Created task #{id}: {title}, {domain}, {estimate}h", category: "tool-usage"}'))
             ->phase(Operator::if('estimate > 8', 'Recommend: /task:decompose ' . Store::get('CREATED_ID')))
             ->phase('STOP. Do NOT execute. Return control to user.');
 

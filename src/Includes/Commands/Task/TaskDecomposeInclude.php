@@ -195,7 +195,6 @@ Return: {docs_structure: [], code_structure: [], split: [], conflicts: [], simil
             // Stage 6: Create
             ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, parallel, tags: ["decomposed"]}]}'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Decomposed #{$TASK.id} into {count} subtasks", category: "tool-usage"}'))
 
             // Return to pending — decomposition done, task awaits execution
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Decomposed into {count} subtasks. Ready for execution.", append_comment: true}'))
