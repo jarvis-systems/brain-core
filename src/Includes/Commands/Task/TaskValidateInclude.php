@@ -220,11 +220,11 @@ class TaskValidateInclude extends IncludeArchetype
                 ]
             ))
 
-            // 1.3b DECOMPOSITION SUBTASKS ONLY → aggregation fast-path (no fix-tasks = independent pieces, each validated)
+            // 1.3b INTERMEDIATE PARENT (has parent_id) with all decomposition subtasks validated → aggregation fast-path
             ->phase(Operator::if(
-                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated" AND NOT ' . Store::get('HAS_FIX_SUBTASKS'),
+                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated" AND NOT ' . Store::get('HAS_FIX_SUBTASKS') . ' AND ' . Store::get('TASK') . '.parent_id (NOT root)',
                 [
-                    'AGGREGATION-ONLY MODE: All decomposition subtasks validated (no fix-tasks).',
+                    'AGGREGATION-ONLY MODE: Intermediate parent, all decomposition subtasks validated.',
                     'Read subtask comments → extract validation results (test counts, issues found, fixes applied)',
                     'Parse parent task.content → list ALL parent requirements',
                     'Cross-reference: does each parent requirement map to at least one validated subtask?',
@@ -243,6 +243,17 @@ class TaskValidateInclude extends IncludeArchetype
                             'Proceed to FULL VALIDATION below, but scope agents to UNCOVERED_REQUIREMENTS only',
                         ]
                     ),
+                ]
+            ))
+
+            // 1.3c ROOT TASK (no parent_id) → ALWAYS full validation, no fast-path
+            ->phase(Operator::if(
+                Store::get('SUBTASKS') . ' not empty AND ALL subtasks status = "validated" AND NOT ' . Store::get('HAS_FIX_SUBTASKS') . ' AND NOT ' . Store::get('TASK') . '.parent_id (ROOT task)',
+                [
+                    'ROOT TASK — FINAL CHECKPOINT: All subtasks validated individually, but this is the LAST safety net.',
+                    'Subtask validators checked isolated scopes. Cross-subtask INTEGRATION was NEVER verified.',
+                    'MANDATORY: Proceed to FULL VALIDATION — all agents run on ENTIRE task scope.',
+                    'Focus: integration between subtasks, full test suite, all quality gates, cross-file dependencies.',
                 ]
             ))
 
