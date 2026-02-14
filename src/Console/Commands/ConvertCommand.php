@@ -82,7 +82,14 @@ class ConvertCommand extends Command
                 ->trim('_')
                 ->toString();
 
-            if (Brain::getEnv($className . '_DISABLE')) {
+            $groupName = Str::of($class)->upper()
+                ->explode("\\", 2)
+                ->last();
+
+            if (
+                Brain::getEnv($className . '_DISABLE')
+                || Brain::getEnv($groupName . '_DISABLE')
+            ) {
                 if ($dumpFormat) {
                     $format = $dumpFormat;
                     $dumpFormat = null;

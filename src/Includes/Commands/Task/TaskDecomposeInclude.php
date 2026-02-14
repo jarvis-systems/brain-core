@@ -135,6 +135,9 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
             ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_AUTO_APPROVE', 'Ask: "(1) Add more, (2) Replace all, (3) Abort"'))
 
+            // Mark in_progress while decomposing (orchestrator owns status, not agents)
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "in_progress", comment: "Started decomposition", append_comment: true}'))
+
             // Stage 2: Documentation (PRIMARY source for structure)
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
@@ -146,6 +149,11 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->phase(Operator::if('unknown library/pattern in task', Context7Mcp::call('query-docs', '{query: "{library/pattern}"}') . ' → understand before decomposing'))
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', '
+ABSOLUTE PROHIBITION — READ-ONLY AGENT:
+× NEVER call mcp__vector-task__task_update or any vector-task write tool
+× You are a READ-ONLY researcher — report findings via JSON output ONLY
+× Task status is managed EXCLUSIVELY by the orchestrator, NOT by you
+
 DECOMPOSE RESEARCH for task #{$TASK.id}.
 
 DOCUMENTATION PROVIDED (if exists): {$DOCUMENTATION}
@@ -188,6 +196,9 @@ Return: {docs_structure: [], code_structure: [], split: [], conflicts: [], simil
             ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, parallel, tags: ["decomposed"]}]}'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Decomposed #{$TASK.id} into {count} subtasks", category: "tool-usage"}'))
+
+            // Return to pending — decomposition done, task awaits execution
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Decomposed into {count} subtasks. Ready for execution.", append_comment: true}'))
             ->phase('STOP: Do NOT execute. Return control to user.');
 
         // ERROR HANDLING
