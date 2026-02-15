@@ -11,6 +11,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -279,6 +280,7 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('Extract from ' . Store::get('SIBLING_TASKS') . ' comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked')
             ->phase(Store::as('FAILURE_PATTERNS', 'solutions that were tried and failed (from sibling comments + sibling memories + debugging memories)'))
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' ' . Store::as('DOCS_INDEX'))
+            ->phase(Operator::if('unknown library/pattern in task scope', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand API before validating'))
 
             // 3. Approval (skip if -y)
             ->phase(Operator::if(
