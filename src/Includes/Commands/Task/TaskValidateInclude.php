@@ -362,6 +362,7 @@ MISSION: COMPLETION CHECK
 6. Detect garbage: unused imports, dead code, debug statements, commented code
 7. PATTERN CONSISTENCY: Grep for similar classes/methods in codebase — verify implementation follows established project patterns and conventions
 8. Fix cosmetic issues inline (whitespace, formatting)
+9. FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
 
 Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: []}'),
                 TaskTool::agent('explore', '
@@ -470,6 +471,8 @@ CLEANUP (check each file):
 2. Dead code: unreachable after refactoring, orphaned functions/methods
 3. Commented-out code blocks (not doc comments)
 4. Debug/temporary statements left behind
+
+FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
 
 Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: [], dead_code: [], debug_statements: []}'),
             ]))
