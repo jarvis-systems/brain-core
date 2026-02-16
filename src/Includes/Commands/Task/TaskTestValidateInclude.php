@@ -67,6 +67,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         // TEST SCOPING (from trait - scoped tests for subtasks, full suite for root)
         $this->defineTestScopingRule();
 
+        // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
+        $this->defineCommentContextRules();
+
         $this->rule('scale-agents')->high()
             ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
 
@@ -97,6 +100,9 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('IS_SIMPLE', 'TASK.estimate ≤4 AND priority !== "critical"'))
             ->phase(Store::as('IS_SUBTASK', 'TASK.parent_id !== null'))
             ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → context'))
+
+            // 1.2 Extract comment context (accumulated inter-session history)
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
             // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started test validation", append_comment: true}'))

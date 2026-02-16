@@ -42,6 +42,9 @@ class TaskBrainstormInclude extends IncludeArchetype
         // CODEBASE PATTERN REUSE (from trait - consider existing patterns during brainstorm)
         $this->defineCodebasePatternReuseRule();
 
+        // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
+        $this->defineCommentContextRules();
+
         $this->rule('docs-provide-context')->high()
             ->text('If documentation exists for topic → READ IT FIRST. Docs contain: constraints, decisions, rejected alternatives. Ideas must NOT contradict documented architecture/decisions.')
             ->why('Brainstorming without doc context = reinventing wheel or proposing already-rejected ideas.')
@@ -70,7 +73,11 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->phase(Operator::if('not found', Operator::abort('Task not found. Use /do:brainstorm for topic-only.')))
             ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → ' . Store::as('PARENT')))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('SUBTASKS'))
-            ->phase('Show: Task #{id}, title, status, content, parent, subtasks count')
+
+            // Extract comment context (accumulated inter-session history)
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
+            ->phase('Show: Task #{id}, title, status, content, parent, subtasks count, $COMMENT_CONTEXT summary')
             ->phase('Ask: "What aspect would you like to brainstorm?"')
             ->phase('WAIT for user topic → ' . Store::as('TOPIC'))
 

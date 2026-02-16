@@ -59,6 +59,9 @@ class TaskDecomposeInclude extends IncludeArchetype
         // PERFORMANCE AWARENESS (from trait - identify performance-critical subtasks)
         $this->definePerformanceAwarenessRule();
 
+        // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
+        $this->defineCommentContextRules();
+
         $this->rule('docs-define-structure')->critical()
             ->text('Documentation defines STRUCTURE for decomposition. If docs describe modules/components/phases → decompose ACCORDING TO DOCS. Code exploration is SECONDARY.')
             ->why('Docs contain planned architecture. Code may be incomplete WIP. Decomposing by code misses planned structure.')
@@ -132,6 +135,10 @@ class TaskDecomposeInclude extends IncludeArchetype
             // Stage 1: Load
             ->phase(VectorTaskMcp::call('task_get', '{task_id: $TASK_ID}') . ' → ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
+
+            // Extract comment context (accumulated inter-session history)
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
             ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_AUTO_APPROVE', 'Ask: "(1) Add more, (2) Replace all, (3) Abort"'))
 
@@ -155,6 +162,9 @@ ABSOLUTE PROHIBITION — READ-ONLY AGENT:
 × Task status is managed EXCLUSIVELY by the orchestrator, NOT by you
 
 DECOMPOSE RESEARCH for task #{$TASK.id}.
+
+COMMENT CONTEXT (previous sessions): {$COMMENT_CONTEXT}
+- Use memory IDs to fetch prior findings. Respect decisions already made. Avoid approaches that already failed.
 
 DOCUMENTATION PROVIDED (if exists): {$DOCUMENTATION}
 - If docs define structure → USE IT as primary decomposition source

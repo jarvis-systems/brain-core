@@ -67,6 +67,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // TEST SCOPING (from trait - scoped tests for subtasks, full suite for root)
         $this->defineTestScopingRule();
 
+        // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
+        $this->defineCommentContextRules();
+
         // PARENT INHERITANCE
         $this->rule('parent-id-mandatory')->critical()
             ->text('ALL fix-tasks MUST have parent_id = $VECTOR_TASK_ID. No orphans.')
@@ -136,6 +139,10 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed', Operator::abort('another session active')))
             ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → context only'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('SUBTASKS'))
+
+            // 1.2 Extract comment context (accumulated inter-session history)
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
             ->phase(Store::as('TASK_PARENT_ID', '$VECTOR_TASK_ID'))
 
             // 1.3 SUBTASKS CHECK

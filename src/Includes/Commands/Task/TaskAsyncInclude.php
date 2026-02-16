@@ -47,6 +47,9 @@ class TaskAsyncInclude extends IncludeArchetype
         // TEST COVERAGE (from trait - agents must write tests alongside implementation)
         $this->defineTestCoverageDuringExecutionRule();
 
+        // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
+        $this->defineCommentContextRules();
+
         // CRITICAL THINKING FOR DELEGATION
         $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
         $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -170,6 +173,9 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if('status=tested AND comment contains "TDD MODE"', 'TDD execution mode → jump to tdd-mode guideline'))
             ->phase(Operator::if('parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
+
+            // 1.2 Extract comment context (accumulated inter-session history)
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
             // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
@@ -390,6 +396,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('13. PERFORMANCE: "Avoid: nested loops over data (O(n²)), query/I/O inside loops (N+1), loading full datasets, missing pagination. Batch operations."')
             ->text('14. HALLUCINATION: "Verify EVERY method/class/function call exists with correct signature. Read source to confirm. NEVER assume API from naming convention."')
             ->text('15. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."')
-            ->text('16. TEST COVERAGE: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework from project, follow existing test patterns/structure. Run written tests to verify passing. NEVER skip — validator will reject without tests."');
+            ->text('16. TEST COVERAGE: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework from project, follow existing test patterns/structure. Run written tests to verify passing. NEVER skip — validator will reject without tests."')
+            ->text('17. COMMENT CONTEXT: "Task comment contains accumulated inter-session context: {$COMMENT_CONTEXT}. Use memory IDs to fetch prior findings. Use file_paths as starting points. Respect decisions already made. Avoid repeating failures. DO NOT ignore comment history."');
     }
 }

@@ -233,6 +233,39 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // COMMENT CONTEXT ANALYSIS (READ ACCUMULATED CONTEXT)
+    // =========================================================================
+
+    /**
+     * Define comment context analysis rules and extraction guideline.
+     * Ensures task.comment is parsed for accumulated inter-session context before execution.
+     * Comments contain: memory IDs, file paths, previous results, failures, blockers, decisions.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskValidateSyncInclude, TaskTestValidateInclude, TaskDecomposeInclude, TaskBrainstormInclude.
+     */
+    protected function defineCommentContextRules(): void
+    {
+        $this->rule('comment-context-mandatory')->critical()
+            ->text('AFTER loading task: parse task.comment for accumulated context. Extract: memory IDs (#NNN), file paths, previous execution results, failure reasons, blockers, decisions made. Store as $COMMENT_CONTEXT. Pass to ALL agents alongside task.content.')
+            ->why('Comments accumulate critical inter-session context: what was tried, what failed, what files were touched, what decisions were made. Ignoring comments = blind re-execution without history.')
+            ->onViolation('Parse task.comment IMMEDIATELY after task_get. Extract actionable context. Include in agent prompts and planning.');
+
+        $this->guideline('comment-context-extraction')
+            ->goal('Extract actionable context from task.comment before any execution or delegation')
+            ->example()
+            ->phase('Parse $TASK.comment (may be multi-line with \\n\\n separators):')
+            ->phase('  1. MEMORY IDs: extract #NNN or memory #NNN patterns → previous knowledge links')
+            ->phase('  2. FILE PATHS: extract file paths (src/*, tests/*, app/*, etc.) → files already touched/identified')
+            ->phase('  3. EXECUTION HISTORY: entries with "completed", "passed", "started", "Done" → what was already done')
+            ->phase('  4. FAILURES: entries with "failed", "error", "stopped", "rolled back" → what went wrong and why')
+            ->phase('  5. BLOCKERS: entries with "BLOCKED", "waiting for", "needs" → current impediments')
+            ->phase('  6. DECISIONS: entries with "chose", "decided", "approach", "using" → decisions already locked in')
+            ->phase('  7. MODE FLAGS: "TDD MODE", "light validation", special execution modes')
+            ->phase(Store::as('COMMENT_CONTEXT', '{memory_ids: [], file_paths: [], execution_history: [], failures: [], blockers: [], decisions: [], mode_flags: []}'))
+            ->phase('If comment is empty/null → $COMMENT_CONTEXT = {} (proceed without, no error)');
+    }
+
+    // =========================================================================
     // PHASE 0: VECTOR TASK LOADING
     // =========================================================================
 
@@ -322,6 +355,7 @@ trait TaskCommandCommonTrait
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID, limit: 20}'))
             ->phase(Store::as('SUBTASKS', '{child tasks if any}'))
             ->phase(Store::as('TASK_DESCRIPTION', '$VECTOR_TASK.title + $VECTOR_TASK.content'))
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $VECTOR_TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
             ->phase(Operator::output([
                 '',
                 '=== PHASE 0: VECTOR TASK LOADED ===',
@@ -329,7 +363,7 @@ trait TaskCommandCommonTrait
                 'Status: {$VECTOR_TASK.status} | Priority: {$VECTOR_TASK.priority}',
                 'Parent: {$PARENT_TASK.title or "none"}',
                 'Subtasks: {count or "none"}',
-                'Comment: {$VECTOR_TASK.comment or "none"}',
+                'Comment context: memory_ids={$COMMENT_CONTEXT.memory_ids}, files={$COMMENT_CONTEXT.file_paths}, failures={$COMMENT_CONTEXT.failures}, decisions={$COMMENT_CONTEXT.decisions}',
             ]));
     }
 

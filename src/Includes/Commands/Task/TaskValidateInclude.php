@@ -49,6 +49,9 @@ class TaskValidateInclude extends IncludeArchetype
         // TEST SCOPING (from trait - scoped tests for subtasks, full suite for root)
         $this->defineTestScopingRule();
 
+        // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
+        $this->defineCommentContextRules();
+
         // PARENT INHERITANCE (IRON LAW)
         $this->rule('parent-id-mandatory')->critical()
             ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
@@ -208,6 +211,9 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
 
+            // 1.2 Extract comment context (accumulated inter-session history)
+            ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
             // 1.3 SUBTASKS CHECK
             ->phase(Store::as('HAS_FIX_SUBTASKS', Store::get('SUBTASKS') . ' contains ANY subtask with tag "validation-fix"'))
 
@@ -322,7 +328,8 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('  - FAILURE_PATTERNS_TEXT: full text from ' . Store::get('FAILURE_PATTERNS') . ' — previous failed attempts')
             ->phase('  - DOCS_PATHS: file paths from ' . Store::get('DOCS_INDEX') . ' (if relevant)')
             ->phase('  - HAS_PARENT: ' . Store::get('TASK') . '.parent_id exists (true = subtask = scoped tests, false = root task = full suite)')
-            ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data'))
+            ->phase('  - COMMENT_CONTEXT: ' . Store::get('COMMENT_CONTEXT') . ' — accumulated inter-session history (memory IDs, files touched, failures, decisions)')
+            ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data INCLUDING $COMMENT_CONTEXT'))
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
@@ -333,6 +340,7 @@ CONTEXT (provided by validator):
 - Parent goal: {PARENT_CONTEXT}
 - Related memories: {MEMORY_IDS}
 - Documentation paths: {DOCS_PATHS}
+- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
@@ -363,6 +371,7 @@ CONTEXT (provided by validator):
 - Task content: {TASK_CONTENT}
 - Files to check: {TASK_FILES}
 - Related memories: {MEMORY_IDS}
+- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
@@ -390,6 +399,7 @@ CONTEXT (provided by validator):
 - Task content: {TASK_CONTENT}
 - Files to check: {TASK_FILES}
 - Has parent: {HAS_PARENT} (true = subtask, false = root task)
+- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
@@ -437,6 +447,7 @@ CONTEXT (provided by validator):
 - Task title: {TASK_TITLE}
 - Task content: {TASK_CONTENT}
 - Files to check: {TASK_FILES}
+- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
 
 KNOWN FAILURES:
 {KNOWN_FAILURES_TEXT}
