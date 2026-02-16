@@ -850,15 +850,10 @@ trait TaskCommandCommonTrait
             ->why('Shared files are #1 source of parallel conflicts. Two agents editing same config simultaneously = one overwrites the other. Unrecoverable without manual merge.')
             ->onViolation('Do NOT edit shared file. Record need in task comment. Complete remaining in-scope work.');
 
-        $this->rule('parallel-scope-registration')->critical()
-            ->text('In PARALLEL CONTEXT: after planning (when actual files known), STORE own scope to vector memory: "PARALLEL SCOPE Task #{id} (parent #{parent_id}): files: [list]". Tags: ["parallel-scope", "parent-{parent_id}"]. This is the COMMUNICATION CHANNEL — siblings search memory to find your real file scope.')
-            ->why('Task content is vague description, not file list. Only after planning do you know REAL files. Memory registration lets siblings see actual scope instead of guessing from content.')
-            ->onViolation('After planning, before execution: store file scope to vector memory with parallel-scope tag.');
-
-        $this->rule('parallel-scope-from-memory')->critical()
-            ->text('In PARALLEL CONTEXT: before execution, SEARCH vector memory for sibling scopes: tags ["parallel-scope"]. Use REGISTERED scopes (from memory) for $SHARED_FILES detection, NOT guesses from task content. Memory empty = siblings haven\'t planned yet, proceed with caution.')
-            ->why('Guessing file scope from task content is unreliable. Vector memory contains ACTUAL planned files from siblings. Only reliable source for conflict detection between parallel agents.')
-            ->onViolation('Search memory for parallel-scope entries. Use registered files for cross-reference. Never guess from content.');
+        $this->rule('parallel-scope-in-comment')->critical()
+            ->text('In PARALLEL CONTEXT: after planning (when actual files known), STORE own scope in task comment via task_update: "PARALLEL SCOPE: [file1.php, file2.php, ...]" with append_comment: true. Siblings read your scope from task comment (already fetched via task_list — ZERO extra MCP calls). Do NOT store scopes in vector memory — scopes are ephemeral structured data, not semantic knowledge.')
+            ->why('Task comments are free (come with task_list). Scopes are temporary file lists, not insights. Vector memory is for learnings/patterns, not ephemeral execution state. Comments self-clean when task is deleted.')
+            ->onViolation('After planning: task_update with scope in comment. Read sibling scopes from their comments via task_list.');
 
         $this->rule('parallel-status-interpretation')->high()
             ->text('parallel: true does NOT mean siblings are running RIGHT NOW. It means they CAN run concurrently. Status interpretation: pending = not started, zero threat, ignore for conflict detection. completed = already done, files stable and committed, no active conflict. in_progress = potentially active, the ONLY status that matters for conflict detection. in_progress WITHOUT scope in memory = sibling still planning or just started, NOT a red flag, proceed normally. in_progress WITH scope in memory = REAL concurrent data, cross-reference for conflicts. Do NOT restrict yourself based on pending/completed siblings. Do NOT panic when in_progress sibling has no memory scope.')
