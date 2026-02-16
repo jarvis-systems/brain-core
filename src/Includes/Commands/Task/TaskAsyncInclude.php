@@ -31,6 +31,7 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
+        $this->defineNoDestructiveGitRules();
 
         // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
         $this->defineCodebasePatternReuseRule();
@@ -86,9 +87,7 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('agent-dependency-instruction')->high()
             ->text('Include in agent prompt: "If dependencies needed: detect package manager, install (composer/npm/pip/cargo/go mod). Run audit after install."')
             ->why('Agents handle their own dependency installation autonomously.');
-        $this->rule('agent-git-instruction')->high()
-            ->text('Include in agent prompt: "Before multi-file changes: check git status. Uncommitted changes: stash first. Rollback on failure."')
-            ->why('Agents must protect user work.');
+        // agent git prohibition from trait via defineNoDestructiveGitRules()
         $this->rule('agent-security-instruction')->critical()
             ->text('Include in agent prompt: "NEVER hardcode secrets. Validate external input. Escape output. Use parameterized queries."')
             ->why('Security rules must propagate to all agents.');
@@ -98,17 +97,19 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // BRAIN-LEVEL ORCHESTRATION SAFETY
         $this->rule('pre-delegation-git-check')->high()
-            ->text('Before ANY delegation: check git status. Uncommitted changes exist: -y = warn and proceed, no -y = ask "Uncommitted changes. Stash before delegating?"')
-            ->why('Brain ensures clean state before agents touch files.');
+            ->text('Before ANY delegation: check git status for awareness. Uncommitted changes: LOG and proceed. NEVER modify git state.')
+            ->why('Read-only git awareness only. Modification prohibition from trait.');
         $this->rule('delegation-context-include')->critical()
             ->text('Every Task() MUST include: 1) clear task description, 2) file scope, 3) memory search hints, 4) security + validation instructions.')
             ->why('Agents need full context to work autonomously.');
 
         // PARTIAL FAILURE HANDLING (multi-agent)
         $this->rule('agent-failure-isolation')->high()
-            ->text('Agent fails: other parallel agents continue. Failed agent work: -y = auto-rollback its files, no -y = ask "Agent X failed. Rollback its changes/Retry/Skip?"');
+            ->text('Agent fails: other parallel agents continue. Failed agent work: -y = mark task pending with failure details, no -y = ask "Agent X failed. Retry/Skip/Mark pending?"')
+            ->why('Rollback via git is forbidden. Failed agent files stay as-is. Next execution attempt will handle them.');
         $this->rule('critical-agent-failure')->high()
-            ->text('Critical agent (blocker for others) fails: -y = abort remaining + rollback all, no -y = ask "Critical task failed. Abort all/Retry/Manual intervention?"');
+            ->text('Critical agent (blocker for others) fails: -y = abort remaining + mark all pending with failure details, no -y = ask "Critical task failed. Abort all/Retry/Manual intervention?"')
+            ->why('Never rollback via git. Mark pending and let next attempt handle recovery.');
         $this->rule('partial-success-handling')->medium()
             ->text('N of M agents succeeded: -y = complete with warning listing failed parts, no -y = ask "N/M succeeded. Complete partial/Rollback all/Retry failed?"');
 
@@ -240,12 +241,9 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(TaskTool::agent('explore', 'Find SIMILAR/ANALOGOUS implementations in codebase for: {task.title}. Search: analogous class names, method patterns, trait usage, helper utilities, base classes. Return: {similar_files, approach, conventions, reusable_code}. Exclude: .brain/') . ' → ' . Store::as('EXISTING_PATTERNS'))
             ->phase(Operator::if(Store::get('EXISTING_PATTERNS') . ' found', 'Include in ALL agent prompts: "Similar code exists at {files}. FOLLOW same approach/conventions. REUSE helpers/base classes."'))
 
-            // 4.5 Pre-delegation git check
+            // 4.5 Pre-delegation git awareness (READ-ONLY, no stash/checkout)
             ->phase(BashTool::call('git status --porcelain 2>/dev/null || echo "NO_GIT"') . ' ' . Store::as('GIT_STATUS'))
-            ->phase(Operator::if(Store::get('GIT_STATUS') . ' has uncommitted changes', [
-                Operator::if('$HAS_AUTO_APPROVE', 'WARN: uncommitted changes, proceeding with delegation'),
-                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Uncommitted changes. Stash before delegating/Proceed anyway/Abort?"'),
-            ]))
+            ->phase(Operator::if(Store::get('GIT_STATUS') . ' has uncommitted changes', 'LOG: uncommitted changes detected. Proceeding — NEVER stash or checkout.'))
 
             // 5. Plan & Approval
             ->phase('Analyze task INTENT → break into atomic agent subtasks')
@@ -270,10 +268,10 @@ class TaskAsyncInclude extends IncludeArchetype
                 Operator::if('max retries AND is_critical', [
                     Operator::if('$HAS_AUTO_APPROVE', [
                         'Abort remaining delegations',
-                        'Request rollback from completed agents',
-                        VectorTaskMcp::call('task_update', '{status: "pending", comment: "Critical agent failed: {error}. Rolled back."}'),
+                        'DO NOT rollback — other agents have uncommitted work. Leave files as-is.',
+                        VectorTaskMcp::call('task_update', '{status: "pending", comment: "Critical agent failed: {error}. Files left as-is (no rollback — parallel safety).", append_comment: true}'),
                         VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, agent: {name}, error: {msg}", category: "debugging"}'),
-                        Operator::abort('Critical agent failed'),
+                        Operator::abort('Critical agent failed, no rollback'),
                     ]),
                     Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Critical task failed. Abort all/Retry/Manual?"'),
                 ]),
@@ -388,7 +386,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('5. MEMORY: "Search memory for: {terms}. Check debugging category for failures. Store learnings after."')
             ->text('6. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
             ->text('7. VALIDATION: "Verify syntax. Run linter if configured. Run ONLY related tests (scoped, never full suite). Fix before completion."')
-            ->text('8. GIT: "Check git status. Stash uncommitted. Rollback on failure."')
+            ->text('8. GIT: "FORBIDDEN: git checkout, git restore, git stash, git reset, git clean. These destroy parallel agents work and memory/ databases. Rollback = Read original content + Write back. Git is READ-ONLY (status, diff, log)."')
             ->text('9. DEPS: "If dependencies needed: detect package manager, install, run audit."')
             ->text('10. PATTERNS: "BEFORE coding: search codebase for similar implementations. Grep analogous class names, method patterns. Found → follow same approach, reuse helpers. NEVER reinvent existing patterns."')
             ->text('11. IMPACT: "BEFORE editing: Grep who imports/uses/extends target file. Dependents found → ensure changes are compatible. Changing public API → update all callers."')

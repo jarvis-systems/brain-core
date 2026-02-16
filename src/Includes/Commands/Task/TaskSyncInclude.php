@@ -36,6 +36,7 @@ class TaskSyncInclude extends IncludeArchetype
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
+        $this->defineNoDestructiveGitRules();
 
         // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
         $this->defineCodebasePatternReuseRule();
@@ -98,13 +99,10 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('dependency-dev-vs-prod')->medium()
             ->text('Dev dependencies (test frameworks, linters, dev tools) install to dev. Production dependencies install to main. Detect from usage context.');
 
-        // BACKUP & ROLLBACK (language-agnostic)
-        $this->rule('git-safety-check')->high()
-            ->text('Before multi-file changes: check git status. Uncommitted changes exist: -y = auto-stash, no -y = ask "Uncommitted changes. Stash/Commit/Abort?"')
-            ->why('Protect user work from being mixed with task changes.');
+        // BACKUP & ROLLBACK (language-agnostic) — git prohibition from trait via defineNoDestructiveGitRules()
         $this->rule('rollback-on-failure')->high()
-            ->text('If execution fails mid-way (step N of M failed, N>1): -y = auto-rollback (git checkout changed files), no -y = ask "Rollback changes? Files: {list}"')
-            ->why('Partial changes are worse than no changes.');
+            ->text('If execution fails mid-way: revert ONLY your own changes by re-reading original content and restoring via Edit/Write. NEVER use git commands for rollback.')
+            ->why('Git-level rollback destroys ALL uncommitted changes including other agents work, memory/ SQLite databases, and user WIP.');
         $this->rule('no-git-fallback')->medium()
             ->text('No git repo: create backup files (.bak) before edit. Rollback = restore from .bak. Clean .bak files on success.');
 
@@ -313,30 +311,28 @@ class TaskSyncInclude extends IncludeArchetype
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Need to install: {packages}. Proceed?"'),
             ]))
 
-            // 5.6 Git safety before changes
+            // 5.6 Git awareness (READ-ONLY, no stash/checkout)
             ->phase(BashTool::call('git status --porcelain 2>/dev/null || echo "NO_GIT"') . ' ' . Store::as('GIT_STATUS'))
-            ->phase(Operator::if(Store::get('GIT_STATUS') . ' has uncommitted changes', [
-                Operator::if('$HAS_AUTO_APPROVE', BashTool::call('git stash push -m "brain-task-{id}-backup"')),
-                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Uncommitted changes detected. Stash/Commit WIP/Abort?"'),
-            ]))
+            ->phase(Operator::if(Store::get('GIT_STATUS') . ' has uncommitted changes', 'LOG: uncommitted changes detected. Proceeding carefully — will NOT stash or checkout.'))
             ->phase(Store::as('CHANGED_FILES', '[]'))
+            ->phase(Store::as('FILE_BACKUPS', '{} — map of file_path → original_content for rollback via Edit/Write'))
 
-            // 6. Execute with tracking
+            // 6. Execute with tracking (NEVER use git checkout/stash/restore for rollback)
             ->phase(Operator::forEach('step in ' . Store::get('PLAN'), [
                 Store::as('CURRENT_STEP', '{step_index}'),
-                ReadTool::call('{step.file}'),
+                ReadTool::call('{step.file}') . ' → save content to ' . Store::get('FILE_BACKUPS') . '[{step.file}]',
                 EditTool::call('{step.file}', '{old}', '{new}') . ' OR ' . WriteTool::call('{step.file}', '{content}'),
                 'Append {step.file} to ' . Store::get('CHANGED_FILES'),
                 Operator::if('step fails', [
                     'Retry up to 2 times with adjusted approach',
                     Operator::if('still fails', [
                         Operator::if('$HAS_AUTO_APPROVE AND previous steps changed files', [
-                            BashTool::call('git checkout -- {changed_files}') . ' OR restore from .bak',
-                            VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Failed at step N: {error}. Rolled back.", append_comment: true}'),
+                            'Rollback via Write: for each file in ' . Store::get('CHANGED_FILES') . ' → Write(file, ' . Store::get('FILE_BACKUPS') . '[file])',
+                            VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Failed at step N: {error}. Rolled back via Write.", append_comment: true}'),
                             VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, step {N}, error: {msg}, attempted: {fixes}", category: "debugging"}'),
-                            Operator::abort('Step failed, rolled back'),
+                            Operator::abort('Step failed, rolled back via Write (no git commands)'),
                         ]),
-                        Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Step N failed: {error}. Retry/Skip/Rollback/Abort?"'),
+                        Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Step N failed: {error}. Retry/Skip/Rollback(via Write)/Abort?"'),
                     ]),
                 ]),
                 'Update task.comment with execution_state JSON for recovery',
@@ -412,7 +408,6 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Operator::if('cleanup needed', 'Remove dead code, re-run syntax check on cleaned files'))
 
             // 8. Complete
-            ->phase(Operator::if(Store::get('GIT_STATUS') . ' had stash', BashTool::call('git stash pop') . ' (restore user changes)'))
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Files: {changed_files}. Tests: {pass/skip/none}.", append_comment: true}'))
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, patterns used, learnings", category: "code-solution"}'));
 

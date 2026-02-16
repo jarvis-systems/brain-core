@@ -30,7 +30,7 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('auto-approve')->critical()
             ->text('-y flag = FULL auto-pilot. Skip ALL questions to user: approval prompts, strategy decisions, ambiguity resolution. On ANY decision fork: choose the conservative/non-blocking option automatically. NEVER use AskUserQuestion or similar tools in -y mode.')
             ->why('User explicitly chose autonomous mode. Every question breaks the flow and defeats the purpose of -y. Conservative choice = safe default that does not block pipeline.')
-            ->onViolation('Choose Option 1 (conservative/safe/non-blocking). Log the decision made and why. Continue without stopping.');
+            ->onViolation('Choose the most conservative/non-blocking option available. Log the decision made and why. Continue without stopping.');
 
         $this->rule('no-direct-test-execution')->critical()
             ->text('Brain NEVER runs tests or quality gates directly via Bash during validation. ALL test execution MUST go through validation agents ONLY. Brain role = orchestrate agents + aggregate results. ZERO exceptions.')
@@ -39,6 +39,7 @@ class TaskValidateInclude extends IncludeArchetype
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
+        $this->defineNoDestructiveGitRules();
 
         // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
         $this->defineCodebasePatternReuseRule();

@@ -42,6 +42,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
+        $this->defineNoDestructiveGitRules();
 
         // FAILURE-AWARE VALIDATION (prevent repeating failed solutions)
         $this->rule('failure-history-mandatory')->critical()

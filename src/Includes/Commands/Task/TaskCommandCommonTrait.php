@@ -793,4 +793,29 @@ trait TaskCommandCommonTrait
             ->text('Show key info inline: ID, title, priority, estimate')
             ->text('Use blank lines between groups for readability');
     }
+
+    // =========================================================================
+    // NO DESTRUCTIVE GIT (PROTECT PARALLEL AGENTS & MEMORY)
+    // =========================================================================
+
+    /**
+     * Define no-destructive-git rules.
+     * Prohibits git commands that modify working tree state.
+     * memory/ contains SQLite databases (vector memory + tasks) tracked in git.
+     * Any git checkout/stash/restore/reset/clean destroys uncommitted work
+     * from parallel agents AND wipes vector memory and task databases.
+     * Used by: ALL task execution, validation, and delegation commands.
+     */
+    protected function defineNoDestructiveGitRules(): void
+    {
+        $this->rule('no-destructive-git')->critical()
+            ->text('FORBIDDEN: git checkout, git restore, git stash, git reset, git clean — and ANY command that modifies git working tree state. These destroy uncommitted work from parallel agents, user WIP, and memory/ SQLite databases (vector memory + tasks). Rollback = Read original content + Write/Edit back. Git is READ-ONLY: status, diff, log, blame only.')
+            ->why('memory/ folder contains project SQLite databases tracked in git. git checkout/stash/reset reverts these databases, destroying ALL tasks and memories. Parallel agents have uncommitted changes — any working tree modification wipes their work. Unrecoverable data loss.')
+            ->onViolation('ABORT git command. Use Read to get original content, Write/Edit to restore specific files. Never touch git working tree state.');
+
+        $this->rule('no-destructive-git-in-agents')->critical()
+            ->text('When delegating to agents: ALWAYS include in prompt: "FORBIDDEN: git checkout, git restore, git stash, git reset, git clean. Rollback = Read + Write. Git is READ-ONLY."')
+            ->why('Sub-agents do not inherit parent rules. Without explicit prohibition, agents will use git for rollback and destroy parallel work.')
+            ->onViolation('Add git prohibition to agent prompt before delegation.');
+    }
 }
