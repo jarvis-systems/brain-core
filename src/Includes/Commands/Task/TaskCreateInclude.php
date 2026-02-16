@@ -72,6 +72,11 @@ class TaskCreateInclude extends IncludeArchetype
         $this->defineParallelIsolationRules();
         $this->defineParallelIsolationChecklistGuideline();
 
+        $this->rule('file-scope-in-content')->high()
+            ->text('Task content SHOULD include expected file scope: "FILES: [file1.php, file2.php, ...]" if codebase exploration identified relevant files. For parallel: true tasks this becomes CRITICAL — executors need explicit scope for parallel conflict detection. Files unknown (new feature) → "FILES: [to be determined during planning]".')
+            ->why('Parallel execution awareness reads file scopes from task content. Create is the first place where scope can be captured. Missing files = executor guesses = parallel safety chain weakened.')
+            ->onViolation('If codebase exploration found files → include as FILES in content. If parallel: true → MUST include whatever file scope is known.');
+
         // INPUT CAPTURE
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
@@ -118,7 +123,7 @@ class TaskCreateInclude extends IncludeArchetype
             // 5. Formulate
             ->phase(Store::as('TASK_SPEC', '{
                 title: "concise, max 10 words",
-                content: "objective, context, acceptance criteria, hints. IF DOCS exist: See documentation: {doc_paths}. IF SIMILAR code: Reference: {similar_files}",
+                content: "objective, context, acceptance criteria, hints. FILES: [files from codebase exploration, or \"to be determined\" if new feature]. IF DOCS exist: See documentation: {doc_paths}. IF SIMILAR code: Reference: {similar_files}. IF parallel: true: PARALLEL: this task may execute concurrently with siblings. Stay within listed file scope.",
                 priority: "critical|high|medium|low",
                 estimate: "hours based on DOCUMENTATION (if exists) or description (1-8, >8 needs decompose)",
                 parallel: "Apply parallel-isolation-checklist against existing siblings. Default: false. Only true when ALL 5 isolation conditions proven.",

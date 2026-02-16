@@ -103,6 +103,11 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->defineParallelIsolationRules();
         $this->defineParallelIsolationChecklistGuideline();
 
+        $this->rule('file-scope-in-content')->critical()
+            ->text('When creating subtasks: task content MUST include explicit file scope: "FILES: [file1.php, file2.php, ...]" from file_manifest. For parallel: true subtasks ALSO include: "PARALLEL: this task may execute concurrently with siblings. Stay within listed file scope." Without explicit files, executors guess scope and parallel conflict detection fails.')
+            ->why('Parallel execution awareness reads file scopes from task content and comments. Decompose is the ONLY place where planned file scope is known before execution. If not included in content, the entire parallel safety chain starts blind.')
+            ->onViolation('Add "FILES: [...]" to content of EVERY subtask. Add "PARALLEL: ..." note for every parallel: true subtask.');
+
         $this->rule('logical-order')->high()
             ->text('Subtasks MUST be in logical execution order. Dependencies first, dependents after.')
             ->why('Prevents blocked work. User can execute subtasks sequentially without dependency issues.')
@@ -196,14 +201,17 @@ Return: {docs_structure: [], code_structure: [], split: [], conflicts: [], simil
             ->phase('Group by component (per docs), order by dependency, estimate each')
             ->phase('PARALLEL ISOLATION: Apply parallel-isolation-checklist for each subtask pair. Setup/foundation tasks → always parallel: false.')
             ->phase(Store::as('SUBTASK_PLAN', '[{title, content, estimate, priority, order, parallel, file_manifest: [files], doc_reference}]'))
+            ->phase('CONTENT ENRICHMENT: For each subtask in PLAN:')
+            ->phase('  - Include "FILES: [file_manifest]" in content — executor needs explicit file scope')
+            ->phase(Operator::if('subtask.parallel === true', '  - Append to content: "PARALLEL: this task may execute concurrently with sibling tasks. Stay within listed file scope. Other siblings will read your scope from task comment."'))
 
             // Stage 5: Approve
             ->phase('Show: | Order | Parallel | Subtask | Est | Priority | Doc Ref |')
             ->phase('Visualize parallel groups: sequential tasks = "→", parallel tasks = "⇉"')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create {count} subtasks? (yes/no/modify)"'))
 
-            // Stage 6: Create
-            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $TASK_ID, priority, estimate, order, parallel, tags: ["decomposed"]}]}'))
+            // Stage 6: Create (content MUST contain FILES: [...] and PARALLEL note if parallel: true)
+            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content (with FILES + PARALLEL note), parent_id: $TASK_ID, priority, estimate, order, parallel, tags: ["decomposed"]}]}'))
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
 
             // Return to pending — decomposition done, task awaits execution
