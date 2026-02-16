@@ -154,6 +154,9 @@ class TaskSyncInclude extends IncludeArchetype
         // PARALLEL ISOLATION (from trait - strict criteria for parallel execution)
         $this->defineParallelIsolationRules();
 
+        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when parallel: true)
+        $this->defineParallelExecutionAwarenessRules();
+
         // SUBTASKS HANDLING
         $this->rule('subtasks-before-parent')->high()
             ->text('Parent task with pending subtasks: complete subtasks FIRST. Order by: order field (strict). -y = execute per parallel flags, no -y = show list and ask.');
@@ -200,6 +203,16 @@ class TaskSyncInclude extends IncludeArchetype
 
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
+            // 1.25 Parallel execution awareness (if parallel: true → identify siblings, interpret statuses, check memory)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
+                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
+                Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status}'),
+                Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress — ONLY these are concurrent threats'),
+                VectorMemoryMcp::call('search_memories', '{query: "PARALLEL SCOPE parent #$TASK.parent_id", limit: 10, tags: ["parallel-scope"]}') . ' → ' . Store::as('REGISTERED_SIBLING_SCOPES', '{task_id → [files] — match against ACTIVE_SIBLINGS only, ignore completed/pending}'),
+                'STATUS: pending={N} (not started, no threat). completed={N} (done, stable). in_progress={N} (concurrent — cross-reference scopes). in_progress without scope in memory = still planning, NOT red flag.',
+                'LOG: "PARALLEL CONTEXT: {total} siblings ({active} active, {pending} pending, {done} completed). Active scopes: {matched or NONE}."',
+            ]))
 
             // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
@@ -300,6 +313,12 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Store::as('PLAN', '[{step, file, action, changes, rationale}]'))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'execute immediately', 'show plan, wait "yes"'))
 
+            // 5.4 Register own file scope in vector memory (parallel communication channel)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true', [
+                Store::as('MY_FILE_SCOPE', '{all unique files from $PLAN steps}'),
+                VectorMemoryMcp::call('store_memory', '{content: "PARALLEL SCOPE Task #$VECTOR_TASK_ID (parent #$TASK.parent_id): files: [$MY_FILE_SCOPE]. Status: in_progress.", category: "other", tags: ["parallel-scope", "parent-$TASK.parent_id"]}'),
+            ]))
+
             // 5.5 Dependency check & install
             ->phase(Operator::if('PLAN requires new dependencies', [
                 Store::as('DEPS_NEEDED', '[{package, version?, dev?}]'),
@@ -316,6 +335,15 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('GIT_STATUS') . ' has uncommitted changes', 'LOG: uncommitted changes detected. Proceeding carefully — will NOT stash or checkout.'))
             ->phase(Store::as('CHANGED_FILES', '[]'))
             ->phase(Store::as('FILE_BACKUPS', '{} — map of file_path → original_content for rollback via Edit/Write'))
+
+            // 5.9 Final parallel conflict check (re-fetch — siblings may have started and registered scopes since phase 1.25)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true', [
+                VectorMemoryMcp::call('search_memories', '{query: "PARALLEL SCOPE parent #$TASK.parent_id", limit: 10, tags: ["parallel-scope"]}') . ' → ' . Store::as('SIBLING_SCOPES', '{task_id → [files] — re-fetched, may have new entries}'),
+                'Match SIBLING_SCOPES against ACTIVE_SIBLINGS (in_progress only). Ignore scopes from completed/pending siblings — not concurrent threats.',
+                'Cross-reference ' . Store::get('MY_FILE_SCOPE') . ' vs active sibling scopes → ' . Store::as('SHARED_FILES', '{overlapping files with ACTIVE siblings — FORBIDDEN}'),
+                Operator::if(Store::get('SHARED_FILES') . ' not empty', 'WARN: "SHARED FILES with active siblings: {SHARED_FILES}. DO NOT edit. Record as SCOPE EXTENSION NEEDED."'),
+                Operator::if(Store::get('SHARED_FILES') . ' empty', 'No conflicts with active siblings. Proceed.'),
+            ]))
 
             // 6. Execute with tracking (NEVER use git checkout/stash/restore for rollback)
             ->phase(Operator::forEach('step in ' . Store::get('PLAN'), [

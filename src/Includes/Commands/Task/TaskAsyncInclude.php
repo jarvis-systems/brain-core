@@ -75,6 +75,9 @@ class TaskAsyncInclude extends IncludeArchetype
         // PARALLEL ISOLATION (from trait - strict criteria for parallel execution)
         $this->defineParallelIsolationRules();
 
+        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when parallel: true)
+        $this->defineParallelExecutionAwarenessRules();
+
         // AUTO-APPROVE MODE (-y flag behavior for delegation)
         $this->rule('auto-approve-autonomy')->high()
             ->text('-y flag = FULL AUTONOMY. Brain delegates ALL work without asking. Auto: select agents, determine parallel vs sequential, handle agent failures, rollback on critical failure.')
@@ -178,6 +181,16 @@ class TaskAsyncInclude extends IncludeArchetype
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
+            // 1.25 Parallel execution awareness (if parallel: true → identify siblings, interpret statuses, check memory)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
+                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
+                Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status}'),
+                Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress — ONLY these are concurrent threats'),
+                VectorMemoryMcp::call('search_memories', '{query: "PARALLEL SCOPE parent #$TASK.parent_id", limit: 10, tags: ["parallel-scope"]}') . ' → ' . Store::as('REGISTERED_SIBLING_SCOPES', '{task_id → [files] — match against ACTIVE_SIBLINGS only, ignore completed/pending}'),
+                'STATUS: pending={N} (not started, no threat). completed={N} (done, stable). in_progress={N} (concurrent — cross-reference scopes). in_progress without scope in memory = still planning, NOT red flag.',
+                'LOG: "PARALLEL CONTEXT: {total} siblings ({active} active, {pending} pending, {done} completed). Active scopes: {matched or NONE}."',
+            ]))
+
             // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
 
@@ -256,6 +269,22 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Store::as('PLAN', '[{agent, subtask, files, parallel: bool, order, is_critical: bool}]'))
             ->phase('Each agent prompt MUST include: task description, file scope, memory hints, security rules, validation requirements')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'execute immediately', 'show plan, wait "yes"'))
+
+            // 5.5 Register own file scope in vector memory (parallel communication channel)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true', [
+                Store::as('MY_FILE_SCOPE', '{all unique files from $PLAN agent subtasks}'),
+                VectorMemoryMcp::call('store_memory', '{content: "PARALLEL SCOPE Task #$VECTOR_TASK_ID (parent #$TASK.parent_id): files: [$MY_FILE_SCOPE]. Status: in_progress.", category: "other", tags: ["parallel-scope", "parent-$TASK.parent_id"]}'),
+            ]))
+
+            // 5.6 Final parallel conflict check (re-fetch — siblings may have started and registered scopes since phase 1.25)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true', [
+                VectorMemoryMcp::call('search_memories', '{query: "PARALLEL SCOPE parent #$TASK.parent_id", limit: 10, tags: ["parallel-scope"]}') . ' → ' . Store::as('SIBLING_SCOPES', '{task_id → [files] — re-fetched, may have new entries}'),
+                'Match SIBLING_SCOPES against ACTIVE_SIBLINGS (in_progress only). Ignore scopes from completed/pending siblings — not concurrent threats.',
+                'Cross-reference ' . Store::get('MY_FILE_SCOPE') . ' vs active sibling scopes → ' . Store::as('SHARED_FILES', '{overlapping files with ACTIVE siblings — FORBIDDEN}'),
+                Operator::if(Store::get('SHARED_FILES') . ' not empty', 'WARN: "SHARED FILES with active siblings: {SHARED_FILES}. DO NOT edit. Record as SCOPE EXTENSION NEEDED. Pass to ALL agents."'),
+                Operator::if(Store::get('SHARED_FILES') . ' empty', 'No conflicts with active siblings. Proceed with delegation.'),
+            ]))
+
             ->phase(Store::as('DELEGATION_STATE', '{agent_tasks: [], started_at: timestamp}'))
 
             // 6. Execute via agents with tracking
@@ -395,6 +424,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('14. HALLUCINATION: "Verify EVERY method/class/function call exists with correct signature. Read source to confirm. NEVER assume API from naming convention."')
             ->text('15. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."')
             ->text('16. TEST COVERAGE: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework from project, follow existing test patterns/structure. Run written tests to verify passing. NEVER skip — validator will reject without tests."')
-            ->text('17. COMMENT CONTEXT: "Task comment contains accumulated inter-session context: {$COMMENT_CONTEXT}. Use memory IDs to fetch prior findings. Use file_paths as starting points. Respect decisions already made. Avoid repeating failures. DO NOT ignore comment history."');
+            ->text('17. COMMENT CONTEXT: "Task comment contains accumulated inter-session context: {$COMMENT_CONTEXT}. Use memory IDs to fetch prior findings. Use file_paths as starting points. Respect decisions already made. Avoid repeating failures. DO NOT ignore comment history."')
+            ->text('18. PARALLEL CONTEXT: "IF $PARALLEL_SIBLINGS not empty: Other agents are executing sibling tasks RIGHT NOW. Your file scope (from planning): {MY_FILE_SCOPE}. Sibling scopes (from vector memory, REAL files): {SIBLING_SCOPES}. SHARED/FORBIDDEN files: {SHARED_FILES}. Modify ONLY files in YOUR scope. Out-of-scope file needed → DO NOT edit, record in task comment as SCOPE EXTENSION NEEDED. Shared files (config, .env, migrations, routes) → NEVER edit in parallel context."');
     }
 }

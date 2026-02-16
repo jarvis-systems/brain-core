@@ -818,4 +818,51 @@ trait TaskCommandCommonTrait
             ->why('Sub-agents do not inherit parent rules. Without explicit prohibition, agents will use git for rollback and destroy parallel work.')
             ->onViolation('Add git prohibition to agent prompt before delegation.');
     }
+
+    // =========================================================================
+    // PARALLEL EXECUTION AWARENESS (RUNTIME CONTEXT)
+    // =========================================================================
+
+    /**
+     * Define parallel execution awareness rules.
+     * When a task has parallel: true, the executing agent MUST understand
+     * that sibling tasks may be running concurrently on the same codebase.
+     * Agent must stay strictly within its task's file scope and never touch
+     * files that siblings might be modifying.
+     * Complements defineParallelIsolationRules() which covers task CREATION.
+     * This method covers task EXECUTION.
+     * Used by: TaskSyncInclude, TaskAsyncInclude.
+     */
+    protected function defineParallelExecutionAwarenessRules(): void
+    {
+        $this->rule('parallel-execution-awareness')->critical()
+            ->text('If $TASK.parallel === true: you are in PARALLEL CONTEXT. Other agents may be executing sibling tasks RIGHT NOW on the same codebase. IMMEDIATELY after loading task: fetch sibling tasks (same parent_id, parallel: true) to understand what they touch. Build $PARALLEL_SIBLINGS context. Stay STRICTLY within your task file scope.')
+            ->why('parallel: true means this task was designed to run concurrently with siblings. Without awareness of sibling scopes, agent may accidentally modify shared files, causing conflicts and lost work across parallel sessions.')
+            ->onViolation('Fetch siblings with same parent_id. Build parallel context. Restrict to own file scope.');
+
+        $this->rule('parallel-strict-scope')->critical()
+            ->text('In PARALLEL CONTEXT: modify ONLY files explicitly described in your task content or directly required by it. If you need to modify a file NOT in your task scope → DO NOT modify it. Record in task comment: "SCOPE EXTENSION NEEDED: {file} — reason: {why}". Let validation or next sequential task handle it.')
+            ->why('Parallel sibling may be modifying that same file right now. Touching out-of-scope files = race condition, merge conflict, or overwritten work.')
+            ->onViolation('ABORT out-of-scope edit. Add to task comment as scope extension request. Continue with in-scope work only.');
+
+        $this->rule('parallel-shared-files-forbidden')->high()
+            ->text('In PARALLEL CONTEXT: shared files (config, .env, migrations, routes, shared services referenced by 2+ siblings) are FORBIDDEN to edit. If your task requires editing shared file → record in comment, complete everything else, mark completed with warning.')
+            ->why('Shared files are #1 source of parallel conflicts. Two agents editing same config simultaneously = one overwrites the other. Unrecoverable without manual merge.')
+            ->onViolation('Do NOT edit shared file. Record need in task comment. Complete remaining in-scope work.');
+
+        $this->rule('parallel-scope-registration')->critical()
+            ->text('In PARALLEL CONTEXT: after planning (when actual files known), STORE own scope to vector memory: "PARALLEL SCOPE Task #{id} (parent #{parent_id}): files: [list]". Tags: ["parallel-scope", "parent-{parent_id}"]. This is the COMMUNICATION CHANNEL — siblings search memory to find your real file scope.')
+            ->why('Task content is vague description, not file list. Only after planning do you know REAL files. Memory registration lets siblings see actual scope instead of guessing from content.')
+            ->onViolation('After planning, before execution: store file scope to vector memory with parallel-scope tag.');
+
+        $this->rule('parallel-scope-from-memory')->critical()
+            ->text('In PARALLEL CONTEXT: before execution, SEARCH vector memory for sibling scopes: tags ["parallel-scope"]. Use REGISTERED scopes (from memory) for $SHARED_FILES detection, NOT guesses from task content. Memory empty = siblings haven\'t planned yet, proceed with caution.')
+            ->why('Guessing file scope from task content is unreliable. Vector memory contains ACTUAL planned files from siblings. Only reliable source for conflict detection between parallel agents.')
+            ->onViolation('Search memory for parallel-scope entries. Use registered files for cross-reference. Never guess from content.');
+
+        $this->rule('parallel-status-interpretation')->high()
+            ->text('parallel: true does NOT mean siblings are running RIGHT NOW. It means they CAN run concurrently. Status interpretation: pending = not started, zero threat, ignore for conflict detection. completed = already done, files stable and committed, no active conflict. in_progress = potentially active, the ONLY status that matters for conflict detection. in_progress WITHOUT scope in memory = sibling still planning or just started, NOT a red flag, proceed normally. in_progress WITH scope in memory = REAL concurrent data, cross-reference for conflicts. Do NOT restrict yourself based on pending/completed siblings. Do NOT panic when in_progress sibling has no memory scope.')
+            ->why('Without status interpretation, agents overreact: restrict themselves for pending tasks that haven\'t started, fear completed tasks that are done, panic when in_progress siblings lack memory scope. Causes unnecessary self-limitation and blocked work.')
+            ->onViolation('Check sibling STATUS before reacting. Only in_progress + registered scope = actionable conflict data. Everything else = awareness only, not restriction.');
+    }
 }
