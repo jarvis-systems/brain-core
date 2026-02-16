@@ -49,6 +49,11 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();
 
+        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
+        $this->defineParallelExecutionAwarenessRules();
+        $this->defineValidatorParallelCosmeticRule();
+        $this->defineScopedGitCheckpointRule();
+
         // FAILURE-AWARE VALIDATION (prevent repeating failed test approaches)
         $this->rule('failure-history-mandatory')->critical()
             ->text('BEFORE test validation: search memory category "debugging" for KNOWN FAILURES related to this task. Pass to agents. Agents MUST NOT use test approaches that already failed.')
@@ -105,6 +110,15 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
+            // 1.25 Parallel execution awareness (test validator: check if siblings are active)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
+                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
+                Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status, comment}'),
+                Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress'),
+                'Extract "PARALLEL SCOPE: [...]" from each ACTIVE_SIBLINGS comment → ' . Store::as('SIBLING_SCOPES', '{sibling_id → [files]}'),
+                'LOG: "PARALLEL CONTEXT (test validator): {total} siblings ({active} active). Active scopes: {SIBLING_SCOPES or NONE}. Test fixes on active sibling files will be DEFERRED."',
+            ]))
+
             // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started test validation", append_comment: true}'))
 
@@ -125,7 +139,7 @@ class TaskTestValidateInclude extends IncludeArchetype
 
             // 4. TDD MODE (pending tasks)
             ->phase(Operator::if(Store::get('IS_TDD'), [
-                TaskTool::agent('explore', 'TDD TEST CREATION for #{TASK.id}: 1) Analyze requirements from docs + task.content, 2) Search memory for test patterns, 3) CREATE test files (unit, feature, integration), 4) Tests MUST fail initially (not implemented). Return: {created_tests: [{file, methods}], total_methods}.'),
+                TaskTool::agent('explore', 'TDD TEST CREATION for #{TASK.id}: 1) Analyze requirements from docs + task.content, 2) Search memory for test patterns, 3) CREATE test files (unit, feature, integration), 4) Tests MUST fail initially (not implemented). PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → create test files ONLY for THIS task scope, avoid test files that import/test active sibling classes. Return: {created_tests: [{file, methods}], total_methods}.'),
                 Store::as('TDD_RESULT', '{created tests}'),
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "TDD MODE: Tests created.\\nFiles: {list}\\nMethods: {count}\\nNext: /task:sync or /task:async to implement.", append_comment: true}'),
                 'Report: TDD complete, tests created, next steps. STOP.',
@@ -134,21 +148,21 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 5. VALIDATION MODE (completed tasks)
             ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), [
                 // 5a. Test discovery
-                TaskTool::agent('explore', 'TEST DISCOVERY for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find test files related to task files + consumer tests ONLY. IF root → find all test files. Search: tests/, spec/. Return: [{file, type, methods, scope: "direct|consumer|all"}].') . ' → ' . Store::as('TESTS'),
+                TaskTool::agent('explore', 'TEST DISCOVERY for #{TASK.id} (subtask={IS_SUBTASK}): IF subtask → find test files related to task files + consumer tests ONLY. IF root → find all test files. Search: tests/, spec/. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → exclude test files that ONLY test sibling-scope classes. Return: [{file, type, methods, scope: "direct|consumer|all"}].') . ' → ' . Store::as('TESTS'),
 
                 // 5b. Parallel validation (scaled to complexity)
                 Operator::if(Store::get('IS_SIMPLE'), [
                     // Simple: 2 agents
                     Operator::parallel([
-                        TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs requirements vs tests. WRITE missing tests inline. Return: {gaps_fixed, tests_created}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}). ' . $testScopingInstruction . ' SUBTASK: find related test files by class name/path, run by EXPLICIT file path or --filter. FORBIDDEN: any test command without file path or --filter (composer test, php artisan test, phpunit without args). ROOT: run full suite. FIX failing inline. Return: {scoped, passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs requirements vs tests. WRITE missing tests inline. PARALLEL CONTEXT: {SIBLING_SCOPES}. If file in active sibling scope → DEFER fix to comment. Return: {gaps_fixed, tests_created, deferred: []}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}). ' . $testScopingInstruction . ' SUBTASK: find related test files by class name/path, run by EXPLICIT file path or --filter. FORBIDDEN: any test command without file path or --filter (composer test, php artisan test, phpunit without args). ROOT: run full suite. FIX failing inline — BUT check SIBLING_SCOPES first, defer if file in active sibling scope. Return: {scoped, passed, failed, fixed, deferred: []}.'),
                     ]),
                 ], [
                     // Complex: 3 agents
                     Operator::parallel([
-                        TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs vs tests. WRITE missing inline. Fix cosmetic. Return: {gaps_fixed, created, cosmetic_fixed}.'),
-                        TaskTool::agent('explore', 'QUALITY + FIX: Check bloat (>3 mocks, >50 lines, copy-paste). REFACTOR inline. Return: {bloated_fixed, refactored}.'),
-                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}). ' . $testScopingInstruction . ' SUBTASK: find related test files by class name/path, run by EXPLICIT file path or --filter. FORBIDDEN: any test command without file path or --filter (composer test, php artisan test, phpunit without args). ROOT: run full suite. FIX failing/flaky inline. Return: {scoped, passed, failed, fixed}.'),
+                        TaskTool::agent('explore', 'COVERAGE + FIX: Compare docs vs tests. WRITE missing inline. Fix cosmetic — BUT check SIBLING_SCOPES first, defer if file in active sibling scope. Return: {gaps_fixed, created, cosmetic_fixed, deferred: []}.'),
+                        TaskTool::agent('explore', 'QUALITY + FIX: Check bloat (>3 mocks, >50 lines, copy-paste). REFACTOR inline — BUT check SIBLING_SCOPES first, defer if file in active sibling scope. Return: {bloated_fixed, refactored, deferred: []}.'),
+                        TaskTool::agent('explore', 'EXECUTION + FIX for #{TASK.id} (subtask={IS_SUBTASK}). ' . $testScopingInstruction . ' SUBTASK: find related test files by class name/path, run by EXPLICIT file path or --filter. FORBIDDEN: any test command without file path or --filter (composer test, php artisan test, phpunit without args). ROOT: run full suite. FIX failing/flaky inline — BUT check SIBLING_SCOPES first, defer if file in active sibling scope. Return: {scoped, passed, failed, fixed, deferred: []}.'),
                     ]),
                 ]),
                 Store::as('VALIDATION_RESULT', '{aggregated from agents}'),
@@ -157,8 +171,13 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 6. Complete (validation mode)
             ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "Test validation PASSED. Fixes: {summary}", append_comment: true}'),
-                // Git checkpoint — commit tested work
-                BashTool::call('git add -A && git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [tested]"'),
+                // Git checkpoint — commit tested work (parallel = scoped files, non-parallel = full checkpoint with memory/)
+                Operator::if(Store::get('TASK') . '.parallel === true AND ACTIVE_SIBLINGS exist', [
+                    BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope files (excludes memory/ and sibling work)',
+                ], [
+                    BashTool::call('git add -A') . ' → NON-PARALLEL: full state checkpoint INCLUDING memory/ for complete revert capability',
+                ]),
+                BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [tested]"'),
                 Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still tested. Continue.'),
                 'Report: created={N}, fixed={N}, cosmetic={N}. STOP.',
             ]));

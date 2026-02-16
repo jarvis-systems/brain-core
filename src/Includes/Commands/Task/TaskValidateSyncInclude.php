@@ -112,6 +112,11 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
         $this->defineParallelIsolationRules();
 
+        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
+        $this->defineParallelExecutionAwarenessRules();
+        $this->defineValidatorParallelCosmeticRule();
+        $this->defineScopedGitCheckpointRule();
+
         // Quality gates
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
         $testGateCmd = $qualityCommands['TEST'] ?? '';
@@ -143,6 +148,15 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
+            // 1.25 Parallel execution awareness (validator: check if siblings are active before inline fixes)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
+                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
+                Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status, comment}'),
+                Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress'),
+                'Extract "PARALLEL SCOPE: [...]" from each ACTIVE_SIBLINGS comment → ' . Store::as('SIBLING_SCOPES', '{sibling_id → [files]}'),
+                'LOG: "PARALLEL CONTEXT (sync validator): {total} siblings ({active} active). Active scopes: {SIBLING_SCOPES or NONE}. Cosmetic fixes on active sibling files will be DEFERRED."',
+            ]))
 
             ->phase(Store::as('TASK_PARENT_ID', '$VECTOR_TASK_ID'))
 
@@ -260,7 +274,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
             ->phase('4.5 CLEANUP: Scan for unused imports, dead code, orphaned helpers, debug statements')
 
-            ->phase('During validation: cosmetic found → Edit → fix → COSMETIC_FIXES++ → continue')
+            ->phase('During validation: cosmetic found → check SIBLING_SCOPES (if parallel) → file in active sibling scope? → DEFER to comment. File safe? → Edit → fix → COSMETIC_FIXES++ → continue')
             ->phase(Operator::if(Store::get('KNOWN_FAILURES') . ' not empty', 'Before creating fix-task: verify proposed fix is NOT in known failures. Match → research alternative.'))
 
             // 5. Aggregate
@@ -280,8 +294,13 @@ class TaskValidateSyncInclude extends IncludeArchetype
             // 7. Complete
             ->phase(Operator::if('CREATED_TASKS.count = 0 AND FUNCTIONAL_COUNT = 0', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Sync validation PASSED", append_comment: true}'),
-                // Git checkpoint — commit validated work
-                BashTool::call('git add -A && git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
+                // Git checkpoint — commit validated work (parallel = scoped files, non-parallel = full checkpoint with memory/)
+                Operator::if(Store::get('TASK') . '.parallel === true AND ACTIVE_SIBLINGS exist', [
+                    BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope files (excludes memory/ and sibling work)',
+                ], [
+                    BashTool::call('git add -A') . ' → NON-PARALLEL: full state checkpoint INCLUDING memory/ for complete revert capability',
+                ]),
+                BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
                 Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue.'),
             ]))
             ->phase(Operator::if('CREATED_TASKS.count > 0', [

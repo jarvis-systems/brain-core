@@ -817,6 +817,11 @@ trait TaskCommandCommonTrait
             ->text('When delegating to agents: ALWAYS include in prompt: "FORBIDDEN: git checkout, git restore, git stash, git reset, git clean. Rollback = Read + Write. Git is READ-ONLY."')
             ->why('Sub-agents do not inherit parent rules. Without explicit prohibition, agents will use git for rollback and destroy parallel work.')
             ->onViolation('Add git prohibition to agent prompt before delegation.');
+
+        $this->rule('memory-folder-sacred')->critical()
+            ->text('memory/ folder contains SQLite databases (vector memory + tasks). SACRED — protect at ALL times. NEVER git checkout/restore/reset/clean memory/ — these DESTROY all project knowledge irreversibly. In PARALLEL CONTEXT: use "git add {specific_files}" (task-scope only) — memory/ excluded implicitly because it is not in task files. In NON-PARALLEL context: "git add -A" is safe and DESIRED — includes memory/ for full state checkpoint preserving knowledge base alongside code.')
+            ->why('memory/ is the project persistent brain. Destructive git commands on memory/ = total knowledge loss. In parallel mode, concurrent SQLite writes + git add -A = binary merge conflicts and staged half-done sibling work. In sequential mode, committing memory/ preserves full project state for safe revert.')
+            ->onViolation('NEVER destructive git on memory/. Parallel: git add specific files only (memory/ not in scope). Non-parallel: git add -A (full checkpoint with memory/).');
     }
 
     // =========================================================================
@@ -859,5 +864,40 @@ trait TaskCommandCommonTrait
             ->text('parallel: true does NOT mean siblings are running RIGHT NOW. It means they CAN run concurrently. Status interpretation: pending = not started, zero threat, ignore for conflict detection. completed = already done, files stable and committed, no active conflict. in_progress = potentially active, the ONLY status that matters for conflict detection. in_progress WITHOUT scope in memory = sibling still planning or just started, NOT a red flag, proceed normally. in_progress WITH scope in memory = REAL concurrent data, cross-reference for conflicts. Do NOT restrict yourself based on pending/completed siblings. Do NOT panic when in_progress sibling has no memory scope.')
             ->why('Without status interpretation, agents overreact: restrict themselves for pending tasks that haven\'t started, fear completed tasks that are done, panic when in_progress siblings lack memory scope. Causes unnecessary self-limitation and blocked work.')
             ->onViolation('Check sibling STATUS before reacting. Only in_progress + registered scope = actionable conflict data. Everything else = awareness only, not restriction.');
+    }
+
+    // =========================================================================
+    // VALIDATOR PARALLEL COSMETIC DEFERRAL
+    // =========================================================================
+
+    /**
+     * Define validator-specific parallel cosmetic deferral rule.
+     * Validators making inline cosmetic fixes must check if the target file
+     * is in an active sibling's scope before editing.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineValidatorParallelCosmeticRule(): void
+    {
+        $this->rule('validator-parallel-cosmetic-defer')->high()
+            ->text('In PARALLEL CONTEXT: before making inline cosmetic fix, check if file is in ACTIVE sibling\'s scope (from $SIBLING_SCOPES). File in active sibling scope → DO NOT fix, record in task comment: "DEFERRED COSMETIC: {file}:{line} — {issue}. Reason: file in active sibling #{id} scope." File NOT in any active scope → safe to fix inline. This applies to ALL inline fixes: whitespace, formatting, typos, import sorting, comment cleanup.')
+            ->why('Validator cosmetic fixes (Edit) on files being actively modified by a parallel executor = race condition. Even a whitespace fix overwrites the executor\'s in-memory file content, creating silent data loss or merge conflicts.')
+            ->onViolation('Check $SIBLING_SCOPES before Edit. Active sibling owns file → defer cosmetic fix to task comment. Fix will be picked up by next validation pass after sibling completes.');
+    }
+
+    // =========================================================================
+    // SCOPED GIT CHECKPOINT (MEMORY/ SACRED)
+    // =========================================================================
+
+    /**
+     * Define scoped git checkpoint rule.
+     * Git commits during validation MUST exclude memory/ and scope to task files in parallel context.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineScopedGitCheckpointRule(): void
+    {
+        $this->rule('scoped-git-checkpoint')->critical()
+            ->text('Git checkpoint commits scope depends on context: 1) PARALLEL CONTEXT: "git add {task_file1} {task_file2}" — commit ONLY task-scope files. memory/ excluded implicitly (not in task files). Prevents staging other agents\' uncommitted work and SQLite binary conflicts. 2) NON-PARALLEL context: "git add -A" — full state checkpoint, INCLUDES memory/ for complete project state preservation. 3) If commit fails (pre-commit hook) → LOG and continue, work is still valid.')
+            ->why('In parallel context, multiple agents write to memory/ SQLite and codebase concurrently. "git add -A" stages everything: other agents\' half-done work + binary SQLite mid-write = corrupted checkpoint. In non-parallel, "git add -A" is safe and DESIRED — memory/ commit preserves knowledge base alongside code for full revert capability.')
+            ->onViolation('Parallel: "git add {specific_files}" (task scope only). Non-parallel: "git add -A" (full checkpoint with memory/).');
     }
 }

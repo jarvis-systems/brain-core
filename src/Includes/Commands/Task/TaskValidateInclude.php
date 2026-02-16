@@ -139,6 +139,11 @@ class TaskValidateInclude extends IncludeArchetype
         // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
         $this->defineParallelIsolationRules();
 
+        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
+        $this->defineParallelExecutionAwarenessRules();
+        $this->defineValidatorParallelCosmeticRule();
+        $this->defineScopedGitCheckpointRule();
+
         // COSMETIC ROLLBACK
         $this->rule('cosmetic-atomic')->medium()
             ->text('Cosmetic fixes by agents MUST be atomic with validation. If validation creates fix-task (functional issues found), cosmetic changes STILL committed. Cosmetic improvements are always safe to keep.')
@@ -217,6 +222,15 @@ class TaskValidateInclude extends IncludeArchetype
 
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+
+            // 1.25 Parallel execution awareness (validator: check if siblings are active before inline fixes)
+            ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
+                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
+                Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status, comment}'),
+                Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress'),
+                'Extract "PARALLEL SCOPE: [...]" from each ACTIVE_SIBLINGS comment → ' . Store::as('SIBLING_SCOPES', '{sibling_id → [files]}'),
+                'LOG: "PARALLEL CONTEXT (validator): {total} siblings ({active} active). Active scopes: {SIBLING_SCOPES or NONE}. Cosmetic fixes on active sibling files will be DEFERRED."',
+            ]))
 
             // 1.3 SUBTASKS CHECK
             ->phase(Store::as('HAS_FIX_SUBTASKS', Store::get('SUBTASKS') . ' contains ANY subtask with tag "validation-fix"'))
@@ -369,10 +383,11 @@ MISSION: COMPLETION CHECK
 5. Check ONLY files from TASK_FILES list
 6. Detect garbage: unused imports, dead code, debug statements, commented code
 7. PATTERN CONSISTENCY: Grep for similar classes/methods in codebase — verify implementation follows established project patterns and conventions
-8. Fix cosmetic issues inline (whitespace, formatting)
+8. Fix cosmetic issues inline (whitespace, formatting) — BUT IN PARALLEL CONTEXT: check SIBLING_SCOPES first. File in active sibling scope → DO NOT fix, record as "DEFERRED COSMETIC: {file}:{line} — {issue}"
 9. FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
+10. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → before ANY Edit, verify file is NOT in their scope. Deferred cosmetics are NOT failures.
 
-Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: []}'),
+Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: [], cosmetic_deferred: []}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
@@ -400,10 +415,11 @@ MISSION: CODE QUALITY (static analysis only, NO test execution)
 6. IMPACT RADIUS: For each changed file, Grep who imports/uses/extends it. Verify consumers are NOT broken by changes. Changed public signature → all callers must be updated.
 7. LOGIC EDGE CASES: For each changed function, verify: what happens with null input? empty collection? boundary values (0, -1, MAX)? error path?
 8. Run ONLY these non-test quality gates: ' . $nonTestGateList . '
-9. Fix cosmetic issues inline
+9. Fix cosmetic issues inline — BUT IN PARALLEL CONTEXT: check SIBLING_SCOPES first. File in active sibling scope → defer to comment.
 10. FORBIDDEN: running test commands — Testing agent handles ALL test execution exclusively
+11. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → verify file ownership before Edit. Deferred cosmetics are NOT failures.
 
-Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], hallucinated_calls: [], broken_consumers: [], edge_case_issues: [], static_analysis_result: {}}'),
+Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], hallucinated_calls: [], broken_consumers: [], edge_case_issues: [], static_analysis_result: {}, cosmetic_deferred: []}'),
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}
@@ -454,6 +470,7 @@ QUALITY CHECKS (both scoped and root):
 5. If suspect flaky → run 2x to confirm
 
 If test approach mentioned in KNOWN_FAILURES → find ALTERNATIVE approach
+PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → run ONLY tests for THIS task files. Do NOT run tests that touch active sibling files.
 
 Return JSON: {scoped: bool, test_files_found: [], consumer_tests_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: [], quality_gate_result: {}}'),
                 TaskTool::agent('explore', '
@@ -483,15 +500,17 @@ PERFORMANCE (check each file):
 2. Memory: loading unbounded data, missing pagination
 3. If new dependencies added → run audit
 
-CLEANUP (check each file):
+CLEANUP (check each file — BUT IN PARALLEL CONTEXT: check SIBLING_SCOPES before fixing):
 1. Unused imports/use/require statements
 2. Dead code: unreachable after refactoring, orphaned functions/methods
 3. Commented-out code blocks (not doc comments)
 4. Debug/temporary statements left behind
+If file in active sibling scope → DO NOT fix cleanup inline, record as "DEFERRED COSMETIC"
 
 FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
+PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → verify file ownership before ANY Edit. Deferred cleanups are NOT failures.
 
-Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: [], dead_code: [], debug_statements: []}'),
+Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: [], dead_code: [], debug_statements: [], cosmetic_deferred: []}'),
             ]))
 
             // 5. Finalize (IRON LAW: fix-task created = "pending" ALWAYS. MCP will reset status anyway when child starts. NO "validated" with children.)
@@ -529,8 +548,12 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                 Store::get('FILTERED_ISSUES') . '=0 AND no fix-task needed',
                 [
                     VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
-                    // 5.7 Git checkpoint — commit validated work
-                    BashTool::call('git add -A') . ' → stage all changes (validated = safe to commit)',
+                    // 5.7 Git checkpoint — commit validated work (parallel = scoped files, non-parallel = full checkpoint with memory/)
+                    Operator::if(Store::get('TASK') . '.parallel === true AND ACTIVE_SIBLINGS exist', [
+                        BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope files (excludes memory/ and sibling work)',
+                    ], [
+                        BashTool::call('git add -A') . ' → NON-PARALLEL: full state checkpoint INCLUDING memory/ for complete revert capability',
+                    ]),
                     BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
                     Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue to report.'),
                 ],
