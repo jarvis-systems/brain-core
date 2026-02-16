@@ -527,7 +527,13 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
 
             ->phase(Operator::if(
                 Store::get('FILTERED_ISSUES') . '=0 AND no fix-task needed',
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
+                [
+                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated"}'),
+                    // 5.7 Git checkpoint — commit validated work
+                    BashTool::call('git add -A') . ' → stage all changes (validated = safe to commit)',
+                    BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
+                    Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue to report.'),
+                ],
                 [
                     VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["validation-fix"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
                     VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',

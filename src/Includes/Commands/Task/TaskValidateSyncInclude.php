@@ -280,6 +280,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
             // 7. Complete
             ->phase(Operator::if('CREATED_TASKS.count = 0 AND FUNCTIONAL_COUNT = 0', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Sync validation PASSED", append_comment: true}'),
+                // Git checkpoint — commit validated work
+                BashTool::call('git add -A && git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
+                Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue.'),
             ]))
             ->phase(Operator::if('CREATED_TASKS.count > 0', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation found issues. Fix-tasks: {count}", append_comment: true}'),

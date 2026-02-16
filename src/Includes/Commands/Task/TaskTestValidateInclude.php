@@ -157,6 +157,9 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 6. Complete (validation mode)
             ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "tested", comment: "Test validation PASSED. Fixes: {summary}", append_comment: true}'),
+                // Git checkpoint — commit tested work
+                BashTool::call('git add -A && git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [tested]"'),
+                Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still tested. Continue.'),
                 'Report: created={N}, fixed={N}, cosmetic={N}. STOP.',
             ]));
 
