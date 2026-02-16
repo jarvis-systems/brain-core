@@ -27,7 +27,10 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status, validation results, or issues without REAL tool calls. Fake results = CRITICAL VIOLATION.');
         $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
         $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
-        $this->rule('auto-approve')->high()->text('-y flag = auto-approve. Skip "Proceed?" questions, but STILL show progress. User sees everything, just no approval prompts.');
+        $this->rule('auto-approve')->critical()
+            ->text('-y flag = FULL auto-pilot. Skip ALL questions to user: approval prompts, strategy decisions, ambiguity resolution. On ANY decision fork: choose the conservative/non-blocking option automatically. NEVER use AskUserQuestion or similar tools in -y mode.')
+            ->why('User explicitly chose autonomous mode. Every question breaks the flow and defeats the purpose of -y. Conservative choice = safe default that does not block pipeline.')
+            ->onViolation('Choose Option 1 (conservative/safe/non-blocking). Log the decision made and why. Continue without stopping.');
 
         $this->rule('no-direct-test-execution')->critical()
             ->text('Brain NEVER runs tests or quality gates directly via Bash during validation. ALL test execution MUST go through validation agents ONLY. Brain role = orchestrate agents + aggregate results. ZERO exceptions.')
@@ -329,7 +332,8 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('  - DOCS_PATHS: file paths from ' . Store::get('DOCS_INDEX') . ' (if relevant)')
             ->phase('  - HAS_PARENT: ' . Store::get('TASK') . '.parent_id exists (true = subtask = scoped tests, false = root task = full suite)')
             ->phase('  - COMMENT_CONTEXT: ' . Store::get('COMMENT_CONTEXT') . ' — accumulated inter-session history (memory IDs, files touched, failures, decisions)')
-            ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data INCLUDING $COMMENT_CONTEXT'))
+            ->phase('  - AUTO_APPROVE: ' . Store::get('HAS_AUTO_APPROVE') . ' (true = -y mode, agent MUST NOT ask user questions)')
+            ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data INCLUDING $COMMENT_CONTEXT and $AUTO_APPROVE'))
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
@@ -341,6 +345,9 @@ CONTEXT (provided by validator):
 - Related memories: {MEMORY_IDS}
 - Documentation paths: {DOCS_PATHS}
 - Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
+- Auto-approve: {AUTO_APPROVE}
+
+IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
@@ -373,6 +380,9 @@ CONTEXT (provided by validator):
 - Files to check: {TASK_FILES}
 - Related memories: {MEMORY_IDS}
 - Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
+- Auto-approve: {AUTO_APPROVE}
+
+IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
@@ -401,6 +411,9 @@ CONTEXT (provided by validator):
 - Files to check: {TASK_FILES}
 - Has parent: {HAS_PARENT} (true = subtask, false = root task)
 - Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
+- Auto-approve: {AUTO_APPROVE}
+
+IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
 
 KNOWN FAILURES (DO NOT SUGGEST THESE):
 {KNOWN_FAILURES_TEXT}
@@ -449,6 +462,9 @@ CONTEXT (provided by validator):
 - Task content: {TASK_CONTENT}
 - Files to check: {TASK_FILES}
 - Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
+- Auto-approve: {AUTO_APPROVE}
+
+IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
 
 KNOWN FAILURES:
 {KNOWN_FAILURES_TEXT}
