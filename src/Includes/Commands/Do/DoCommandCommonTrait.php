@@ -16,7 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
  * Provides reusable rule and guideline definitions for do-related commands.
  *
  * Patterns identified across 4 Do command files:
- * - Input capture (RAW_INPUT, HAS_Y_FLAG/HAS_AUTO_APPROVE, TASK_DESCRIPTION/VALIDATION_TARGET)
+ * - Input capture (RAW_INPUT, HAS_AUTO_APPROVE, TASK_DESCRIPTION/VALIDATION_TARGET)
  * - Entry point blocking rule
  * - Zero distractions rule
  * - Auto-approval handling
@@ -42,13 +42,13 @@ trait DoCommandCommonTrait
 
     /**
      * Define input capture guideline for do:async/do:sync commands.
-     * Captures $RAW_INPUT, $HAS_Y_FLAG, $TASK_DESCRIPTION
+     * Captures $RAW_INPUT, $HAS_AUTO_APPROVE, $TASK_DESCRIPTION
      */
-    protected function defineInputCaptureWithYFlagGuideline(): void
+    protected function defineInputCaptureWithDescriptionGuideline(): void
     {
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
             ->text(Store::as('TASK_DESCRIPTION', '{$RAW_INPUT with flags removed}'));
     }
 
@@ -230,17 +230,16 @@ trait DoCommandCommonTrait
      * Generate auto-approval phase logic for do commands.
      * Returns an array of phases for Operator::if blocks.
      *
-     * @param string $variableName Variable name to check (e.g., 'HAS_Y_FLAG', 'HAS_AUTO_APPROVE')
      * @return array Phases with auto-approval logic
      */
-    protected function getAutoApprovalPhases(string $variableName = 'HAS_AUTO_APPROVE'): array
+    protected function getAutoApprovalPhases(): array
     {
         return [
-            Operator::if('$'.$variableName.' === true', [
+            Operator::if('$HAS_AUTO_APPROVE === true', [
                 'AUTO-APPROVED (unattended mode)',
-                Operator::output([($variableName === 'HAS_Y_FLAG' ? '🤖' : '✅').' Auto-approved via -y flag']),
+                Operator::output(['✅ Auto-approved via -y flag']),
             ]),
-            Operator::if('$'.$variableName.' === false', [
+            Operator::if('$HAS_AUTO_APPROVE === false', [
                 'WAIT for user approval',
                 Operator::verify('User approved'),
                 Operator::if('rejected', 'Modify plan → Re-present → WAIT'),

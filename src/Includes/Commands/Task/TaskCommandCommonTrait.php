@@ -234,7 +234,7 @@ trait TaskCommandCommonTrait
     {
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
             ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
             ->text(Store::as('TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
     }
@@ -247,7 +247,7 @@ trait TaskCommandCommonTrait
     {
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
             ->text(Store::as('TASK_DESCRIPTION', '{$RAW_INPUT with -y flag removed}'));
     }
 
@@ -375,9 +375,9 @@ trait TaskCommandCommonTrait
     protected function defineMandatoryUserApprovalRule(): void
     {
         $this->rule('mandatory-user-approval')->critical()
-            ->text('EVERY operation MUST have explicit user approval BEFORE execution. Present plan → WAIT for approval → Execute. NO auto-execution. EXCEPTION: If $HAS_Y_FLAG is true, auto-approve.')
+            ->text('EVERY operation MUST have explicit user approval BEFORE execution. Present plan → WAIT for approval → Execute. NO auto-execution. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve.')
             ->why('User maintains control. No surprises. Flag -y enables automated execution.')
-            ->onViolation('STOP. Wait for explicit user approval (unless $HAS_Y_FLAG is true).');
+            ->onViolation('STOP. Wait for explicit user approval (unless $HAS_AUTO_APPROVE is true).');
     }
 
     /**

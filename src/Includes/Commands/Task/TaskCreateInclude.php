@@ -81,9 +81,7 @@ class TaskCreateInclude extends IncludeArchetype
             ->onViolation('If codebase exploration found files → include as FILES in content. If parallel: true → MUST include whatever file scope is known.');
 
         // INPUT CAPTURE
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('TASK_DESCRIPTION', '{extracted from RAW_INPUT}'));
+        $this->defineInputCaptureWithDescriptionGuideline();
 
         // WORKFLOW
         $this->guideline('workflow')

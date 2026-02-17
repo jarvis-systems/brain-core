@@ -148,6 +148,7 @@ class ConvertCommand extends Command
                     $builderStart = microtime(true);
                     $xmlOutput = XmlBuilder::from($structure);
                     $timings['builder'] += (microtime(true) - $builderStart) * 1000;
+                    $xmlOutput = static::resolveVarExporterStrings($xmlOutput);
                     $xmlOutput = str_replace("\\", "\\\\", $xmlOutput);
                     $result[$file] = [
                         ...$defaultData,
@@ -205,6 +206,62 @@ class ConvertCommand extends Command
         }
 
         return OK;
+    }
+
+    /**
+     * Resolve VarExporter string concatenation artifacts.
+     *
+     * VarExporter represents multi-line strings as PHP concatenation:
+     *   '{'."\n".'    thought: "Plan"'."\n".'}'
+     *
+     * This resolves them back to clean multi-line text:
+     *   {
+     *       thought: "Plan"
+     *   }
+     */
+    protected static function resolveVarExporterStrings(string $input): string
+    {
+        $q = "'";
+
+        // Single-quoted content: '...' (may contain \' escaped quotes)
+        $sqContent = $q . '(?:[^' . $q . '\\\\]|\\\\.)*' . $q;
+        // Double-quoted escape sequence: "\n", "\n\n", "\t" etc.
+        $dqEscape = '"(?:\\\\[nrtv])+"';
+        // A segment is either type
+        $segment = '(?:' . $sqContent . '|' . $dqEscape . ')';
+        // Full expression: 2+ segments joined by . with optional whitespace
+        // (*NO_JIT) prevents JIT stack overflow on large inputs (50KB+)
+        $fullPattern = '/(*NO_JIT)' . $segment . '(?:\s*\.\s*' . $segment . ')+/s';
+
+        $result = preg_replace_callback(
+            $fullPattern,
+            static function ($match) use ($q) {
+                $resolved = '';
+
+                $sqPat = $q . '((?:[^' . $q . '\\\\]|\\\\.)*)' . $q;
+                $dqPat = '"((?:\\\\[nrtv])+)"';
+
+                preg_match_all('/(*NO_JIT)' . $sqPat . '|' . $dqPat . '/s', $match[0], $segs, PREG_SET_ORDER);
+
+                foreach ($segs as $seg) {
+                    if (isset($seg[1]) && $seg[1] !== '') {
+                        $resolved .= str_replace("\\'", "'", $seg[1]);
+                    } elseif (isset($seg[2]) && $seg[2] !== '') {
+                        $resolved .= strtr($seg[2], [
+                            '\\n' => "\n",
+                            '\\t' => "\t",
+                            '\\r' => "\r",
+                            '\\v' => "\v",
+                        ]);
+                    }
+                }
+
+                return $resolved;
+            },
+            $input
+        );
+
+        return $result ?? $input;
     }
 
     /**

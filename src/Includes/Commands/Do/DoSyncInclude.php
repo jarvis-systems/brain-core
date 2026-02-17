@@ -39,9 +39,9 @@ class DoSyncInclude extends IncludeArchetype
             ->onViolation('Remove Task() calls. Execute directly.');
 
         $this->rule('single-approval-gate')->critical()
-            ->text('User approval REQUIRED before execution. Present plan, WAIT for confirmation, then execute without interruption. EXCEPTION: If $HAS_Y_FLAG is true, auto-approve (skip waiting for user confirmation).')
+            ->text('User approval REQUIRED before execution. Present plan, WAIT for confirmation, then execute without interruption. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve (skip waiting for user confirmation).')
             ->why('Single checkpoint for simple tasks - approve once, execute fully. The -y flag enables unattended/scripted execution.')
-            ->onViolation('STOP. Wait for user approval before execution (unless $HAS_Y_FLAG is true).');
+            ->onViolation('STOP. Wait for user approval before execution (unless $HAS_AUTO_APPROVE is true).');
 
         $this->rule('atomic-execution')->critical()
             ->text('Execute ONLY approved plan steps. NO improvisation, NO "while we\'re here" additions. Atomic changes only.')
@@ -67,7 +67,7 @@ class DoSyncInclude extends IncludeArchetype
         $this->guideline('phase1-context-analysis')
             ->goal('Analyze task and gather context from conversation + memory')
             ->example()
-            ->phase(Store::as('HAS_Y_FLAG', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
+            ->phase(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
             ->phase(Store::as('TASK', '{$TASK_DESCRIPTION with flags removed, trimmed}'))
             ->phase('Analyze conversation: requirements, constraints, preferences, prior decisions')
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "similar: {$TASK}", limit: 5, category: "code-solution"}'))
@@ -132,11 +132,11 @@ class DoSyncInclude extends IncludeArchetype
                 '⚠️ APPROVAL REQUIRED',
                 '✅ approved/yes | ❌ no/modifications',
             ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === true', [
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === true', [
                 'AUTO-APPROVED (unattended mode)',
                 Operator::output(['🤖 Auto-approved via -y flag']),
             ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === false', [
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
                 'WAIT for user approval',
                 Operator::verify('User approved'),
                 Operator::if('rejected', 'Modify plan → Re-present → WAIT'),

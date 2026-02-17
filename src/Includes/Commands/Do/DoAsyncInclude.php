@@ -32,9 +32,9 @@ class DoAsyncInclude extends IncludeArchetype
         $this->defineZeroDistractionsRule();
 
         $this->rule('approval-gates-mandatory')->critical()
-            ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_Y_FLAG is true, auto-approve all gates (skip waiting for user confirmation).')
+            ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates (skip waiting for user confirmation).')
             ->why('Maintains user control and prevents unauthorized execution. The -y flag enables unattended/scripted execution.')
-            ->onViolation('STOP. Wait for user approval before continuing (unless $HAS_Y_FLAG is true).');
+            ->onViolation('STOP. Wait for user approval before continuing (unless $HAS_AUTO_APPROVE is true).');
 
         $this->rule('atomic-tasks-only')->critical()
             ->text('Each agent task MUST be small and focused: maximum 1-2 files per agent invocation. NO large multi-file changes.')
@@ -85,7 +85,7 @@ class DoAsyncInclude extends IncludeArchetype
             ->onViolation('Split into multiple Task() calls. One agent per file modification.');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->defineInputCaptureWithYFlagGuideline();
+        $this->defineInputCaptureWithDescriptionGuideline();
 
         // Phase 0: Conversation Context Analysis
         $this->guideline('phase0-context-analysis')
@@ -141,11 +141,11 @@ class DoAsyncInclude extends IncludeArchetype
                 '⚠️  APPROVAL CHECKPOINT #1',
                 '✅ approved/yes | ❌ no/modifications',
             ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === true', [
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === true', [
                 'AUTO-APPROVED (unattended mode)',
                 Operator::output(['🤖 Auto-approved via -y flag']),
             ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === false', [
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
                 'WAIT for user approval',
                 Operator::verify('User approved'),
                 Operator::if('rejected', 'Modify plan → Re-present → WAIT'),
@@ -218,11 +218,11 @@ class DoAsyncInclude extends IncludeArchetype
                 '✅ Type "approved" or "yes" to begin.',
                 '❌ Type "no" or provide modifications.',
             ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === true', [
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === true', [
                 'AUTO-APPROVED (unattended mode)',
                 Operator::output(['🤖 Auto-approved via -y flag']),
             ]))
-            ->phase(Operator::if('$HAS_Y_FLAG === false', [
+            ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
                 'WAIT for user approval',
                 Operator::verify('User confirmed approval'),
                 Operator::if('user rejected', [
