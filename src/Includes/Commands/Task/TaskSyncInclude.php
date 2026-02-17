@@ -438,7 +438,10 @@ class TaskSyncInclude extends IncludeArchetype
 
             // 8. Complete
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Files: {changed_files}. Tests: {pass/skip/none}.", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, patterns used, learnings", category: "' . self::CAT_CODE_SOLUTION . '"}'));
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, patterns used, learnings", category: "' . self::CAT_CODE_SOLUTION . '"}'))
+
+            // NEXT (lifecycle reinforcement — at workflow end for recency)
+            ->phase('NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). ALWAYS validate after execution — NEVER suggest /task:sync or /task:async for next task before this task is validated.');
 
         // TDD mode
         $this->guideline('tdd-mode')->example()

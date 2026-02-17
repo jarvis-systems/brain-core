@@ -287,7 +287,18 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation found issues. Fix-tasks: {count}", append_comment: true}'),
             ]))
             ->phase(Operator::if('FUNCTIONAL_COUNT > 0', VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_patterns}. Root causes and fix approaches for future reference.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}') . ' ← ONLY issue patterns, not operational status'))
-            ->phase('Report: task, status, issues counts, cosmetic fixes, fix-tasks created');
+            ->phase('Report: task, status, issues counts, cosmetic fixes, fix-tasks created')
+
+            // NEXT (lifecycle reinforcement — at workflow end for recency)
+            ->phase('NEXT STEP — determine from lifecycle position:')
+            ->phase(Operator::if('status = "validated"', [
+                Operator::if('pending siblings exist (by order field)', 'NEXT: /task:sync {next_pending_sibling_by_order} [-y] (or /task:async)'),
+                Operator::if('no pending siblings AND task has parent_id', 'NEXT: /task:validate {parent_id} [-y] (all children done, validate parent)'),
+                Operator::if('no pending siblings AND no parent_id (root)', 'NEXT: all tasks complete'),
+            ]))
+            ->phase(Operator::if('status = "pending" (fix-tasks created)', 'NEXT: fix-tasks created, re-validate {$VECTOR_TASK_ID} after all fixes complete'))
+            ->phase(Operator::if('status = "pending" (blocked by parallel sibling)', 'NEXT: /task:validate-sync {$VECTOR_TASK_ID} [-y] — retry after blocking sibling completes'))
+            ->phase(Operator::if('status = "pending" (error/crash)', 'NEXT: /task:validate-sync {$VECTOR_TASK_ID} [-y] — retry validation'));
 
         // ERROR HANDLING
         $this->guideline('error-handling')->example()

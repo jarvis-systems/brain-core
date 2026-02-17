@@ -383,9 +383,32 @@ trait TaskCommandCommonTrait
     protected function defineNextStepFlowRule(): void
     {
         $this->rule('next-step-lifecycle')->critical()
-            ->text('NEXT step follows STRICT task lifecycle — NEVER skip stages. After /task:sync or /task:async: ALWAYS "NEXT: /task:validate {same_task_id} [-y]" (or /task:validate-sync). After /task:validate (or /task:validate-sync): if PASSED → "NEXT: /task:sync {next_sibling_id} [-y]" (or /task:async) or "NEXT: all tasks done" if no more siblings. If FAILED with fix-tasks → "NEXT: fix-tasks created, re-validate after fixes." After fix-task validated: if ALL sibling fix-tasks are done (completed/validated) → "NEXT: /task:validate {parent_id} [-y]" (re-validate parent that spawned fix-tasks). If remaining fix-tasks pending → "NEXT: /task:sync {next_fix_task_id} [-y]" (or /task:async). After /task:test-validate (TDD mode): "NEXT: /task:sync {same_task_id} [-y]" or "/task:async". After /task:test-validate (validation mode): "NEXT: /task:validate {same_task_id} [-y]". FORBIDDEN: suggesting /task:sync or /task:async of next task before current task is validated. A task is NOT done until validated.')
-            ->why('Task lifecycle is atomic: sync/async → validate → next. Skipping validate means unverified code enters the pipeline. Fix-task cycle is recursive: validate fails → fix-tasks created → execute fixes → validate fixes → re-validate parent. Each level must complete validation before bubbling up.')
-            ->onViolation('Replace NEXT with correct lifecycle step. Sync/async completed → validate same task. Validate passed → sync/async next task. Validate failed → fix or re-validate. Fix-task done + all siblings done → re-validate parent.');
+            ->text('NEXT step MUST follow strict task lifecycle. Your scope is THIS task — NEVER suggest actions on sibling tasks outside your lifecycle flow. FORBIDDEN: skipping validation after execution, suggesting execute before current task is validated, acting on sibling tasks with potentially stale state. Consult next-step-lifecycle-flow guideline for exact NEXT command. Workflow completion phases contain reinforcement — follow them.')
+            ->why('Each command reliably knows only its own task state. Sibling state may be stale — suggesting actions on siblings causes wrong commands (e.g. suggesting execute for already-validated task).')
+            ->onViolation('Apply next-step-lifecycle-flow guideline. When uncertain → suggest re-validate same task.');
+
+        $this->guideline('next-step-lifecycle-flow')
+            ->goal('Determine correct NEXT command based on current lifecycle position')
+            ->example()
+            ->phase('1. After /task:sync or /task:async (execution completed):')
+            ->phase('   NEXT: /task:validate {same_task_id} [-y] (or /task:validate-sync)')
+            ->phase('2. After /task:validate or /task:validate-sync — PASSED (status=validated):')
+            ->phase('   a) More pending siblings exist → NEXT: /task:sync {next_pending_sibling_by_order} [-y] (or /task:async)')
+            ->phase('   b) No pending siblings + task HAS parent → NEXT: /task:validate {parent_id} [-y] (validate parent, all children done)')
+            ->phase('   c) No pending siblings + NO parent (root) → NEXT: all tasks complete')
+            ->phase('3. After /task:validate FAILED — fix-tasks created:')
+            ->phase('   NEXT: fix-tasks created, re-validate {same_task_id} after all fixes complete')
+            ->phase('4. After /task:validate BLOCKED — test failures from parallel sibling (NOT this task):')
+            ->phase('   NEXT: /task:validate {same_task_id} [-y] (retry after blocking sibling completes)')
+            ->phase('5. After /task:validate FAILED — tool error/crash, no fix-tasks:')
+            ->phase('   NEXT: /task:validate {same_task_id} [-y] (retry validation)')
+            ->phase('6. After fix-task validated (task has "'.self::TAG_VALIDATION_FIX.'" tag):')
+            ->phase('   a) ALL sibling fix-tasks done → NEXT: /task:validate {parent_id} [-y] (re-validate parent)')
+            ->phase('   b) More fix-tasks pending → NEXT: /task:sync {next_fix_task_id} [-y] (or /task:async)')
+            ->phase('7. After /task:test-validate TDD mode (status was pending):')
+            ->phase('   NEXT: /task:sync {same_task_id} [-y] (or /task:async)')
+            ->phase('8. After /task:test-validate validation mode (status was completed):')
+            ->phase('   NEXT: /task:validate {same_task_id} [-y]');
     }
 
     // =========================================================================

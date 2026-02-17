@@ -187,8 +187,12 @@ class TaskTestValidateInclude extends IncludeArchetype
                 ]),
                 BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [tested]"'),
                 Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still tested. Continue.'),
-                'Report: created={N}, fixed={N}, cosmetic={N}. STOP.',
-            ]));
+                'Report: created={N}, fixed={N}, cosmetic={N}.',
+            ]))
+
+            // NEXT (lifecycle reinforcement — at workflow end for recency)
+            ->phase(Operator::if(Store::get('IS_TDD'), 'NEXT: /task:sync {$VECTOR_TASK_ID} [-y] (or /task:async). TDD tests written — now implement.'))
+            ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), 'NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). Tests validated — now full validation.'));
 
         // ERROR HANDLING
         $this->guideline('error-handling')->example()

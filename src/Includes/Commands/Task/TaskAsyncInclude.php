@@ -336,7 +336,10 @@ class TaskAsyncInclude extends IncludeArchetype
 
             // 9. Complete
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Agents: {list}. Files: {files}.", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'));
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'))
+
+            // NEXT (lifecycle reinforcement — at workflow end for recency)
+            ->phase('NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). ALWAYS validate after execution — NEVER suggest /task:sync or /task:async for next task before this task is validated.');
 
         // Agent reference
         $this->guideline('agents')
