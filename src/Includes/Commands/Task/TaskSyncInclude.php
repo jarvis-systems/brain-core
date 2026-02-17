@@ -213,7 +213,7 @@ class TaskSyncInclude extends IncludeArchetype
                 Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status, comment}'),
                 Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress — ONLY these are concurrent threats'),
                 'Extract "PARALLEL SCOPE: [...]" from each ACTIVE_SIBLINGS comment → ' . Store::as('SIBLING_SCOPES', '{sibling_id → [files from comment] — REAL planned files, not guesses}'),
-                'STATUS: pending={N} (not started, no threat). completed={N} (done, stable). in_progress={N} (concurrent). in_progress without scope in comment = still planning, NOT red flag.',
+                'INTERPRET SIBLINGS: pending={N} (not started, no threat). completed={N} (done, stable). in_progress={N} (concurrent). in_progress without scope in comment = still planning, NOT red flag.',
                 'LOG: "PARALLEL CONTEXT: {total} siblings ({active} active, {pending} pending, {done} completed). Active scopes from comments: {SIBLING_SCOPES or NONE}."',
             ]))
 

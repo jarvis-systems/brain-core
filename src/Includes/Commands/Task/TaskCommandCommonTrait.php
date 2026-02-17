@@ -330,7 +330,7 @@ trait TaskCommandCommonTrait
             ->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
 
         $this->rule('no-verbose')->critical()
-            ->text('FORBIDDEN: Wrapping actions in verbose XML response blocks (<meta>, <synthesis>, <plan>, <analysis>) before executing. Act FIRST, explain AFTER.');
+            ->text('FORBIDDEN: Wrapping actions in verbose commentary blocks (meta-analysis, synthesis, planning, reflection) before executing. Act FIRST, explain AFTER.');
     }
 
     // =========================================================================
@@ -464,11 +464,6 @@ trait TaskCommandCommonTrait
         $this->rule('functional-to-task')->critical()
             ->text('Functional issues = fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality.');
 
-        $this->rule('fix-task-blocks-validated')->critical()
-            ->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS.')
-            ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it.')
-            ->onViolation('ABORT validation. Set status="pending" BEFORE task_create. Never set "validated" if ANY fix-task exists.');
-
         $this->rule('test-coverage')->high()
             ->text('No test coverage = fix-task. Critical paths = 100%, other >= 80%.');
 
@@ -479,6 +474,37 @@ trait TaskCommandCommonTrait
             ->text('BEFORE creating fix-task: check if proposed solution matches known failure. If memory says "X does NOT work for Y" — DO NOT create task suggesting X. Research alternative or escalate.')
             ->why('Creating fix-task with known-failed solution = guaranteed failure + wasted effort.')
             ->onViolation('Search memory for proposed fix. Match found in debugging = BLOCK task creation, suggest alternative.');
+    }
+
+    // =========================================================================
+    // FIX-TASK GATING (VALIDATION CYCLE CONSISTENCY)
+    // =========================================================================
+
+    /**
+     * Define fix-task gating rules for validation cycle consistency.
+     * Canonical re-validation behavior after fix-tasks:
+     * - Fix-tasks present + all done → mandatory full re-validation from scratch
+     * - Intermediate parent without fix-tasks → aggregation fast-path
+     * - Fix-task exists → status NEVER "validated"
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude.
+     * NOT used by: TaskTestValidateInclude (inline fixes, no fix-task creation).
+     */
+    protected function defineFixTaskGatingRules(): void
+    {
+        $this->rule('fix-task-blocks-validated')->critical()
+            ->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS.')
+            ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it.')
+            ->onViolation('ABORT validation. Set status="pending" BEFORE task_create. Never set "validated" if ANY fix-task exists.');
+
+        $this->rule('revalidation-mandatory')->critical()
+            ->text('ALL fix-subtasks completed/validated → MANDATORY full re-validation from scratch. No fast-path, no aggregation-only. Fixes may introduce new issues, original validation may have missed gaps.')
+            ->why('Fix-tasks modify code that was already validated. Previous validation results are STALE. Only a full re-run catches regressions and new issues introduced by fixes.')
+            ->onViolation('Detect fix-subtasks via "validation-fix" tag. If ALL done → proceed to full validation, NEVER skip to "validated".');
+
+        $this->rule('aggregation-only-path')->high()
+            ->text('Intermediate parent (has parent_id) with ALL decomposition subtasks validated and NO fix-subtasks → aggregation fast-path. Cross-reference parent requirements vs subtask results. If all covered → "validated" without full re-run. If gaps → scope validation to uncovered requirements only. Root tasks ALWAYS get full validation (cross-subtask integration).')
+            ->why('Decomposition subtasks already validated their scope. Re-running full validation duplicates work. Root tasks need cross-subtask integration check that subtask validators never performed.')
+            ->onViolation('Check: has parent_id? No fix-subtasks? All subtasks validated? → aggregation. Root task → ALWAYS full validation.');
     }
 
     // =========================================================================

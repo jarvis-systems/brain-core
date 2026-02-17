@@ -71,6 +71,9 @@ class TaskValidateInclude extends IncludeArchetype
         // VALIDATION RULES (common from trait)
         $this->defineValidationCoreRules();
 
+        // FIX-TASK GATING (from trait - canonical re-validation cycle after fix-tasks)
+        $this->defineFixTaskGatingRules();
+
         // VALIDATION RULES (validate-specific)
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
         $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
