@@ -13,11 +13,8 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Provides detailed task status information based on user input. Supports time-based filters, status filters, grouping, and specific parent queries.')]
 class TaskStatusInclude extends IncludeArchetype
 {
-    /**
-     * Handle the architecture logic.
-     *
-     * @return void
-     */
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
         // Summary rule

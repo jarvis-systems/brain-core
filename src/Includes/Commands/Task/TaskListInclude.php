@@ -13,13 +13,13 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Task listing utility that queries vector storage and displays formatted task hierarchy with status and priority indicators. Supports filters: status, parent_id, tags, priority, limit.')]
 class TaskListInclude extends IncludeArchetype
 {
-    /**
-     * Handle the architecture logic.
-     *
-     * @return void
-     */
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
+        // TAG TAXONOMY (from trait - predefined tags for consistent display)
+        $this->defineTagTaxonomyRules();
+
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
