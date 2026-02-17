@@ -47,6 +47,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
 
+        // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
+        $this->defineFailurePolicyRules();
+
         // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
         $this->defineCodebasePatternReuseRule();
 

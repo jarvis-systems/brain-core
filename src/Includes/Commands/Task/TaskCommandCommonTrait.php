@@ -361,6 +361,36 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // FAILURE POLICY STATE MACHINE (UNIVERSAL BASELINE)
+    // =========================================================================
+
+    /**
+     * Define universal failure policy rules.
+     * Provides consistent, predictable behavior for the 3 most common failure scenarios:
+     * TOOL_ERROR, MISSING_DOCS, AMBIGUOUS_SPEC.
+     * This is a BASELINE — commands with more specific handling take precedence.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineFailurePolicyRules(): void
+    {
+        $this->rule('failure-policy-tool-error')->critical()
+            ->text('TOOL ERROR / MCP FAILURE: 1) Retry ONCE with same parameters. 2) Still fails → STOP current step. 3) Store failure to memory (category: "'.self::CAT_DEBUGGING.'", tags: ["'.self::MTAG_FAILURE.'"]). 4) Update task comment: "BLOCKED: {tool} failed after retry. Error: {msg}", append_comment: true. 5) -y mode: set status "stopped", abort. Interactive: ask user "Tool failed. Retry/Skip/Abort?".')
+            ->why('Consistent tool failure handling across all commands. One retry catches transient issues. More retries waste tokens on persistent failures.')
+            ->onViolation('Follow 5-step sequence. Max 1 retry for same tool call. Always store failure to memory.');
+
+        $this->rule('failure-policy-missing-docs')->high()
+            ->text('MISSING DOCS: 1) Apply aggressive-docs-search (3+ keyword variations). 2) All variations exhausted → conclude "no docs". 3) Proceed using: task.content (primary spec) + vector memory context + parent task context. 4) Log in task comment: "No documentation found after {N} search attempts. Proceeding with task.content.", append_comment: true. NOT a blocker — absence of docs is information, not failure.')
+            ->why('Missing docs must not block execution. task.content is the minimum viable specification. Blocking on missing docs causes pipeline stalls for tasks that never had docs.')
+            ->onViolation('Never block on missing docs. Search aggressively, then proceed with available context.');
+
+        $this->rule('failure-policy-ambiguous-spec')->high()
+            ->text('AMBIGUOUS SPEC: 1) Identify SPECIFIC ambiguity (not "task is unclear" but "field X: type A or B?"). 2) -y mode: choose conservative/safe interpretation, log decision in task comment: "DECISION: interpreted {X} as {Y} because {reason}", append_comment: true. 3) Interactive: ask ONE targeted question about the SPECIFIC gap. 4) After 1 clarification → proceed. NEVER ask open-ended "what did you mean?" or multiple follow-ups.')
+            ->why('Ambiguity paralysis wastes more time than conservative interpretation. One precise question is enough — if user wanted detailed spec, they would have written docs.')
+            ->onViolation('Identify specific gap. One question or auto-decide. Proceed.');
+    }
+
+    // =========================================================================
     // VALIDATION CORE RULES (SHARED VALIDATE/VALIDATE-SYNC)
     // =========================================================================
 

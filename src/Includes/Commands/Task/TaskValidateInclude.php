@@ -76,6 +76,9 @@ class TaskValidateInclude extends IncludeArchetype
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
 
+        // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
+        $this->defineFailurePolicyRules();
+
         // SECURITY VALIDATION (severity policy)
         $this->rule('security-injection')->critical()->text('Injection vulnerabilities = fix-task.');
         $this->rule('security-xss')->critical()->text('XSS vulnerabilities = fix-task.');

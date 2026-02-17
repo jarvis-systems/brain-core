@@ -57,6 +57,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         // FAILURE-AWARE VALIDATION (prevent repeating failed test approaches)
         $this->defineFailureAwarenessRules();
 
+        // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
+        $this->defineFailurePolicyRules();
+
         // CODEBASE CONSISTENCY (from trait - tests should follow existing test patterns)
         $this->defineCodebasePatternReuseRule();
 

@@ -59,6 +59,10 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // FAILURE-AWARE DELEGATION (CRITICAL - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
+
+        // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
+        $this->defineFailurePolicyRules();
+
         $this->rule('escalate-stuck-problems')->high()
             ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT delegate same approach. Research alternatives via web-research-master or escalate to user.')
             ->why('Definition of insanity: doing same thing expecting different results.');
