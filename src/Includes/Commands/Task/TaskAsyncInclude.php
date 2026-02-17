@@ -81,13 +81,8 @@ class TaskAsyncInclude extends IncludeArchetype
         // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when parallel: true)
         $this->defineParallelExecutionAwarenessRules();
 
-        // AUTO-APPROVE MODE (-y flag behavior for delegation)
-        $this->rule('auto-approve-autonomy')->high()
-            ->text('-y flag = FULL AUTONOMY. Brain delegates ALL work without asking. Auto: select agents, determine parallel vs sequential, handle agent failures, rollback on critical failure.')
-            ->why('User explicitly trusts Brain to orchestrate end-to-end. Interruptions defeat async purpose.');
-        $this->rule('interactive-mode')->high()
-            ->text('NO -y flag = INTERACTIVE. Ask before: major architectural decisions, multiple valid approaches, selecting between incompatible agent strategies, critical failures.')
-            ->why('User wants control over significant orchestration decisions.');
+        // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
+        $this->defineAutoApprovalRules();
 
         // AGENT INSTRUCTION REQUIREMENTS
         $this->rule('agent-dependency-instruction')->high()

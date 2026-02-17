@@ -36,8 +36,8 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->rule('understand-to-decompose')->critical()
             ->text('MUST understand task INTENT to decompose properly. Analyze: what are logical boundaries? what depends on what? Unknown library/pattern → context7 first.');
 
-        $this->rule('auto-approve')->high()
-            ->text('-y flag = auto-approve. Skip "Proceed?" but show progress.');
+        // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
+        $this->defineAutoApprovalRules();
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();

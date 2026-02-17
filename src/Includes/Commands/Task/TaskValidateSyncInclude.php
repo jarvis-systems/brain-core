@@ -37,8 +37,8 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->rule('validation-only')->critical()
             ->text('VALIDATION reads and audits. NEVER implement or fix functional code. Functional issues → create fix-task.');
 
-        $this->rule('auto-approve')->high()
-            ->text('-y flag = auto-approve. Skip "Proceed?" but show progress.');
+        // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
+        $this->defineAutoApprovalRules();
 
         // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
         $this->defineMachineReadableProgressRule();

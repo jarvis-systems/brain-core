@@ -65,8 +65,8 @@ class TaskCreateInclude extends IncludeArchetype
         $this->rule('fast-path')->high()
             ->text('Simple task (<140 chars, no "architecture/integration/multi-module"): skip heavy research, check duplicates + memory only.');
 
-        $this->rule('auto-approve')->high()
-            ->text('-y flag = auto-approve. Skip "Proceed?" but show task spec before creation.');
+        // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
+        $this->defineAutoApprovalRules();
 
         // PARALLEL ISOLATION (from trait - strict criteria for parallel: true)
         $this->defineParallelIsolationRules();

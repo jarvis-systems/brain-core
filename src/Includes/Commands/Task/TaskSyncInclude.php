@@ -83,13 +83,8 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
         $this->rule('understand-then-execute')->critical()->text('Understand INTENT behind task, not just literal text. Adapt examples to actual context.');
 
-        // AUTO-APPROVE MODE (-y flag behavior)
-        $this->rule('auto-approve-autonomy')->high()
-            ->text('-y flag = FULL AUTONOMY. Brain makes ALL decisions without asking. Auto: install dependencies, fix linter issues, run tests, rollback on failure, select best approach.')
-            ->why('User explicitly trusts Brain to complete task end-to-end. Interruptions defeat the purpose.');
-        $this->rule('interactive-mode')->high()
-            ->text('NO -y flag = INTERACTIVE. Ask before: installing dependencies, major architectural decisions, multiple valid approaches, destructive operations (delete, overwrite), breaking changes.')
-            ->why('User wants control over significant decisions.');
+        // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
+        $this->defineAutoApprovalRules();
 
         // DEPENDENCY HANDLING (language-agnostic)
         $this->rule('dependency-detection')->high()

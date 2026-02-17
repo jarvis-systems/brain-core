@@ -45,7 +45,7 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineMachineReadableProgressRule();
 
         // Common rules from trait
-        $this->defineAutoApprovalFlagRule();
+        $this->defineAutoApprovalRules();
         $this->defineVectorTaskIdRequiredRule('/do:test-validate');
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)

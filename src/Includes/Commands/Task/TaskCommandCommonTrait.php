@@ -552,15 +552,26 @@ trait TaskCommandCommonTrait
     }
 
     /**
-     * Define auto-approval-flag rule.
-     * Used by: TaskAsyncInclude, TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
+     * Define auto-approval and workflow atomicity rules.
+     * When -y flag is active, workflow executes to completion without stops.
+     * When -y is absent, workflow pauses at major decision points.
+     * Used by: ALL task command includes (except TaskBrainstormInclude - inherently interactive).
      */
-    protected function defineAutoApprovalFlagRule(): void
+    protected function defineAutoApprovalRules(): void
     {
-        $this->rule('auto-approval-flag')->critical()
-            ->text('If $HAS_AUTO_APPROVE is true, auto-approve all approval gates. Skip approval checkpoints and proceed directly.')
-            ->why('Flag -y enables automated execution without user interaction.')
-            ->onViolation('Check $HAS_AUTO_APPROVE before showing approval checkpoint.');
+        $this->rule('auto-approve-mode')->critical()
+            ->text('$HAS_AUTO_APPROVE = true → FULL AUTONOMY. Skip ALL approval gates, questions, strategy decisions, ambiguity resolution. On ANY decision fork: choose conservative/non-blocking option automatically. NEVER use AskUserQuestion or similar interactive tools. Workflow MUST execute to completion: all phases → final status update → git checkpoint. No intermediate stops, no "show results and wait for acknowledgment."')
+            ->why('User explicitly chose autonomous mode via -y flag. Every question breaks flow, risks hook-triggered terminal closure mid-pause, and defeats the purpose of automation.')
+            ->onViolation('Remove the question. Choose conservative option. Log decision in task comment. Continue to next phase without stopping.');
+
+        $this->rule('interactive-mode')->high()
+            ->text('$HAS_AUTO_APPROVE = false → INTERACTIVE. Present plan → wait for approval → execute. Ask before: major architectural decisions, multiple valid approaches, critical failures requiring user judgment.')
+            ->why('User wants control over significant decisions. Present options clearly, wait for explicit choice.');
+
+        $this->rule('workflow-atomicity')->critical()
+            ->text('In auto-approve mode, workflow is ATOMIC: execute ALL phases without intermediate stops until final status is set (completed/validated/tested/stopped). On error: set status to stopped with error details in comment, NEVER ask user what to do. Update task comment at each major milestone so interrupted workflow has recoverable state.')
+            ->why('Hook-triggered terminal closure during a pause leaves task in limbo with no recoverable state. Atomic execution minimizes pause windows. Milestone comments enable session recovery without re-running completed phases.')
+            ->onViolation('If paused in auto-approve mode: immediately resume. If error: set status=stopped, add error to comment, stop gracefully.');
     }
 
     /**
@@ -711,44 +722,7 @@ trait TaskCommandCommonTrait
             ]));
     }
 
-    // =========================================================================
-    // AUTO-APPROVAL CHECKPOINT
-    // =========================================================================
 
-    /**
-     * Define auto-approval checkpoint guideline.
-     * Used by: TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
-     *
-     * @param string $checkpointLabel Label for the checkpoint (e.g., 'VALIDATION', 'TEST VALIDATION')
-     * @param string $phaseHeader Phase header (e.g., '=== PHASE 1: APPROVAL ===')
-     */
-    protected function defineAutoApprovalCheckpointGuideline(string $checkpointLabel, string $phaseHeader = '=== PHASE 1: APPROVAL ==='): void
-    {
-        $this->guideline('phase1-approval')
-            ->goal('Check auto-approval flag and handle approval checkpoint')
-            ->example()
-            ->phase(Operator::output([$phaseHeader]))
-            ->phase(Operator::if('$HAS_AUTO_APPROVE === true', [
-                Operator::output(['Auto-approval enabled (-y flag). Skipping approval checkpoint.']),
-                VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "'.$checkpointLabel.' started (auto-approved)", append_comment: true}'),
-            ]))
-            ->phase(Operator::if('$HAS_AUTO_APPROVE === false', [
-                Operator::output([
-                    '',
-                    'APPROVAL CHECKPOINT',
-                    'Task: #{$VECTOR_TASK_ID} - {$VECTOR_TASK.title}',
-                    'Action: '.$checkpointLabel,
-                    '',
-                    'Type "approved" or "yes" to proceed.',
-                    'Type "no" to abort.',
-                ]),
-                'WAIT for user approval',
-                Operator::verify('User approved'),
-                VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "'.$checkpointLabel.' started", append_comment: true}'),
-            ]));
-    }
 
     // =========================================================================
     // COMPLETION STATUS UPDATE
