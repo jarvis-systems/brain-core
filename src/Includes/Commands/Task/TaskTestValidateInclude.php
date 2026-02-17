@@ -43,6 +43,7 @@ class TaskTestValidateInclude extends IncludeArchetype
 
         // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
         $this->defineMachineReadableProgressRule();
+        $this->defineNextStepFlowRule();
 
         // Common rules from trait
         $this->defineAutoApprovalRules();

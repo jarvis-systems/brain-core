@@ -42,6 +42,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
         $this->defineMachineReadableProgressRule();
+        $this->defineNextStepFlowRule();
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();

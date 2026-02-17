@@ -356,6 +356,20 @@ trait TaskCommandCommonTrait
             ->onViolation('Reformat to STATUS/RESULT/NEXT structure. Replace free-form text with structured lines.');
     }
 
+    /**
+     * Define task lifecycle flow rule.
+     * Enforces strict lifecycle: execute → validate → next task.
+     * Prevents skipping validation after execution.
+     * Used by: ALL executing/validating commands (Async, Sync, Validate, ValidateSync, TestValidate).
+     */
+    protected function defineNextStepFlowRule(): void
+    {
+        $this->rule('next-step-lifecycle')->critical()
+            ->text('NEXT step follows STRICT task lifecycle — NEVER skip stages. After execute (sync/async): ALWAYS "NEXT: /task:validate {same_task_id} [-y]". After validate: if PASSED → "NEXT: /task:execute {next_sibling_id} [-y]" or "NEXT: all tasks done" if no more siblings. If FAILED with fix-tasks → "NEXT: fix-tasks created, re-validate after fixes." After test-validate (TDD mode): "NEXT: /task:sync {same_task_id} [-y]" or "/task:async". After test-validate (validation mode): "NEXT: /task:validate {same_task_id} [-y]". FORBIDDEN: suggesting execute of next task before current task is validated. A task is NOT done until validated.')
+            ->why('Task lifecycle is atomic: execute → validate → next. Skipping validate means unverified code enters the pipeline, creating cascading quality issues. Each task must pass validation before workflow advances to the next task.')
+            ->onViolation('Replace NEXT with correct lifecycle step. Execute completed → validate same task. Validate passed → execute next task. Validate failed → fix or re-validate.');
+    }
+
     // =========================================================================
     // FAILURE AWARENESS (PREVENT REPEATING MISTAKES)
     // =========================================================================
