@@ -25,6 +25,7 @@ class TaskCreateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // IRON RULES
+        $this->defineStatusSemanticsRule();
         $this->rule('analyze-first')->critical()
             ->text('MUST analyze input thoroughly before creating. Extract: objective, scope, requirements, type (feature/bugfix/refactor/research/docs).');
 

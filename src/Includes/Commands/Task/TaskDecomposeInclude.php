@@ -29,6 +29,7 @@ class TaskDecomposeInclude extends IncludeArchetype
         // IRON EXECUTION RULES (execute immediately, no verbose)
         // =========================================================================
 
+        $this->defineStatusSemanticsRule();
         $this->rule('task-get-first')->critical()
             ->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze how to decompose.');
         $this->defineIronExecutionRules();

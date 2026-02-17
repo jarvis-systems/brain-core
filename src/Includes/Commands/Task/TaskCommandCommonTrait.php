@@ -318,6 +318,24 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // STATUS SEMANTICS (TASK LIFECYCLE DEFINITION)
+    // =========================================================================
+
+    /**
+     * Define task status semantics rule.
+     * Establishes clear, unambiguous meaning for each task status.
+     * Prevents agents from misusing "stopped" for failures/blocks.
+     * Used by: ALL task command includes.
+     */
+    protected function defineStatusSemanticsRule(): void
+    {
+        $this->rule('status-semantics')->critical()
+            ->text('Task status has STRICT semantics: "pending" = waiting to be worked on (includes failed/blocked tasks returned to queue). "in_progress" = currently being worked on. "completed" = implementation done, ready for validation. "tested" = tests written/passed. "validated" = passed all quality gates. "stopped" = PERMANENTLY CANCELLED — task is NOT needed, will NEVER be executed. ONLY set "stopped" when: user explicitly requests cancellation, OR task is provably unnecessary (duplicate, superseded, irrelevant). NEVER set "stopped" for: failures, blocks, validation issues, tool errors, missing dependencies. For these → set "pending" with detailed blocker in comment.')
+            ->why('Agents misuse "stopped" as "failed/blocked" which breaks workflow permanently. A stopped task is removed from pipeline — it will never be picked up again. A pending task with a blocker comment will be retried, either automatically or manually.')
+            ->onViolation('If about to set "stopped": verify it is a TRUE cancellation. If task failed or is blocked → set "pending" + comment explaining what happened. "stopped" is irreversible workflow termination.');
+    }
+
+    // =========================================================================
     // IRON EXECUTION RULES (UNIVERSAL ACROSS COMMANDS)
     // =========================================================================
 
@@ -409,9 +427,9 @@ trait TaskCommandCommonTrait
     protected function defineFailurePolicyRules(): void
     {
         $this->rule('failure-policy-tool-error')->critical()
-            ->text('TOOL ERROR / MCP FAILURE: 1) Retry ONCE with same parameters. 2) Still fails → STOP current step. 3) Store failure to memory (category: "'.self::CAT_DEBUGGING.'", tags: ["'.self::MTAG_FAILURE.'"]). 4) Update task comment: "BLOCKED: {tool} failed after retry. Error: {msg}", append_comment: true. 5) -y mode: set status "stopped", abort. Interactive: ask user "Tool failed. Retry/Skip/Abort?".')
-            ->why('Consistent tool failure handling across all commands. One retry catches transient issues. More retries waste tokens on persistent failures.')
-            ->onViolation('Follow 5-step sequence. Max 1 retry for same tool call. Always store failure to memory.');
+            ->text('TOOL ERROR / MCP FAILURE: 1) Retry ONCE with same parameters. 2) Still fails → STOP current step. 3) Store failure to memory (category: "'.self::CAT_DEBUGGING.'", tags: ["'.self::MTAG_FAILURE.'"]). 4) Update task comment: "BLOCKED: {tool} failed after retry. Error: {msg}", append_comment: true. 5) -y mode: set status "pending" (return to queue for retry), abort current workflow. Interactive: ask user "Tool failed. Retry/Skip/Abort?". NEVER set "stopped" on failure — "stopped" = permanently cancelled.')
+            ->why('Consistent tool failure handling across all commands. One retry catches transient issues. Failed task returns to pending queue — it is NOT cancelled, just needs another attempt or manual intervention.')
+            ->onViolation('Follow 5-step sequence. Max 1 retry for same tool call. Always store failure to memory. Status → pending, NEVER stopped.');
 
         $this->rule('failure-policy-missing-docs')->high()
             ->text('MISSING DOCS: 1) Apply aggressive-docs-search (3+ keyword variations). 2) All variations exhausted → conclude "no docs". 3) Proceed using: task.content (primary spec) + vector memory context + parent task context. 4) Log in task comment: "No documentation found after {N} search attempts. Proceeding with task.content.", append_comment: true. NOT a blocker — absence of docs is information, not failure.')
@@ -583,9 +601,9 @@ trait TaskCommandCommonTrait
             ->why('User wants control over significant decisions. Present options clearly, wait for explicit choice.');
 
         $this->rule('workflow-atomicity')->critical()
-            ->text('In auto-approve mode, workflow is ATOMIC: execute ALL phases without intermediate stops until final status is set (completed/validated/tested/stopped). On error: set status to stopped with error details in comment, NEVER ask user what to do. Update task comment at each major milestone so interrupted workflow has recoverable state.')
-            ->why('Hook-triggered terminal closure during a pause leaves task in limbo with no recoverable state. Atomic execution minimizes pause windows. Milestone comments enable session recovery without re-running completed phases.')
-            ->onViolation('If paused in auto-approve mode: immediately resume. If error: set status=stopped, add error to comment, stop gracefully.');
+            ->text('In auto-approve mode, workflow is ATOMIC: execute ALL phases without intermediate stops until final status is set (completed/validated/tested). On error: revert status to "pending" with error details in comment (task returns to queue), NEVER ask user what to do. NEVER set "stopped" — that means permanently cancelled. Update task comment at each major milestone so interrupted workflow has recoverable state.')
+            ->why('Hook-triggered terminal closure during a pause leaves task in limbo with no recoverable state. Atomic execution minimizes pause windows. Milestone comments enable session recovery without re-running completed phases. Failed tasks return to pending — they are not cancelled, just need another attempt.')
+            ->onViolation('If paused in auto-approve mode: immediately resume. If error: set status=pending, add error to comment, abort gracefully.');
     }
 
     /**
@@ -770,8 +788,8 @@ trait TaskCommandCommonTrait
             ]))
             ->phase(Operator::if('status === FAILED', [
                 VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "stopped", comment: "'.$processName.' failed: {reason}. Completed: {completed}/{total}", append_comment: true}'),
-                Operator::output(['Vector task #{$VECTOR_TASK_ID} stopped (failed)']),
+                    '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "'.$processName.' failed: {reason}. Completed: {completed}/{total}. Returned to queue for retry.", append_comment: true}'),
+                Operator::output(['Vector task #{$VECTOR_TASK_ID} returned to pending (failed, needs retry)']),
             ]))
             ->phase(Operator::output([
                 '',
@@ -1119,7 +1137,7 @@ trait TaskCommandCommonTrait
     {
         $this->guideline('status-priority-icons')
             ->goal('Format task output with clear visual hierarchy using emojis and readable structure')
-            ->text('Status icons: 📝 draft, ⏳ pending, 🔄 in_progress, ✅ completed, 🧪 tested, ✓ validated, ⏸️ stopped, ❌ canceled')
+            ->text('Status icons: ⏳ pending, 🔄 in_progress, ✅ completed, 🧪 tested, ✓ validated, ❌ stopped (cancelled/not needed)')
             ->text('Priority icons: 🔴 critical, 🟠 high, 🟡 medium, 🟢 low')
             ->text('Always prefix status/priority with corresponding emoji')
             ->text('Group tasks by status or parent, use indentation for hierarchy')

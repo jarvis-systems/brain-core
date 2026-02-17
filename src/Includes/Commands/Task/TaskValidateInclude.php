@@ -23,6 +23,7 @@ class TaskValidateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // IRON EXECUTION LAW - READ THIS FIRST
+        $this->defineStatusSemanticsRule();
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to validate.');
         $this->defineIronExecutionRules();
         $this->defineMachineReadableProgressRule();

@@ -23,6 +23,7 @@ class TaskTestValidateInclude extends IncludeArchetype
     protected function handle(): void
     {
         // IRON RULES
+        $this->defineStatusSemanticsRule();
         $this->rule('task-get-first')->critical()
             ->text('FIRST action = mcp__vector-task__task_get. Load task, determine mode (TDD vs Validation).');
 
