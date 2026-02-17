@@ -391,6 +391,32 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // SECRETS & PII PROTECTION (NO EXFILTRATION)
+    // =========================================================================
+
+    /**
+     * Define secrets and PII protection rules.
+     * Prevents exfiltration of sensitive data via chat output, task comments,
+     * or vector memory storage. Complements existing code-level security rules
+     * (security-no-secrets, security-secrets) which prevent hardcoding in code.
+     * These rules cover the OUTPUT and STORAGE vectors.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineSecretsPiiProtectionRules(): void
+    {
+        $this->rule('no-secret-exfiltration')->critical()
+            ->text('NEVER output sensitive data to chat/response: .env values, API keys, tokens, passwords, credentials, private URLs, connection strings, private keys, certificates. When reading config/.env for CONTEXT: extract key NAMES and STRUCTURE only, never raw values. If user asks to show .env or config with secrets: show key names, mask values as "***". If error output contains secrets: redact before displaying.')
+            ->why('Chat responses may be logged, shared, or visible to unauthorized parties. Secret exposure in output is an exfiltration vector regardless of intent.')
+            ->onViolation('REDACT immediately. Replace value with "***" or "[REDACTED]". Show key names only.');
+
+        $this->rule('no-secrets-in-storage')->critical()
+            ->text('NEVER store secrets, credentials, tokens, passwords, API keys, PII, or connection strings in task comments (task_update comment) or vector memory (store_memory content). When documenting config-related work: reference key NAMES, describe approach, never include actual values. If error log contains secrets: strip sensitive values before storing. Acceptable: "Updated DB_HOST in .env", "Rotated API_KEY for service X". Forbidden: "Set DB_HOST=192.168.1.5", "API_KEY=sk-abc123...".')
+            ->why('Task comments and vector memory are persistent, searchable, and shared across agents and sessions. Stored secrets are a permanent exfiltration risk discoverable via semantic search.')
+            ->onViolation('Review content before store_memory/task_update. Strip all literal secret values. Keep only key names and descriptions.');
+    }
+
+    // =========================================================================
     // VALIDATION CORE RULES (SHARED VALIDATE/VALIDATE-SYNC)
     // =========================================================================
 

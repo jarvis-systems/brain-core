@@ -31,6 +31,9 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();
 
+        // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
+        $this->defineSecretsPiiProtectionRules();
+
         // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
         $this->defineCodebasePatternReuseRule();
 

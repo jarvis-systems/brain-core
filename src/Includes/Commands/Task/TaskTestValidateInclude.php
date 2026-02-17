@@ -49,6 +49,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();
 
+        // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
+        $this->defineSecretsPiiProtectionRules();
+
         // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
         $this->defineParallelExecutionAwarenessRules();
         $this->defineValidatorParallelCosmeticRule();

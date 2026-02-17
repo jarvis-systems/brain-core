@@ -44,6 +44,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();
 
+        // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
+        $this->defineSecretsPiiProtectionRules();
+
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
 

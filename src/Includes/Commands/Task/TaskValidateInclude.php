@@ -39,6 +39,9 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();
 
+        // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
+        $this->defineSecretsPiiProtectionRules();
+
         // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
         $this->defineCodebasePatternReuseRule();
 
