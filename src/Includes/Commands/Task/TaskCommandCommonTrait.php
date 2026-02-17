@@ -330,7 +330,7 @@ trait TaskCommandCommonTrait
             ->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
 
         $this->rule('no-verbose')->critical()
-            ->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
+            ->text('FORBIDDEN: Wrapping actions in verbose XML response blocks (<meta>, <synthesis>, <plan>, <analysis>) before executing. Act FIRST, explain AFTER.');
 
         $this->rule('show-progress')->high()
             ->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
