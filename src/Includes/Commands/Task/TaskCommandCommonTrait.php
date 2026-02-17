@@ -319,9 +319,9 @@ trait TaskCommandCommonTrait
 
     /**
      * Define iron execution rules shared across all task commands.
-     * These are universal behavioral constraints that prevent hallucination,
-     * verbosity, and hidden execution.
+     * These are universal behavioral constraints that prevent hallucination and verbosity.
      * Each command still defines its own context-specific 'task-get-first' rule.
+     * Progress reporting is handled by defineMachineReadableProgressRule() separately.
      * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude, TaskDecomposeInclude.
      */
     protected function defineIronExecutionRules(): void
@@ -331,9 +331,25 @@ trait TaskCommandCommonTrait
 
         $this->rule('no-verbose')->critical()
             ->text('FORBIDDEN: Wrapping actions in verbose XML response blocks (<meta>, <synthesis>, <plan>, <analysis>) before executing. Act FIRST, explain AFTER.');
+    }
 
-        $this->rule('show-progress')->high()
-            ->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
+    // =========================================================================
+    // MACHINE-READABLE PROGRESS (STATUS/RESULT/NEXT OUTPUT CONTRACT)
+    // =========================================================================
+
+    /**
+     * Define machine-readable progress format rule.
+     * Standardized STATUS/RESULT/NEXT output contract for all executing commands.
+     * Ensures parseable, consistent progress reporting across all task execution workflows.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineMachineReadableProgressRule(): void
+    {
+        $this->rule('machine-readable-progress')->high()
+            ->text('ALL progress output MUST follow structured format. DURING EXECUTION: emit "STATUS: [phase_name] description" at each major workflow phase (task loaded, context gathered, agents delegated, validation running, etc.). AT COMPLETION: emit "RESULT: SUCCESS|PARTIAL|FAILED — key=value, key=value, summary" followed by "NEXT: recommended_action_or_command". No free-form progress — only STATUS/RESULT/NEXT lines. Examples: "STATUS: [loading] Task #42 loaded, mode=async, priority=high" | "STATUS: [context] 3 memories found, docs loaded" | "STATUS: [execution] 2 agents delegated" | "RESULT: SUCCESS — files=5, agents=3/3, memory=#123" | "NEXT: /task:validate #42".')
+            ->why('Structured format enables UI rendering, orchestrator parsing, progress aggregation, and consistent user experience. Without it, each command reports differently — impossible to parse or automate.')
+            ->onViolation('Reformat to STATUS/RESULT/NEXT structure. Replace free-form text with structured lines.');
     }
 
     // =========================================================================

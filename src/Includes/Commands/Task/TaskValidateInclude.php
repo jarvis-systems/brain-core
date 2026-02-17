@@ -25,6 +25,7 @@ class TaskValidateInclude extends IncludeArchetype
         // IRON EXECUTION LAW - READ THIS FIRST
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to validate.');
         $this->defineIronExecutionRules();
+        $this->defineMachineReadableProgressRule();
         $this->rule('auto-approve')->critical()
             ->text('-y flag = FULL auto-pilot. Skip ALL questions to user: approval prompts, strategy decisions, ambiguity resolution. On ANY decision fork: choose the conservative/non-blocking option automatically. NEVER use AskUserQuestion or similar tools in -y mode.')
             ->why('User explicitly chose autonomous mode. Every question breaks the flow and defeats the purpose of -y. Conservative choice = safe default that does not block pipeline.')

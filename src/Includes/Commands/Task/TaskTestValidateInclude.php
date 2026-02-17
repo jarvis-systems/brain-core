@@ -41,6 +41,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->rule('docs-coverage')->high()
             ->text('Every requirement in .docs/ MUST have test coverage. Missing = agent writes test.');
 
+        // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
+        $this->defineMachineReadableProgressRule();
+
         // Common rules from trait
         $this->defineAutoApprovalFlagRule();
         $this->defineVectorTaskIdRequiredRule('/do:test-validate');

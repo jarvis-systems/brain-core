@@ -40,6 +40,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->rule('auto-approve')->high()
             ->text('-y flag = auto-approve. Skip "Proceed?" but show progress.');
 
+        // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
+        $this->defineMachineReadableProgressRule();
+
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();

@@ -26,6 +26,7 @@ class TaskAsyncInclude extends IncludeArchetype
         // IRON EXECUTION LAW - READ THIS FIRST
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to delegate.');
         $this->defineIronExecutionRules();
+        $this->defineMachineReadableProgressRule();
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
