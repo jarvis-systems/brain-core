@@ -71,6 +71,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         // PARENT INHERITANCE
         $this->rule('parent-id-mandatory')->critical()
             ->text('ALL fix-tasks MUST have parent_id = $VECTOR_TASK_ID. No orphans.')
@@ -218,7 +221,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Validate? (yes/no)"'))
 
             // 3. Context (including failure history)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title}", limit: 5, category: "code-solution"}') . ' → ' . Store::as('MEMORY'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title}", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' → ' . Store::as('MEMORY'))
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← what already FAILED')
             ->phase(VectorTaskMcp::call('task_list', '{query: "{TASK.title}", limit: 5}') . ' → ' . Store::as('RELATED'))
             ->phase(Operator::if(
@@ -286,7 +289,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_list', '{query: "fix {TASK.title}", limit: 10}') . ' → check duplicates')
             ->phase(Store::as('TOTAL_ESTIMATE', 'critical*2h + major*1.5h + minor*0.5h + missing*4h'))
             ->phase(Operator::if('TOTAL_ESTIMATE <= 8 AND no duplicate', [
-                VectorTaskMcp::call('task_create', '{title: "Validation fixes: #{TASK.id}", content: "{issues}", parent_id: $TASK_PARENT_ID, priority: "{critical>0 ? high : medium}", estimate: {TOTAL_ESTIMATE}, parallel: false, tags: ["validation-fix"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
+                VectorTaskMcp::call('task_create', '{title: "Validation fixes: #{TASK.id}", content: "{issues}", parent_id: $TASK_PARENT_ID, priority: "{critical>0 ? high : medium}", estimate: {TOTAL_ESTIMATE}, parallel: false, tags: ["' . self::TAG_VALIDATION_FIX . '"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
                 Store::as('CREATED_TASKS[]', '{id}'),
             ]))
             ->phase(Operator::if('TOTAL_ESTIMATE > 8', 'Split into 5-8h batches, create multiple tasks'))
@@ -306,7 +309,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('CREATED_TASKS.count > 0', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation found issues. Fix-tasks: {count}", append_comment: true}'),
             ]))
-            ->phase(Operator::if('FUNCTIONAL_COUNT > 0', VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_patterns}. Root causes and fix approaches for future reference.", category: "debugging", tags: ["validation-issues"]}') . ' ← ONLY issue patterns, not operational status'))
+            ->phase(Operator::if('FUNCTIONAL_COUNT > 0', VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_patterns}. Root causes and fix approaches for future reference.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}') . ' ← ONLY issue patterns, not operational status'))
             ->phase('Report: task, status, issues counts, cosmetic fixes, fix-tasks created');
 
         // ERROR HANDLING

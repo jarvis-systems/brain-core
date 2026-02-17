@@ -76,6 +76,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         $this->rule('scale-agents')->high()
             ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
 

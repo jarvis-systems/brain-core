@@ -51,6 +51,9 @@ class TaskAsyncInclude extends IncludeArchetype
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         // CRITICAL THINKING FOR DELEGATION
         $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
         $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -219,7 +222,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND NOT $HAS_AUTO_APPROVE', 'Present: "Found N approaches: 1)... 2)... Which? (or your variant)"'))
 
             // 4. Context gathering (memory + local docs + FAILURES)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' ' . Store::as('MEMORY'))
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
             ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 3}') . ' ' . Store::as('RELATED'))
             ->phase(Operator::if(
@@ -300,7 +303,7 @@ class TaskAsyncInclude extends IncludeArchetype
                         'Abort remaining delegations',
                         'DO NOT rollback — other agents have uncommitted work. Leave files as-is.',
                         VectorTaskMcp::call('task_update', '{status: "pending", comment: "Critical agent failed: {error}. Files left as-is (no rollback — parallel safety).", append_comment: true}'),
-                        VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, agent: {name}, error: {msg}", category: "debugging"}'),
+                        VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, agent: {name}, error: {msg}", category: "' . self::CAT_DEBUGGING . '"}'),
                         Operator::abort('Critical agent failed, no rollback'),
                     ]),
                     Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Critical task failed. Abort all/Retry/Manual?"'),
@@ -336,7 +339,7 @@ class TaskAsyncInclude extends IncludeArchetype
 
             // 9. Complete
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Agents: {list}. Files: {files}.", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}", category: "code-solution"}'));
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'));
 
         // Agent reference
         $this->guideline('agents')
@@ -354,7 +357,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase('After implementation → ' . TaskTool::agent('explore', 'Run tests. Detect framework (jest, pytest, phpunit, pest, cargo test, go test). Report pass/fail.'))
             ->phase(Operator::if('all tests pass', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "TDD: All tests PASSED", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "TDD success: {feature}, delegation strategy: {summary}", category: "code-solution"}'),
+                VectorMemoryMcp::call('store_memory', '{content: "TDD success: {feature}, delegation strategy: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'),
             ]))
             ->phase(Operator::if('tests fail', [
                 'Analyze failure from agent report',

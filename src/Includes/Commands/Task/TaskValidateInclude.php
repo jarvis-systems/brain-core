@@ -56,6 +56,9 @@ class TaskValidateInclude extends IncludeArchetype
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         // PARENT INHERITANCE (IRON LAW)
         $this->rule('parent-id-mandatory')->critical()
             ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
@@ -286,7 +289,7 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started validation", append_comment: true}'))
 
             // 2. Context gathering (memory + docs + related tasks + FAILURES)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' ' . Store::as('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' ' . Store::as('MEMORY_CONTEXT'))
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
             ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 5}') . ' ' . Store::as('RELATED_TASKS'))
             ->phase(Operator::if(
@@ -324,7 +327,7 @@ class TaskValidateInclude extends IncludeArchetype
                         'basic checks pass',
                         VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Light validation passed (trivial task)", append_comment: true}'),
                         [
-                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["validation-fix"]}'),
+                            VectorTaskMcp::call('task_create', '{title: "Light validation fixes: #ID", content: basic_issues, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["' . self::TAG_VALIDATION_FIX . '"]}'),
                             VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}'),
                         ]
                     ),
@@ -530,7 +533,7 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                         'memory says this approach FAILED before',
                         [
                             'BLOCK this fix from task creation',
-                            'Search for ALTERNATIVE approach: ' . VectorMemoryMcp::call('search_memories', '{query: "{problem} alternative solution", limit: 5, category: "code-solution"}'),
+                            'Search for ALTERNATIVE approach: ' . VectorMemoryMcp::call('search_memories', '{query: "{problem} alternative solution", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}'),
                             Operator::if(
                                 'no alternative found',
                                 [
@@ -558,7 +561,7 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                     Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue to report.'),
                 ],
                 [
-                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["validation-fix"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
+                    VectorTaskMcp::call('task_create', '{title: "Validation fixes: #ID", content: filtered_issues_list, parent_id: $VECTOR_TASK_ID, parallel: false, tags: ["' . self::TAG_VALIDATION_FIX . '"]}') . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
                     VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending"}') . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',
                 ]
             ))
@@ -567,7 +570,7 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
             ->phase(Operator::output('task, Critical/Major/Minor counts, cosmetic fixed, status, fix-task ID'))
             ->phase(Operator::if(
                 Store::get('FILTERED_ISSUES') . ' not empty',
-                VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_pattern_summary}. Root causes and fix approaches for future reference.", category: "debugging", tags: ["validation-issues"]}') . ' ← ONLY issue patterns, not operational status'
+                VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_pattern_summary}. Root causes and fix approaches for future reference.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}') . ' ← ONLY issue patterns, not operational status'
             ));
 
         // Error handling

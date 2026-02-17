@@ -72,6 +72,9 @@ class TaskCreateInclude extends IncludeArchetype
         $this->defineParallelIsolationRules();
         $this->defineParallelIsolationChecklistGuideline();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         $this->rule('file-scope-in-content')->high()
             ->text('Task content SHOULD include expected file scope: "FILES: [file1.php, file2.php, ...]" if codebase exploration identified relevant files. For parallel: true tasks this becomes CRITICAL — executors need explicit scope for parallel conflict detection. Files unknown (new feature) → "FILES: [to be determined during planning]".')
             ->why('Parallel execution awareness reads file scopes from task content. Create is the first place where scope can be captured. Missing files = executor guesses = parallel safety chain weakened.')
@@ -105,7 +108,7 @@ class TaskCreateInclude extends IncludeArchetype
             ], [
                 // Full research for complex tasks
                 TaskTool::agent('explore', 'Search existing tasks for duplicates/related. Objective: {' . Store::get('TASK_SCOPE') . '}. Return: duplicates, potential parent, dependencies.') . ' → ' . Store::as('EXISTING_TASKS'),
-                VectorMemoryMcp::call('search_memories', '{query: "{domain} {objective}", limit: 5, category: "code-solution"}') . ' → ' . Store::as('PRIOR_WORK'),
+                VectorMemoryMcp::call('search_memories', '{query: "{domain} {objective}", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' → ' . Store::as('PRIOR_WORK'),
                 Operator::if('code-related task', TaskTool::agent('explore', 'Scan codebase for {domain}. Find: files, patterns, dependencies, SIMILAR existing implementations. Return: paths, architecture notes, analogous code to reference.') . ' → ' . Store::as('CODEBASE_CONTEXT')),
                 Operator::if('unknown library/pattern', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand before formulating'),
             ]))

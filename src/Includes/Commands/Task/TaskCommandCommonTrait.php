@@ -25,6 +25,190 @@ use BrainNode\Mcp\VectorTaskMcp;
 trait TaskCommandCommonTrait
 {
     // =========================================================================
+    // TAG TAXONOMY — INDIVIDUAL CONSTANTS (SINGLE SOURCE OF TRUTH)
+    // =========================================================================
+
+    // --- Task Tags: Workflow (pipeline stage) ---
+    protected const TAG_DECOMPOSED = 'decomposed';
+    protected const TAG_VALIDATION_FIX = 'validation-fix';
+    protected const TAG_BLOCKED = 'blocked';
+    protected const TAG_NEEDS_RESEARCH = 'needs-research';
+    protected const TAG_LIGHT_VALIDATION = 'light-validation';
+    protected const TAG_PARALLEL_SAFE = 'parallel-safe';
+
+    // --- Task Tags: Type (work kind) ---
+    protected const TAG_FEATURE = 'feature';
+    protected const TAG_BUGFIX = 'bugfix';
+    protected const TAG_REFACTOR = 'refactor';
+    protected const TAG_RESEARCH = 'research';
+    protected const TAG_DOCS = 'docs';
+    protected const TAG_TEST = 'test';
+    protected const TAG_CHORE = 'chore';
+    protected const TAG_SPIKE = 'spike';
+    protected const TAG_HOTFIX = 'hotfix';
+
+    // --- Task Tags: Domain (area) ---
+    protected const TAG_BACKEND = 'backend';
+    protected const TAG_FRONTEND = 'frontend';
+    protected const TAG_DATABASE = 'database';
+    protected const TAG_API = 'api';
+    protected const TAG_AUTH = 'auth';
+    protected const TAG_UI = 'ui';
+    protected const TAG_CONFIG = 'config';
+    protected const TAG_INFRA = 'infra';
+    protected const TAG_CI_CD = 'ci-cd';
+    protected const TAG_MIGRATION = 'migration';
+
+    // --- Memory Tags: Content (kind) ---
+    protected const MTAG_PATTERN = 'pattern';
+    protected const MTAG_SOLUTION = 'solution';
+    protected const MTAG_FAILURE = 'failure';
+    protected const MTAG_DECISION = 'decision';
+    protected const MTAG_INSIGHT = 'insight';
+    protected const MTAG_WORKAROUND = 'workaround';
+    protected const MTAG_DEPRECATED = 'deprecated';
+
+    // --- Memory Tags: Scope (breadth) ---
+    protected const MTAG_PROJECT_WIDE = 'project-wide';
+    protected const MTAG_MODULE_SPECIFIC = 'module-specific';
+    protected const MTAG_TEMPORARY = 'temporary';
+    protected const MTAG_REUSABLE = 'reusable';
+
+    // --- Memory Categories ---
+    protected const CAT_CODE_SOLUTION = 'code-solution';
+    protected const CAT_BUG_FIX = 'bug-fix';
+    protected const CAT_ARCHITECTURE = 'architecture';
+    protected const CAT_LEARNING = 'learning';
+    protected const CAT_DEBUGGING = 'debugging';
+    protected const CAT_PERFORMANCE = 'performance';
+    protected const CAT_SECURITY = 'security';
+    protected const CAT_PROJECT_CONTEXT = 'project-context';
+
+    // =========================================================================
+    // TAG TAXONOMY — GROUPED ARRAYS (for rules/guidelines generation)
+    // =========================================================================
+
+    /** @var string[] Workflow stage tags (where in pipeline) */
+    protected const TASK_TAGS_WORKFLOW = [
+        self::TAG_DECOMPOSED,
+        self::TAG_VALIDATION_FIX,
+        self::TAG_BLOCKED,
+        self::TAG_NEEDS_RESEARCH,
+        self::TAG_LIGHT_VALIDATION,
+        self::TAG_PARALLEL_SAFE,
+    ];
+
+    /** @var string[] Task type tags (what kind of work) */
+    protected const TASK_TAGS_TYPE = [
+        self::TAG_FEATURE,
+        self::TAG_BUGFIX,
+        self::TAG_REFACTOR,
+        self::TAG_RESEARCH,
+        self::TAG_DOCS,
+        self::TAG_TEST,
+        self::TAG_CHORE,
+        self::TAG_SPIKE,
+        self::TAG_HOTFIX,
+    ];
+
+    /** @var string[] Domain tags (what area) */
+    protected const TASK_TAGS_DOMAIN = [
+        self::TAG_BACKEND,
+        self::TAG_FRONTEND,
+        self::TAG_DATABASE,
+        self::TAG_API,
+        self::TAG_AUTH,
+        self::TAG_UI,
+        self::TAG_CONFIG,
+        self::TAG_INFRA,
+        self::TAG_CI_CD,
+        self::TAG_MIGRATION,
+    ];
+
+    /** @var string[] Memory content type tags */
+    protected const MEMORY_TAGS_CONTENT = [
+        self::MTAG_PATTERN,
+        self::MTAG_SOLUTION,
+        self::MTAG_FAILURE,
+        self::MTAG_DECISION,
+        self::MTAG_INSIGHT,
+        self::MTAG_WORKAROUND,
+        self::MTAG_DEPRECATED,
+    ];
+
+    /** @var string[] Memory scope tags */
+    protected const MEMORY_TAGS_SCOPE = [
+        self::MTAG_PROJECT_WIDE,
+        self::MTAG_MODULE_SPECIFIC,
+        self::MTAG_TEMPORARY,
+        self::MTAG_REUSABLE,
+    ];
+
+    /** @var string[] Memory categories */
+    protected const MEMORY_CATEGORIES = [
+        self::CAT_CODE_SOLUTION,
+        self::CAT_BUG_FIX,
+        self::CAT_ARCHITECTURE,
+        self::CAT_LEARNING,
+        self::CAT_DEBUGGING,
+        self::CAT_PERFORMANCE,
+        self::CAT_SECURITY,
+        self::CAT_PROJECT_CONTEXT,
+    ];
+
+    // =========================================================================
+    // TAG TAXONOMY RULES (COMPILE-TIME ENFORCEMENT)
+    // =========================================================================
+
+    /**
+     * Define tag taxonomy rules and guidelines.
+     * Ensures all task tags, memory tags, and memory categories
+     * use ONLY predefined values from constants above.
+     * Used by: ALL task commands that create tasks or store memories.
+     */
+    protected function defineTagTaxonomyRules(): void
+    {
+        $taskTagsAll = implode(', ', array_merge(
+            self::TASK_TAGS_WORKFLOW,
+            self::TASK_TAGS_TYPE,
+            self::TASK_TAGS_DOMAIN,
+        ));
+
+        $memoryTagsAll = implode(', ', array_merge(
+            self::MEMORY_TAGS_CONTENT,
+            self::MEMORY_TAGS_SCOPE,
+        ));
+
+        $this->rule('task-tags-predefined-only')->critical()
+            ->text('Task tags MUST use ONLY predefined values. FORBIDDEN: inventing new tags, synonyms, variations. Allowed: '.$taskTagsAll.'.')
+            ->why('Ad-hoc tags cause explosion ("user-auth", "authentication", "auth" = same thing, search finds none). Predefined list = consistent search.')
+            ->onViolation('Replace with closest predefined match. No match = skip tag, put context in content.');
+
+        $this->rule('memory-tags-predefined-only')->critical()
+            ->text('Memory tags MUST use ONLY predefined values. Allowed: '.$memoryTagsAll.'.')
+            ->why('Unknown tags = unsearchable memories. Predefined = discoverable.')
+            ->onViolation('Replace with closest predefined match.');
+
+        $this->rule('memory-categories-predefined-only')->critical()
+            ->text('Memory category MUST be one of: '.implode(', ', self::MEMORY_CATEGORIES).'. FORBIDDEN: "other", "general", "misc", or unlisted.')
+            ->why('"other" is garbage nobody searches. Every memory needs meaningful category.')
+            ->onViolation('Choose most relevant from predefined list.');
+
+        $this->guideline('task-tag-selection')
+            ->goal('Select 1-4 tags per task. Combine dimensions for precision.')
+            ->text('WORKFLOW (pipeline stage): '.implode(', ', self::TASK_TAGS_WORKFLOW))
+            ->text('TYPE (work kind): '.implode(', ', self::TASK_TAGS_TYPE))
+            ->text('DOMAIN (area): '.implode(', ', self::TASK_TAGS_DOMAIN))
+            ->text('Formula: 1 TYPE + 1 DOMAIN + 0-2 WORKFLOW. Example: ["feature", "api"] or ["bugfix", "auth", "validation-fix"]. Max 4 tags.');
+
+        $this->guideline('memory-tag-selection')
+            ->goal('Select 1-3 tags per memory. Combine dimensions.')
+            ->text('CONTENT (kind): '.implode(', ', self::MEMORY_TAGS_CONTENT))
+            ->text('SCOPE (breadth): '.implode(', ', self::MEMORY_TAGS_SCOPE))
+            ->text('Formula: 1 CONTENT + 0-1 SCOPE. Example: ["solution", "reusable"] or ["failure", "module-specific"]. Max 3 tags.');
+    }
+
+    // =========================================================================
     // INPUT CAPTURE PATTERNS
     // =========================================================================
 
@@ -425,7 +609,7 @@ trait TaskCommandCommonTrait
             ->example()
             ->phase(Store::as('COMPLETION_SUMMARY', '{completed_steps, files_modified, outcomes, learnings}'))
             ->phase(VectorMemoryMcp::call('store_memory',
-                '{content: "Completed task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nApproach: {summary}\\n\\nSteps: {outcomes}\\n\\nLearnings: {insights}\\n\\nFiles: {list}", category: "code-solution", tags: ["task-command", "completed"]}'))
+                '{content: "Completed task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nApproach: {summary}\\n\\nSteps: {outcomes}\\n\\nLearnings: {insights}\\n\\nFiles: {list}", category: "' . self::CAT_CODE_SOLUTION . '", tags: ["' . self::MTAG_SOLUTION . '", "' . self::MTAG_REUSABLE . '"]}'))
             ->phase(Operator::if('status === SUCCESS', [
                 VectorTaskMcp::call('task_update',
                     '{task_id: $VECTOR_TASK_ID, status: "'.$successStatus.'", comment: "'.$processName.' completed successfully. Files: {list}. Memory: #{memory_id}", append_comment: true}'),

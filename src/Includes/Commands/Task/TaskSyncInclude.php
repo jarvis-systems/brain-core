@@ -58,6 +58,9 @@ class TaskSyncInclude extends IncludeArchetype
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         // CRITICAL THINKING RULES
         $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
         $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
@@ -256,7 +259,7 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND NOT $HAS_AUTO_APPROVE', 'Present: "Found N approaches: 1)... 2)... Which? (or your variant)"'))
 
             // 4. Context gathering (memory + local docs + FAILURES)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "code-solution"}') . ' → past solutions')
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' → past solutions')
             ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
             ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 3}') . ' → related tasks')
             ->phase(Operator::if(
@@ -358,7 +361,7 @@ class TaskSyncInclude extends IncludeArchetype
                         Operator::if('$HAS_AUTO_APPROVE AND previous steps changed files', [
                             'Rollback via Write: for each file in ' . Store::get('CHANGED_FILES') . ' → Write(file, ' . Store::get('FILE_BACKUPS') . '[file])',
                             VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Failed at step N: {error}. Rolled back via Write.", append_comment: true}'),
-                            VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, step {N}, error: {msg}, attempted: {fixes}", category: "debugging"}'),
+                            VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, step {N}, error: {msg}, attempted: {fixes}", category: "' . self::CAT_DEBUGGING . '"}'),
                             Operator::abort('Step failed, rolled back via Write (no git commands)'),
                         ]),
                         Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Step N failed: {error}. Retry/Skip/Rollback(via Write)/Abort?"'),
@@ -438,7 +441,7 @@ class TaskSyncInclude extends IncludeArchetype
 
             // 8. Complete
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Files: {changed_files}. Tests: {pass/skip/none}.", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, patterns used, learnings", category: "code-solution"}'));
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, patterns used, learnings", category: "' . self::CAT_CODE_SOLUTION . '"}'));
 
         // TDD mode
         $this->guideline('tdd-mode')->example()
@@ -447,7 +450,7 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase('Run tests: detect test framework from project (jest, pytest, phpunit, pest, cargo test, go test, etc.)')
             ->phase(Operator::if('all tests pass', [
                 VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "TDD: All tests PASSED", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "TDD success: {feature}, implementation approach: {summary}", category: "code-solution"}'),
+                VectorMemoryMcp::call('store_memory', '{content: "TDD success: {feature}, implementation approach: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'),
             ]))
             ->phase(Operator::if('tests fail', [
                 'Analyze failure: assertion error vs exception vs timeout',

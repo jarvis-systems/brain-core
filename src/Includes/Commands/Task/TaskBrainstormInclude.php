@@ -60,6 +60,9 @@ class TaskBrainstormInclude extends IncludeArchetype
         $this->defineParallelIsolationRules();
         $this->defineParallelIsolationChecklistGuideline();
 
+        // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
+        $this->defineTagTaxonomyRules();
+
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();
 
@@ -139,7 +142,7 @@ class TaskBrainstormInclude extends IncludeArchetype
             ]))
 
             // 6. Complete
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Brainstorm #{TASK.id}: {TOPIC}. Insights: {summary}. Modified: {yes/no}. Subtasks: {count}.", category: "architecture", tags: ["brainstorm"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Brainstorm #{TASK.id}: {TOPIC}. Insights: {summary}. Modified: {yes/no}. Subtasks: {count}.", category: "' . self::CAT_ARCHITECTURE . '", tags: ["' . self::MTAG_INSIGHT . '"]}'))
             ->phase(Operator::if('task modified OR subtasks created', VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "Brainstorm completed: {TOPIC}", append_comment: true}')))
             ->phase('Report: task, topic, modifications, subtasks created');
 
