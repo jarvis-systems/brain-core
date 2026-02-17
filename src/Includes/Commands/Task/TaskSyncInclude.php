@@ -441,7 +441,11 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: {approach}, files: {list}, patterns used, learnings", category: "' . self::CAT_CODE_SOLUTION . '"}'))
 
             // NEXT (lifecycle reinforcement — at workflow end for recency)
-            ->phase('NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). ALWAYS validate after execution — NEVER suggest /task:sync or /task:async for next task before this task is validated.');
+            ->phase(Operator::if('TRIVIAL execution (doc-only/comment-only/formatting-only changes AND ≤1 file AND no code logic changes)', [
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Trivial change — validation skipped (doc/comment/formatting only).", append_comment: true}'),
+                'NEXT: skip validation → proceed to next sibling or parent validation per next-step-lifecycle-flow.',
+            ]))
+            ->phase(Operator::if('NOT trivial (code logic changes OR multiple files)', 'NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). ALWAYS validate after execution — NEVER suggest /task:sync or /task:async for next task before this task is validated.'));
 
         // TDD mode
         $this->guideline('tdd-mode')->example()

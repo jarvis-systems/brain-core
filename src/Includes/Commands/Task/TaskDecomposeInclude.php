@@ -64,10 +64,15 @@ class TaskDecomposeInclude extends IncludeArchetype
         // DECOMPOSITION-SPECIFIC RULES
         // =========================================================================
 
-        $this->rule('always-decompose')->critical()
-            ->text('If this command was called — you MUST decompose. NEVER refuse, NEVER say "decomposition not recommended", NEVER exit without creating subtasks. Even small/atomic tasks have logical steps — find them and create subtasks. Automated workflows depend on subtask creation to proceed. Refusing = infinite retry loop.')
-            ->why('Automated orchestration calls decompose based on estimate threshold. Exit without subtasks = automation retries endlessly. Your job is to decompose, not to judge whether decomposition is needed.')
-            ->onViolation('Find logical steps in ANY task and create subtasks. 1.5h task with 3 steps = 3 subtasks of 30min.');
+        $this->rule('smart-decompose')->critical()
+            ->text('Analyze task for decomposability. TWO outcomes: 1) DECOMPOSABLE — task has 2+ logical boundaries where EACH subtask ≥ 2h estimate and involves code changes → create subtasks normally. 2) ATOMIC — task is single concern, would produce subtasks < 2h, OR is doc-only/single-file/config-only → add tag "'.self::TAG_ATOMIC.'", set comment "Atomic: {reason}", return status "pending", STOP. If task ALREADY has "'.self::TAG_ATOMIC.'" tag → STOP immediately (already evaluated). NEVER force-split atomic tasks into artificial micro-tasks (PHPDoc-only, rename-only, formatting-only).')
+            ->why('Forced decomposition of atomic tasks creates micro-tasks (PHPDoc, rename) that waste full lifecycle tokens (execute + validate with 2-3 agents) on trivial work. Atomic tag signals workflow to route directly to executor, preventing infinite decompose loops.')
+            ->onViolation('Re-evaluate: can each subtask stand alone as ≥2h meaningful work with code changes? No → tag atomic + STOP.');
+
+        $this->rule('minimum-subtask-complexity')->critical()
+            ->text('Each leaf subtask MUST be: 1) ≥ 2h estimate, 2) involve code logic changes (not doc-only, test-only, or formatting-only). Doc/PHPDoc/README changes → merge into the implementation subtask that touches same file/module. If after merging only 1 subtask remains → task is atomic.')
+            ->why('Subtasks < 2h or doc-only create overhead that exceeds the work itself. 17 tool calls + validation cycle for a PHPDoc block = token waste.')
+            ->onViolation('Merge trivial work into implementation subtask. Single subtask remaining = atomic.');
 
         $this->rule('create-only')->critical()
             ->text('This command ONLY creates subtasks. NEVER execute any subtask after creation.')
@@ -137,6 +142,12 @@ class TaskDecomposeInclude extends IncludeArchetype
             // Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
+            // ATOMIC EARLY EXIT: if already evaluated as atomic → STOP immediately
+            ->phase(Operator::if('$TASK has tag "'.self::TAG_ATOMIC.'"', [
+                'Task already tagged atomic — decomposition not possible. STOP.',
+                'NEXT: /task:sync {$TASK_ID} [-y] (or /task:async)',
+            ]))
+
             ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
             ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_AUTO_APPROVE', 'Ask: "(1) Add more, (2) Replace all, (3) Abort"'))
 
@@ -174,11 +185,11 @@ EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . '.
 CRITICAL: If DOCUMENTATION defines modules/components/phases → subtasks MUST align with documented structure.
 Code may be incomplete - docs define PLANNED architecture.
 
-FORBIDDEN SUBTASKS: Do NOT recommend subtasks for "Write tests", "Add test coverage", "Run quality gates", "Verify implementation". Tests and quality gates are handled AUTOMATICALLY by executors and validators for EACH subtask. Decompose ONLY into functional work units.
+FORBIDDEN SUBTASKS: Do NOT recommend subtasks for "Write tests", "Add test coverage", "Run quality gates", "Verify implementation", "Add PHPDoc/documentation", "Code formatting". Tests and quality gates are handled AUTOMATICALLY by executors and validators. Documentation/formatting changes MERGE into the implementation subtask that touches same file.
 
-MANDATORY: You MUST return a split. Never say "no decomposition needed". Find logical steps.
+MINIMUM COMPLEXITY: Each proposed subtask MUST be ≥ 2h estimate with code logic changes. If splitting would produce subtasks < 2h or doc-only/config-only subtasks → report as ATOMIC instead.
 
-Return: {docs_structure: [], code_structure: [], split: [], conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
+Return: {docs_structure: [], code_structure: [], split: [], atomic: true|false, atomic_reason: "..." (if atomic), conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
                 VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),
             ]))
             ->phase(Store::as('CODE_INSIGHTS', '{from explore agent}'))
@@ -198,7 +209,15 @@ Return: {docs_structure: [], code_structure: [], split: [], conflicts: [], simil
             ->phase('  - Include "FILES: [file_manifest]" in content — executor needs explicit file scope')
             ->phase(Operator::if('subtask.parallel === true', '  - Append to content: "PARALLEL: this task may execute concurrently with sibling tasks. Stay within listed file scope. Other siblings will read your scope from task comment."'))
 
-            // Stage 5: Approve
+            // Stage 4.5: Atomic detection (after research + planning)
+            ->phase(Operator::if('CODE_INSIGHTS.atomic === true OR SUBTASK_PLAN has only 1 subtask OR ALL subtasks < 2h estimate', [
+                VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Atomic: cannot decompose into meaningful subtasks (each ≥2h with code changes). Reason: {atomic_reason}. Ready for direct execution.", append_comment: true, add_tag: "'.self::TAG_ATOMIC.'"}'),
+                'RESULT: ATOMIC — task tagged, returned to pending.',
+                'NEXT: /task:sync {$TASK_ID} [-y] (or /task:async). Task is atomic — execute directly.',
+                'STOP.',
+            ]))
+
+            // Stage 5: Approve (only reached if NOT atomic)
             ->phase('Show: | Order | Parallel | Subtask | Est | Priority | Doc Ref |')
             ->phase('Visualize parallel groups: sequential tasks = "→", parallel tasks = "⇉"')
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create {count} subtasks? (yes/no/modify)"'))

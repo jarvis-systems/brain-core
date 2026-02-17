@@ -35,6 +35,7 @@ trait TaskCommandCommonTrait
     protected const TAG_NEEDS_RESEARCH = 'needs-research';
     protected const TAG_LIGHT_VALIDATION = 'light-validation';
     protected const TAG_PARALLEL_SAFE = 'parallel-safe';
+    protected const TAG_ATOMIC = 'atomic';
 
     // --- Task Tags: Type (work kind) ---
     protected const TAG_FEATURE = 'feature';
@@ -96,6 +97,7 @@ trait TaskCommandCommonTrait
         self::TAG_NEEDS_RESEARCH,
         self::TAG_LIGHT_VALIDATION,
         self::TAG_PARALLEL_SAFE,
+        self::TAG_ATOMIC,
     ];
 
     /** @var string[] Task type tags (what kind of work) */
@@ -390,6 +392,8 @@ trait TaskCommandCommonTrait
         $this->guideline('next-step-lifecycle-flow')
             ->goal('Determine correct NEXT command based on current lifecycle position')
             ->example()
+            ->phase('0. Task has "'.self::TAG_ATOMIC.'" tag (decomposer determined non-decomposable):')
+            ->phase('   NEXT: /task:sync {task_id} [-y] (or /task:async). Skip decompose — task is atomic.')
             ->phase('1. After /task:sync or /task:async (execution completed):')
             ->phase('   NEXT: /task:validate {same_task_id} [-y] (or /task:validate-sync)')
             ->phase('2. After /task:validate or /task:validate-sync — PASSED (status=validated):')
