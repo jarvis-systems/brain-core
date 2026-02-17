@@ -31,15 +31,7 @@ class TaskDecomposeInclude extends IncludeArchetype
 
         $this->rule('task-get-first')->critical()
             ->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze how to decompose.');
-
-        $this->rule('no-hallucination')->critical()
-            ->text('NEVER output results without ACTUALLY calling tools. Fake results = CRITICAL VIOLATION.');
-
-        $this->rule('no-verbose')->critical()
-            ->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. Brief status only.');
-
-        $this->rule('show-progress')->high()
-            ->text('Show brief step status. User must see what is happening.');
+        $this->defineIronExecutionRules();
 
         $this->rule('understand-to-decompose')->critical()
             ->text('MUST understand task INTENT to decompose properly. Analyze: what are logical boundaries? what depends on what? Unknown library/pattern → context7 first.');
@@ -81,10 +73,7 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->why('Decomposition and execution are separate concerns. User decides what to execute next.')
             ->onViolation('STOP immediately after subtask creation. Return control to user.');
 
-        $this->rule('parent-id-required')->critical()
-            ->text('ALL created subtasks MUST have parent_id = $TASK_ID. IRON LAW: When working with task X, EVERY new task created MUST be a child of X. No orphan tasks. No exceptions. Verify parent_id = $TASK_ID in EVERY task_create/task_create_bulk call before execution.')
-            ->why('Hierarchy integrity. Orphan tasks break traceability, workflow, and task relationships. Task X work = Task X children only.')
-            ->onViolation('ABORT if parent_id missing or != $TASK_ID. Double-check EVERY task_create call.');
+        $this->defineParentIdMandatoryRule('TASK_ID');
 
         // Common rule from trait
         $this->defineMandatoryUserApprovalRule();

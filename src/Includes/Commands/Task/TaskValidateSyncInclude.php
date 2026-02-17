@@ -44,17 +44,8 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->defineDocumentationIsLawRules();
         $this->defineNoDestructiveGitRules();
 
-        // FAILURE-AWARE VALIDATION (prevent repeating failed solutions)
-        $this->rule('failure-history-mandatory')->critical()
-            ->text('BEFORE validation: search memory category "debugging" for KNOWN FAILURES. DO NOT create fix-tasks with solutions that already failed.')
-            ->why('Repeating failed solutions wastes time.')
-            ->onViolation('Search debugging memories FIRST. Block known-failed approaches in fix-task creation.');
-        $this->rule('sibling-task-check')->high()
-            ->text('BEFORE validation: fetch sibling tasks (same parent_id, status=completed/stopped). Extract what was tried and failed from comments.')
-            ->why('Previous attempts contain valuable failure context.');
-        $this->rule('no-repeat-failures')->critical()
-            ->text('BEFORE creating fix-task: verify proposed solution is NOT in known failures. Match found → research alternative or escalate.')
-            ->why('Creating fix-task with known-failed solution = guaranteed waste.');
+        // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
+        $this->defineFailureAwarenessRules();
 
         // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
         $this->defineCodebasePatternReuseRule();
@@ -74,43 +65,15 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
         $this->defineTagTaxonomyRules();
 
-        // PARENT INHERITANCE
-        $this->rule('parent-id-mandatory')->critical()
-            ->text('ALL fix-tasks MUST have parent_id = $VECTOR_TASK_ID. No orphans.')
-            ->onViolation('ABORT task_create if parent_id wrong.');
+        // PARENT INHERITANCE (from trait)
+        $this->defineParentIdMandatoryRule();
 
-        // VALIDATION SCOPE (same as async)
-        $this->rule('task-scope-only')->critical()
-            ->text('Validate ONLY task.content + documentation requirements. Do NOT expand scope.');
+        // VALIDATION RULES (common from trait)
+        $this->defineValidationCoreRules();
 
-        $this->rule('docs-are-complete-spec')->critical()
-            ->text('Documentation (.docs/) = COMPLETE specification. task.content may be brief. ALWAYS read docs if exist. Validate against DOCUMENTATION.')
-            ->why('task.content is often summary. Full spec in docs. Validating only task.content misses requirements.')
-            ->onViolation('brain docs {keywords} → if docs exist → read → validate against docs.');
-
-        $this->rule('task-complete')->critical()
-            ->text('ALL requirements MUST be done. Missing = fix-task.');
-
-        $this->rule('no-garbage')->critical()
-            ->text('Detect garbage in task scope: unused imports, dead code, debug statements. Garbage = fix-task.');
-
-        $this->rule('cosmetic-inline')->critical()
-            ->text('Cosmetic issues (whitespace, typos, formatting) = fix IMMEDIATELY with Edit. Increment counter. NO task.');
-
-        $this->rule('functional-to-task')->critical()
-            ->text('Functional issues = fix-task. Functional: logic bugs, security, architecture violations, missing tests.');
-
-        $this->rule('fix-task-blocks-validated')->critical()
-            ->text('Fix-task created → status MUST be "pending". "validated" = ZERO fix-tasks.');
-
+        // VALIDATION RULES (validate-sync-specific)
         $this->rule('idempotent')->high()
             ->text('Re-run produces same result. Check existing tasks before creating. Skip duplicates.');
-
-        $this->rule('test-coverage')->high()
-            ->text('New code MUST have test coverage >=80%. No coverage = fix-task.');
-
-        $this->rule('slow-test-detection')->high()
-            ->text('Slow tests = fix-task. Unit >500ms, integration >2s, any >5s = CRITICAL.');
 
         // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
         $this->defineParallelIsolationRules();

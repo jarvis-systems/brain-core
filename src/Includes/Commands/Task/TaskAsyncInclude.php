@@ -25,9 +25,7 @@ class TaskAsyncInclude extends IncludeArchetype
     {
         // IRON EXECUTION LAW - READ THIS FIRST
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to delegate.');
-        $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
-        $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
-        $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
+        $this->defineIronExecutionRules();
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
@@ -60,13 +58,7 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns. -y flag: auto-select best approach for delegation. No -y: present options to user.');
 
         // FAILURE-AWARE DELEGATION (CRITICAL - prevents repeating same mistakes)
-        $this->rule('failure-history-mandatory')->critical()
-            ->text('BEFORE delegation: search memory category "debugging" for KNOWN FAILURES related to this task/problem. Pass failures to agents. Agents MUST NOT attempt solutions that already failed.')
-            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
-            ->onViolation('Search debugging memories FIRST. Include KNOWN_FAILURES in agent prompts.');
-        $this->rule('sibling-task-check')->high()
-            ->text('BEFORE delegation: fetch sibling tasks (same parent_id, status=completed/stopped). Check comments for what was tried and failed. Pass context to agents.')
-            ->why('Previous attempts on same problem contain valuable "what not to do" information.');
+        $this->defineFailureAwarenessRules();
         $this->rule('escalate-stuck-problems')->high()
             ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT delegate same approach. Research alternatives via web-research-master or escalate to user.')
             ->why('Definition of insanity: doing same thing expecting different results.');

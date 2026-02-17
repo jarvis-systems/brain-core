@@ -53,8 +53,7 @@ class TaskBrainstormInclude extends IncludeArchetype
         $this->rule('modification-user-approved')->high()
             ->text('Modify task or create subtasks ONLY when user explicitly requests. Options: update content, rewrite, append, create subtasks.');
 
-        $this->rule('parent-id-mandatory')->critical()
-            ->text('ALL subtasks MUST have parent_id = $VECTOR_TASK_ID. No orphan tasks.');
+        $this->defineParentIdMandatoryRule();
 
         // PARALLEL ISOLATION (from trait - strict criteria for parallel: true)
         $this->defineParallelIsolationRules();

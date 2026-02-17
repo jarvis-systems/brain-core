@@ -30,9 +30,7 @@ class TaskSyncInclude extends IncludeArchetype
     {
         // IRON EXECUTION LAW - READ THIS FIRST
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze and validate.');
-        $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
-        $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
-        $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
+        $this->defineIronExecutionRules();
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
         $this->defineDocumentationIsLawRules();
@@ -67,13 +65,7 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns/practices. -y flag: auto-select best. No -y: present options to user.');
 
         // FAILURE-AWARE EXECUTION (CRITICAL - prevents repeating same mistakes)
-        $this->rule('failure-history-mandatory')->critical()
-            ->text('BEFORE planning: search memory category "debugging" for KNOWN FAILURES related to this task/problem. DO NOT attempt solutions that already failed.')
-            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
-            ->onViolation('Search debugging memories FIRST. Block known-failed approaches.');
-        $this->rule('sibling-task-check')->high()
-            ->text('BEFORE execution: fetch sibling tasks (same parent_id, status=completed/stopped). Check comments for what was tried and failed.')
-            ->why('Previous attempts on same problem contain valuable "what not to do" information.');
+        $this->defineFailureAwarenessRules();
         $this->rule('escalate-stuck-problems')->high()
             ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives, ask user, or delegate to web-research-master.')
             ->why('Definition of insanity: doing same thing expecting different results.');

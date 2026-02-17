@@ -24,9 +24,7 @@ class TaskValidateInclude extends IncludeArchetype
     {
         // IRON EXECUTION LAW - READ THIS FIRST
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to validate.');
-        $this->rule('no-hallucination')->critical()->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status, validation results, or issues without REAL tool calls. Fake results = CRITICAL VIOLATION.');
-        $this->rule('no-verbose')->critical()->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
-        $this->rule('show-progress')->high()->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
+        $this->defineIronExecutionRules();
         $this->rule('auto-approve')->critical()
             ->text('-y flag = FULL auto-pilot. Skip ALL questions to user: approval prompts, strategy decisions, ambiguity resolution. On ANY decision fork: choose the conservative/non-blocking option automatically. NEVER use AskUserQuestion or similar tools in -y mode.')
             ->why('User explicitly chose autonomous mode. Every question breaks the flow and defeats the purpose of -y. Conservative choice = safe default that does not block pipeline.')
@@ -60,49 +58,23 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineTagTaxonomyRules();
 
         // PARENT INHERITANCE (IRON LAW)
-        $this->rule('parent-id-mandatory')->critical()
-            ->text('When working with task $VECTOR_TASK_ID, ALL new tasks created MUST have parent_id = $VECTOR_TASK_ID. No exceptions. Every fix-task, subtask, or related task MUST be a child of the task being validated.')
-            ->why('Task hierarchy integrity. Orphan tasks break traceability and workflow.')
-            ->onViolation('ABORT task_create if parent_id missing or wrong. Verify parent_id = $VECTOR_TASK_ID in EVERY task_create call.');
+        $this->defineParentIdMandatoryRule();
 
         $this->rule('estimate-mandatory')->critical()
             ->text('task_create MUST include estimate (hours). Pessimistic > optimistic. Realistic range, not fantasy.')
             ->onViolation('ABORT. Add estimate. Unsure? Take gut feeling × 1.5.');
 
-        // VALIDATION RULES
+        // VALIDATION RULES (common from trait)
+        $this->defineValidationCoreRules();
+
+        // VALIDATION RULES (validate-specific)
         $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
-        $this->rule('docs-are-complete-spec')->critical()
-            ->text('Documentation (.docs/) = COMPLETE specification. task.content may be brief summary. ALWAYS read and validate against DOCUMENTATION if exists. Missing from docs = not a requirement. In docs but not done = MISSING.')
-            ->why('task.content is often summary. Full spec lives in documentation. Validating only task.content misses requirements.')
-            ->onViolation('Check DOCS_PATHS. If docs exist → read them → extract full requirements → validate against docs.');
-        $this->rule('task-scope-only')->critical()->text('Validate ONLY what task.content + documentation describes. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
-        $this->rule('task-complete')->critical()->text('ALL task requirements MUST be done. Parse task.content → list requirements → verify each. Missing = fix-task.');
-        $this->rule('no-garbage')->critical()->text('Garbage code in task scope = fix-task.');
-        $this->rule('cosmetic-inline')->critical()->text('Cosmetic issues = AGENTS fix inline during validation. NO task created. Cosmetic: whitespace, typos, formatting, comments, docblocks, naming (non-breaking), import sorting.');
-        $this->rule('functional-to-task')->critical()->text('Functional issues = fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality.');
-        $this->rule('fix-task-blocks-validated')->critical()
-            ->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS.')
-            ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it. Any subtask creation = task NOT done = "pending". Period.')
-            ->onViolation('ABORT validation. Set status="pending" BEFORE task_create. Never set "validated" if ANY fix-task exists or will be created.');
         $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
-        $this->rule('test-coverage')->high()->text('No test coverage = fix-task. Critical paths = 100%, other >= 80%.');
         $this->rule('no-breaking-changes')->high()->text('Breaking API/interface changes without documentation = fix-task.');
-        $this->rule('slow-test-detection')->high()->text('Slow tests = fix-task. Unit >500ms, integration >2s.');
         $this->rule('flaky-test-detection')->high()->text('Flaky tests = fix-task.');
 
-        // FAILURE-AWARE VALIDATION (CRITICAL - prevents repeating same mistakes)
-        $this->rule('failure-history-mandatory')->critical()
-            ->text('BEFORE validation: search memory category "debugging" for KNOWN FAILURES related to this task/problem. Pass failures to agents. Agents MUST NOT suggest solutions that already failed.')
-            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
-            ->onViolation('Search debugging memories. Include KNOWN_FAILURES in agent prompts.');
-        $this->rule('sibling-task-check')->high()
-            ->text('BEFORE validation: fetch sibling tasks (same parent_id, status=completed/stopped). Analyze their comments for what was tried and failed. Pass context to agents.')
-            ->why('Previous attempts on same problem contain valuable "what not to do" information.')
-            ->onViolation('task_list with parent_id, extract failure patterns from comments.');
-        $this->rule('no-repeat-failures')->critical()
-            ->text('BEFORE creating fix-task: check if proposed solution matches known failure. If memory says "X does NOT work for Y" - DO NOT create task suggesting X. Escalate or research alternative.')
-            ->why('Creating fix-task with known-failed solution = guaranteed failure + wasted effort.')
-            ->onViolation('Search memory for proposed fix. Match found in debugging = BLOCK task creation, suggest alternative or escalate.');
+        // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
+        $this->defineFailureAwarenessRules();
 
         // SECURITY VALIDATION (severity policy)
         $this->rule('security-injection')->critical()->text('Injection vulnerabilities = fix-task.');

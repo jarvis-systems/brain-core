@@ -314,6 +314,123 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // IRON EXECUTION RULES (UNIVERSAL ACROSS COMMANDS)
+    // =========================================================================
+
+    /**
+     * Define iron execution rules shared across all task commands.
+     * These are universal behavioral constraints that prevent hallucination,
+     * verbosity, and hidden execution.
+     * Each command still defines its own context-specific 'task-get-first' rule.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude, TaskDecomposeInclude.
+     */
+    protected function defineIronExecutionRules(): void
+    {
+        $this->rule('no-hallucination')->critical()
+            ->text('NEVER output results without ACTUALLY calling tools. You CANNOT know task status or content without REAL tool calls. Fake results = CRITICAL VIOLATION.');
+
+        $this->rule('no-verbose')->critical()
+            ->text('FORBIDDEN: <meta>, <synthesis>, <plan>, <analysis> tags. No long explanations before action.');
+
+        $this->rule('show-progress')->high()
+            ->text('ALWAYS show brief step status and results. User must see what is happening and can interrupt/correct at any moment.');
+    }
+
+    // =========================================================================
+    // FAILURE AWARENESS (PREVENT REPEATING MISTAKES)
+    // =========================================================================
+
+    /**
+     * Define failure awareness rules.
+     * Ensures commands check for known failures and sibling task history
+     * before starting work, preventing repetition of failed approaches.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineFailureAwarenessRules(): void
+    {
+        $this->rule('failure-history-mandatory')->critical()
+            ->text('BEFORE starting work: search memory category "debugging" for KNOWN FAILURES related to this task/problem. DO NOT attempt solutions that already failed.')
+            ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
+            ->onViolation('Search debugging memories FIRST. Block known-failed approaches.');
+
+        $this->rule('sibling-task-check')->high()
+            ->text('BEFORE starting work: fetch sibling tasks (same parent_id, status=completed/stopped). Check comments for what was tried and failed.')
+            ->why('Previous attempts on same problem contain valuable "what not to do" information.')
+            ->onViolation('task_list with parent_id, extract failure patterns from comments.');
+    }
+
+    // =========================================================================
+    // VALIDATION CORE RULES (SHARED VALIDATE/VALIDATE-SYNC)
+    // =========================================================================
+
+    /**
+     * Define core validation rules shared between async and sync validation.
+     * Covers: scope, completeness, cosmetic vs functional classification,
+     * fix-task policy, test coverage, failure deduplication.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude.
+     */
+    protected function defineValidationCoreRules(): void
+    {
+        $this->rule('docs-are-complete-spec')->critical()
+            ->text('Documentation (.docs/) = COMPLETE specification. task.content may be brief summary. ALWAYS read and validate against DOCUMENTATION if exists. Missing from docs = not a requirement. In docs but not done = MISSING.')
+            ->why('task.content is often summary. Full spec lives in documentation. Validating only task.content misses requirements.')
+            ->onViolation('Check DOCS_PATHS. If docs exist → read them → extract full requirements → validate against docs.');
+
+        $this->rule('task-scope-only')->critical()
+            ->text('Validate ONLY what task.content + documentation describes. Do NOT expand scope. Task says "add X" = check X exists and works. Task says "fix Y" = check Y is fixed. NOTHING MORE.');
+
+        $this->rule('task-complete')->critical()
+            ->text('ALL task requirements MUST be done. Parse task.content → list requirements → verify each. Missing = fix-task.');
+
+        $this->rule('no-garbage')->critical()
+            ->text('Garbage code in task scope = fix-task. Detect: unused imports, dead code, debug statements, commented-out blocks.');
+
+        $this->rule('cosmetic-inline')->critical()
+            ->text('Cosmetic issues = fix IMMEDIATELY inline. NO task created. Cosmetic: whitespace, typos, formatting, comments, docblocks, naming (non-breaking), import sorting.');
+
+        $this->rule('functional-to-task')->critical()
+            ->text('Functional issues = fix-task. Functional: logic bugs, security vulnerabilities, architecture violations, missing tests, broken functionality.');
+
+        $this->rule('fix-task-blocks-validated')->critical()
+            ->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS.')
+            ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it.')
+            ->onViolation('ABORT validation. Set status="pending" BEFORE task_create. Never set "validated" if ANY fix-task exists.');
+
+        $this->rule('test-coverage')->high()
+            ->text('No test coverage = fix-task. Critical paths = 100%, other >= 80%.');
+
+        $this->rule('slow-test-detection')->high()
+            ->text('Slow tests = fix-task. Unit >500ms, integration >2s, any >5s = CRITICAL.');
+
+        $this->rule('no-repeat-failures')->critical()
+            ->text('BEFORE creating fix-task: check if proposed solution matches known failure. If memory says "X does NOT work for Y" — DO NOT create task suggesting X. Research alternative or escalate.')
+            ->why('Creating fix-task with known-failed solution = guaranteed failure + wasted effort.')
+            ->onViolation('Search memory for proposed fix. Match found in debugging = BLOCK task creation, suggest alternative.');
+    }
+
+    // =========================================================================
+    // PARENT ID MANDATORY (HIERARCHY INTEGRITY)
+    // =========================================================================
+
+    /**
+     * Define parent-id-mandatory rule.
+     * Ensures all new tasks/subtasks created during a command are children
+     * of the current task, maintaining hierarchy integrity.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude,
+     *          TaskDecomposeInclude, TaskBrainstormInclude.
+     *
+     * @param string $variableName Variable name holding the task ID (default: 'VECTOR_TASK_ID')
+     */
+    protected function defineParentIdMandatoryRule(string $variableName = 'VECTOR_TASK_ID'): void
+    {
+        $this->rule('parent-id-mandatory')->critical()
+            ->text('ALL new tasks/subtasks created MUST have parent_id = $'.$variableName.'. No orphan tasks. No exceptions.')
+            ->why('Task hierarchy integrity. Orphan tasks break traceability and workflow.')
+            ->onViolation('ABORT task_create if parent_id missing or != $'.$variableName.'.');
+    }
+
+    // =========================================================================
     // COMMON RULES
     // =========================================================================
 
@@ -345,30 +462,6 @@ trait TaskCommandCommonTrait
     }
 
     /**
-     * Define approval-gates-mandatory rule (async style - multiple gates).
-     * Used by: TaskAsyncInclude
-     */
-    protected function defineApprovalGatesMandatoryRule(): void
-    {
-        $this->rule('approval-gates-mandatory')->critical()
-            ->text('User approval REQUIRED before execution. DEFAULT: two gates (Requirements and Planning). For SIMPLE_TASK, allow a single combined approval after planning. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates.')
-            ->why('Maintains user control while reducing friction for simple tasks. Flag -y enables automated execution.')
-            ->onViolation('STOP. Wait for required approval before continuing (unless $HAS_AUTO_APPROVE is true).');
-    }
-
-    /**
-     * Define single-approval-gate rule (sync style - one gate).
-     * Used by: TaskSyncInclude
-     */
-    protected function defineSingleApprovalGateRule(): void
-    {
-        $this->rule('single-approval-gate')->critical()
-            ->text('User approval REQUIRED before execution. Single approval gate after plan presentation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve the gate.')
-            ->why('Direct execution requires explicit user consent. Flag -y enables automated execution.')
-            ->onViolation('STOP. Wait for approval before continuing (unless $HAS_AUTO_APPROVE is true).');
-    }
-
-    /**
      * Define mandatory-user-approval rule (create/decompose style).
      * Used by: TaskCreateInclude, TaskDecomposeInclude
      */
@@ -380,41 +473,6 @@ trait TaskCommandCommonTrait
             ->onViolation('STOP. Wait for explicit user approval (unless $HAS_AUTO_APPROVE is true).');
     }
 
-    /**
-     * Define session-recovery-via-history rule.
-     * Used by: TaskAsyncInclude, TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
-     */
-    protected function defineSessionRecoveryViaHistoryRule(): void
-    {
-        $this->rule('session-recovery-via-history')->high()
-            ->text('If task status is "in_progress", check status_history. If last entry has "to: null" - previous session crashed mid-execution. Can RESUME execution WITHOUT changing status (already in_progress). Treat vector memory findings from crashed session with caution - previous context is lost. Execution stage is unknown - may need to verify what was completed.')
-            ->why('Prevents blocking on crashed sessions. Allows recovery while maintaining awareness that previous work may be incomplete.')
-            ->onViolation('Check status_history before blocking. If to:null found, proceed with recovery mode.');
-    }
-
-    /**
-     * Define vector-memory-mandatory rule.
-     * Used by: TaskAsyncInclude, TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
-     */
-    protected function defineVectorMemoryMandatoryRule(): void
-    {
-        $this->rule('vector-memory-mandatory')->high()
-            ->text('ALL agents MUST search vector memory BEFORE task execution AND store learnings AFTER completion. Vector memory is the primary communication channel between sequential agents.')
-            ->why('Enables knowledge sharing between agents, prevents duplicate work, maintains execution continuity across steps')
-            ->onViolation('Include explicit vector memory instructions in agent Task() delegation.');
-    }
-
-    /**
-     * Define fix-task-parent-is-validated-task rule.
-     * Used by: TaskValidateInclude, TaskTestValidateInclude, TaskValidateSyncInclude
-     */
-    protected function defineFixTaskParentRule(): void
-    {
-        $this->rule('fix-task-parent-is-validated-task')->high()
-            ->text('ALL fix tasks created during validation MUST have parent_id = $VECTOR_TASK_ID. This maintains hierarchy: validated task → fix subtasks.')
-            ->why('Ensures fix tasks are linked to their source validation task for tracking and completion.')
-            ->onViolation('Set parent_id: $VECTOR_TASK_ID when creating fix tasks.');
-    }
 
     // =========================================================================
     // COMMENT CONTEXT ANALYSIS (READ ACCUMULATED CONTEXT)

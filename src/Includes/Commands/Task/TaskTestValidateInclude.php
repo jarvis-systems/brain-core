@@ -55,13 +55,7 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineScopedGitCheckpointRule();
 
         // FAILURE-AWARE VALIDATION (prevent repeating failed test approaches)
-        $this->rule('failure-history-mandatory')->critical()
-            ->text('BEFORE test validation: search memory category "debugging" for KNOWN FAILURES related to this task. Pass to agents. Agents MUST NOT use test approaches that already failed.')
-            ->why('Repeating failed test patterns wastes time. Memory contains "this test approach does NOT work" knowledge.')
-            ->onViolation('Search debugging memories. Include known failures in agent prompts.');
-        $this->rule('sibling-task-check')->high()
-            ->text('BEFORE test validation: fetch sibling tasks (same parent_id). Check comments for failed test approaches.')
-            ->why('Previous test attempts contain "what not to do" information.');
+        $this->defineFailureAwarenessRules();
 
         // CODEBASE CONSISTENCY (from trait - tests should follow existing test patterns)
         $this->defineCodebasePatternReuseRule();
