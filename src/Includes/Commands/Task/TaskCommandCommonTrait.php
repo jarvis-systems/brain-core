@@ -883,6 +883,7 @@ trait TaskCommandCommonTrait
             ->phase('  5. SHARED CONFIG: Check if tasks modify same config key, .env variable, or shared state')
             ->phase('  6. OUTPUT→INPUT: Check if task B needs any result/artifact/output from task A')
             ->phase('  7. TRANSITIVE: Follow imports one level deep — indirect overlap = NOT independent')
+            ->phase('  8. GLOBAL BLACKLIST: If ANY task modifies globally shared files (dependency manifests/locks, .env*, config/**, routes/**, migration directories, CI/CD configs, test/lint/build configs) → that task MUST be parallel: false. Globally shared files are NEVER safe for parallel modification.')
             ->phase('  RESULT: ALL checks pass → parallel: true | ANY check fails → parallel: false')
             ->phase('  DEFAULT: When analysis is uncertain or incomplete → parallel: false (safe default)');
     }
@@ -1131,7 +1132,8 @@ trait TaskCommandCommonTrait
      * When a task has parallel: true, the executing agent MUST understand
      * that sibling tasks may be running concurrently on the same codebase.
      * Agent must stay strictly within its task's file scope and never touch
-     * files that siblings might be modifying.
+     * files that siblings might be modifying or globally shared files
+     * (dependency manifests, .env*, config, routes, migrations, CI/CD, test configs).
      * Complements defineParallelIsolationRules() which covers task CREATION.
      * This method covers task EXECUTION.
      * Used by: TaskSyncInclude, TaskAsyncInclude.
@@ -1149,9 +1151,9 @@ trait TaskCommandCommonTrait
             ->onViolation('ABORT out-of-scope edit. Add to task comment as scope extension request. Continue with in-scope work only.');
 
         $this->rule('parallel-shared-files-forbidden')->high()
-            ->text('In PARALLEL CONTEXT: shared files (config, .env, migrations, routes, shared services referenced by 2+ siblings) are FORBIDDEN to edit. If your task requires editing shared file → record in comment, complete everything else, mark completed with warning.')
-            ->why('Shared files are #1 source of parallel conflicts. Two agents editing same config simultaneously = one overwrites the other. Unrecoverable without manual merge.')
-            ->onViolation('Do NOT edit shared file. Record need in task comment. Complete remaining in-scope work.');
+            ->text('In PARALLEL CONTEXT: globally shared files are FORBIDDEN to edit regardless of sibling scopes. GLOBAL BLACKLIST (identify by project-specific patterns): 1) DEPENDENCY MANIFESTS & LOCKS — package definitions and lock files (composer.json, package.json, Gemfile, go.mod, Cargo.toml, requirements.txt and .lock counterparts), 2) ENVIRONMENT — .env* files, 3) GLOBAL CONFIG — config/**, settings/**, 4) ROUTING — routes/**, 5) SCHEMA/MIGRATIONS — migration directories, schema definitions (database/migrations/**, db/migrate/**), 6) INFRASTRUCTURE/CI — CI/CD pipelines, container configs, build scripts (.github/**, .gitlab-ci.yml, Dockerfile*, docker-compose*, docker/**, Makefile, Jenkinsfile), 7) TEST/LINT/BUILD CONFIG — root-level runner/linter/bundler configs (phpunit.xml*, jest.config*, tsconfig.json, .eslintrc*, vite.config*). Also blacklisted: any service/utility referenced by 2+ sibling tasks. If task REQUIRES blacklisted file → record in comment: "BLOCKED: needs {file} (globally shared). Defer to sequential phase." Complete non-blacklisted work first.')
+            ->why('Globally shared files are statically known conflict sources — two agents editing same routes/config/migration simultaneously = one overwrites the other. Unlike sibling-scope files detected at runtime, blacklisted categories are ALWAYS shared regardless of task content. Explicit blacklist removes agent guesswork.')
+            ->onViolation('ABORT edit of blacklisted file. Record in task comment: "BLOCKED: needs {file} (globally shared)". Complete remaining in-scope work. Blacklisted file edits handled sequentially after parallel phase.');
 
         $this->rule('parallel-scope-in-comment')->critical()
             ->text('In PARALLEL CONTEXT: after planning (when actual files known), STORE own scope in task comment via task_update: "PARALLEL SCOPE: [file1.php, file2.php, ...]" with append_comment: true. Siblings read your scope from task comment (already fetched via task_list — ZERO extra MCP calls). Do NOT store scopes in vector memory — scopes are ephemeral structured data, not semantic knowledge.')
