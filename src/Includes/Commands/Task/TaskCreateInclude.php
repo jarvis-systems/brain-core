@@ -47,7 +47,7 @@ class TaskCreateInclude extends IncludeArchetype
             ->onViolation('Search docs first. If found → include doc reference in task.content and comment.');
 
         $this->rule('estimate-required')->critical()
-            ->text('MUST provide time estimate. 2-8h normal for standalone tasks. >8h = recommend /task:decompose after creation. <2h = task is likely too trivial for standalone lifecycle — merge into a larger task or mark with "'.self::TAG_ATOMIC.'" tag. Doc-only/comment-only/formatting-only tasks are NEVER standalone — they belong as part of the implementation task.');
+            ->text('MUST provide time estimate for human planning reference. Decomposition is NOT driven by estimate — it is driven by SCOPE (distinct concerns, files, modules). Estimate is informational. Doc-only/comment-only/formatting-only tasks are NEVER standalone — they belong as part of the implementation task that touches same module.');
 
         $this->rule('create-only')->critical()
             ->text('This command ONLY creates tasks. NEVER execute after creation. User decides via /task:next or /do.');
@@ -135,13 +135,13 @@ class TaskCreateInclude extends IncludeArchetype
 
             // 6. Approve
             ->phase('Show: Title, Priority, Estimate, Tags, Content preview, Doc reference (if any)')
-            ->phase(Operator::if('estimate > 8', 'WARN: >8h, recommend /task:decompose after creation'))
-            ->phase(Operator::if('estimate < 2 AND task is doc-only/comment-only/formatting-only', 'WARN: <2h trivial task — consider merging into parent implementation task instead of standalone creation'))
+            ->phase(Operator::if('task touches multiple modules/files with distinct concerns', 'WARN: multiple concerns detected — recommend /task:decompose after creation'))
+            ->phase(Operator::if('task is doc-only/comment-only/formatting-only', 'WARN: trivial task — consider merging into parent implementation task instead of standalone creation'))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create? (yes/no/modify)"'))
 
             // 7. Create
             ->phase(VectorTaskMcp::call('task_create', '{title, content, priority, tags, estimate, parallel, comment}') . ' → ' . Store::as('CREATED_ID'))
-            ->phase(Operator::if('estimate > 8 AND task has multiple logical components (not single-concern)', 'Recommend: /task:decompose ' . Store::get('CREATED_ID')))
+            ->phase(Operator::if('task has multiple distinct concerns/modules (from codebase analysis)', 'Recommend: /task:decompose ' . Store::get('CREATED_ID')))
             ->phase('STOP. Do NOT execute. Return control to user.');
 
         // ERROR HANDLING

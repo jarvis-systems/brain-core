@@ -111,7 +111,7 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Operator::if('status NOT IN [pending, completed, tested, validated, in_progress]', Operator::abort('Invalid status. Complete or reset first.')))
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed → continue OR abort'))
             ->phase(Store::as('IS_TDD', 'TASK.status === "pending"'))
-            ->phase(Store::as('IS_SIMPLE', 'TASK.estimate ≤4 AND priority !== "critical"'))
+            ->phase(Store::as('IS_SIMPLE', 'TASK has single concern (1-2 files scope) AND priority !== "critical"'))
             ->phase(Store::as('IS_SUBTASK', 'TASK.parent_id !== null'))
             ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → context'))
 

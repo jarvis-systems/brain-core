@@ -65,13 +65,13 @@ class TaskDecomposeInclude extends IncludeArchetype
         // =========================================================================
 
         $this->rule('smart-decompose')->critical()
-            ->text('Analyze task for decomposability. TWO outcomes: 1) DECOMPOSABLE — task has 2+ logical boundaries where EACH subtask ≥ 2h estimate and involves code changes → create subtasks normally. 2) ATOMIC — task is single concern, would produce subtasks < 2h, OR is doc-only/single-file/config-only → add tag "'.self::TAG_ATOMIC.'", set comment "Atomic: {reason}", return status "pending", STOP. If task ALREADY has "'.self::TAG_ATOMIC.'" tag → STOP immediately (already evaluated). NEVER force-split atomic tasks into artificial micro-tasks (PHPDoc-only, rename-only, formatting-only).')
-            ->why('Forced decomposition of atomic tasks creates micro-tasks (PHPDoc, rename) that waste full lifecycle tokens (execute + validate with 2-3 agents) on trivial work. Atomic tag signals workflow to route directly to executor, preventing infinite decompose loops.')
-            ->onViolation('Re-evaluate: can each subtask stand alone as ≥2h meaningful work with code changes? No → tag atomic + STOP.');
+            ->text('Analyze task for decomposability based on SCOPE, not estimate hours. TWO outcomes: 1) DECOMPOSABLE — task has 2+ DISTINCT CONCERNS where each subtask has its OWN file scope (different files/modules) and involves code logic changes → create subtasks normally. 2) ATOMIC — task is single concern (one module, 1-2 files), OR splitting would produce subtasks without distinct file scope, OR is doc-only/config-only → add tag "'.self::TAG_ATOMIC.'", set comment "Atomic: {reason}", return status "pending", STOP. If task ALREADY has "'.self::TAG_ATOMIC.'" tag → STOP immediately (already evaluated). NEVER force-split atomic tasks into artificial micro-tasks (PHPDoc-only, rename-only, formatting-only).')
+            ->why('Decomposition decision = SCOPE (how many distinct concerns/files/modules), NOT time. A 6h single-file algorithm is atomic. A 3h task touching 4 modules is decomposable. Forced decomposition of atomic tasks creates micro-tasks that waste full lifecycle tokens.')
+            ->onViolation('Re-evaluate: does each subtask have its OWN distinct file scope and concern? No → tag atomic + STOP.');
 
         $this->rule('minimum-subtask-complexity')->critical()
-            ->text('Each leaf subtask MUST be: 1) ≥ 2h estimate, 2) involve code logic changes (not doc-only, test-only, or formatting-only). Doc/PHPDoc/README changes → merge into the implementation subtask that touches same file/module. If after merging only 1 subtask remains → task is atomic.')
-            ->why('Subtasks < 2h or doc-only create overhead that exceeds the work itself. 17 tool calls + validation cycle for a PHPDoc block = token waste.')
+            ->text('Each leaf subtask MUST have: 1) distinct file scope (different files than siblings), 2) distinct concern (not a sub-step of same operation), 3) code logic changes (not doc-only, test-only, formatting-only). Doc/PHPDoc/README changes → merge into the implementation subtask that touches same module. If after merging only 1 subtask remains → task is atomic.')
+            ->why('Subtasks without distinct scope create overhead that exceeds the work. 17 tool calls + validation cycle for a PHPDoc block = pure token waste. Scope separation is the REAL decomposition criterion.')
             ->onViolation('Merge trivial work into implementation subtask. Single subtask remaining = atomic.');
 
         $this->rule('create-only')->critical()
@@ -187,7 +187,7 @@ Code may be incomplete - docs define PLANNED architecture.
 
 FORBIDDEN SUBTASKS: Do NOT recommend subtasks for "Write tests", "Add test coverage", "Run quality gates", "Verify implementation", "Add PHPDoc/documentation", "Code formatting". Tests and quality gates are handled AUTOMATICALLY by executors and validators. Documentation/formatting changes MERGE into the implementation subtask that touches same file.
 
-MINIMUM COMPLEXITY: Each proposed subtask MUST be ≥ 2h estimate with code logic changes. If splitting would produce subtasks < 2h or doc-only/config-only subtasks → report as ATOMIC instead.
+MINIMUM COMPLEXITY (scope-based): Each proposed subtask MUST have DISTINCT file scope (different files than other subtasks) and DISTINCT concern. If splitting would produce subtasks that share the same files or are sub-steps of one operation (doc-only, config-only, rename-only) → report as ATOMIC instead.
 
 Return: {docs_structure: [], code_structure: [], split: [], atomic: true|false, atomic_reason: "..." (if atomic), conflicts: [], similar_implementations: [], reverse_dependencies: [], performance_hotspots: []}'),
                 VectorMemoryMcp::call('search_memories', '{query: "decomposition patterns, similar tasks", limit: 5}') . ' → ' . Store::as('MEMORY_INSIGHTS'),
@@ -209,9 +209,9 @@ Return: {docs_structure: [], code_structure: [], split: [], atomic: true|false, 
             ->phase('  - Include "FILES: [file_manifest]" in content — executor needs explicit file scope')
             ->phase(Operator::if('subtask.parallel === true', '  - Append to content: "PARALLEL: this task may execute concurrently with sibling tasks. Stay within listed file scope. Other siblings will read your scope from task comment."'))
 
-            // Stage 4.5: Atomic detection (after research + planning)
-            ->phase(Operator::if('CODE_INSIGHTS.atomic === true OR SUBTASK_PLAN has only 1 subtask OR ALL subtasks < 2h estimate', [
-                VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Atomic: cannot decompose into meaningful subtasks (each ≥2h with code changes). Reason: {atomic_reason}. Ready for direct execution.", append_comment: true, add_tag: "'.self::TAG_ATOMIC.'"}'),
+            // Stage 4.5: Atomic detection (after research + planning — scope-based, NOT time-based)
+            ->phase(Operator::if('CODE_INSIGHTS.atomic === true OR SUBTASK_PLAN has only 1 subtask OR subtasks share same file scope OR subtasks are sub-steps of single concern', [
+                VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Atomic: single concern / single file scope — cannot decompose into distinct subtasks. Reason: {atomic_reason}. Ready for direct execution.", append_comment: true, add_tag: "'.self::TAG_ATOMIC.'"}'),
                 'RESULT: ATOMIC — task tagged, returned to pending.',
                 'NEXT: /task:sync {$TASK_ID} [-y] (or /task:async). Task is atomic — execute directly.',
                 'STOP.',
