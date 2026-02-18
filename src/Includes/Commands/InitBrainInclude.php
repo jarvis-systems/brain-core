@@ -12,6 +12,7 @@ use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Includes\Commands\Task\TaskCommandCommonTrait;
 use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Agents\PromptMaster;
@@ -20,17 +21,23 @@ use BrainNode\Mcp\VectorMemoryMcp;
 #[Purpose('The InitBrain command automates smart distribution of project-specific configuration across Brain.php, Common.php, and Master.php based on project context discovery.')]
 class InitBrainInclude extends IncludeArchetype
 {
-    /**
-     * Handle the architecture logic.
-     *
-     * @return void
-     */
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
-        // =====================================================
-        // IRON RULES
-        // =====================================================
+        // =========================================================================
+        // IRON RULES (from trait — universal safety)
+        // =========================================================================
+        $this->defineIronExecutionRules();
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
 
+        // =========================================================================
+        // IRON RULES (command-specific)
+        // =========================================================================
         $this->rule('temporal-context-first')->critical()
             ->text(['Temporal context MUST be initialized first:', BashTool::call('date +"%Y-%m-%d %H:%M:%S %Z"')])
             ->why('Ensures all research and recommendations reflect current year best practices')
@@ -112,10 +119,12 @@ class InitBrainInclude extends IncludeArchetype
             ->why('Centralizes configuration, enables tuning without code changes, prevents magic values')
             ->onViolation('Hardcoded values in code OR unused variables in .env');
 
-        // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('INIT_PARAMS', '{initialization parameters extracted from $RAW_INPUT}'));
+        // =========================================================================
+        // INPUT CAPTURE (from InputCaptureTrait via TaskCommandCommonTrait)
+        // =========================================================================
+        $this->defineInputCaptureWithCustomGuideline([
+            'INIT_PARAMS' => '{initialization parameters extracted from $CLEAN_ARGS}',
+        ]);
 
         // =====================================================
         // PHASE 1: TEMPORAL CONTEXT INITIALIZATION
@@ -749,30 +758,30 @@ class InitBrainInclude extends IncludeArchetype
             ->example()
             ->phase(
                 VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "Brain Initialization - Project: {project_type}, Tech Stack: {tech_stack}, Patterns: {architecture_patterns}, Date: {current_date}"',
-                    'category: "architecture"',
-                    'tags: ["init-brain", "project-discovery", "configuration"]',
+                    'content: "INIT-BRAIN|PROJECT:{project_type}|STACK:{tech_stack}|PATTERNS:{architecture_patterns}|DATE:{current_date}"',
+                    'category: "' . self::CAT_ARCHITECTURE . '"',
+                    'tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]',
                 ))
             )
             ->phase(
                 VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "Environment Discovery - Docker: {has_docker}, CI/CD: {cicd_platform}, Dev Tools: {dev_tools}, Date: {current_date}"',
-                    'category: "architecture"',
-                    'tags: ["init-brain", "environment", "infrastructure"]',
+                    'content: "INIT-BRAIN ENV|DOCKER:{has_docker}|CI:{cicd_platform}|TOOLS:{dev_tools}|DATE:{current_date}"',
+                    'category: "' . self::CAT_ARCHITECTURE . '"',
+                    'tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]',
                 ))
             )
             ->phase(
                 VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "Smart Distribution - Common: {common_rules_count} rules, Master: {master_rules_count} rules, Brain: {brain_rules_count} rules, Date: {current_date}"',
-                    'category: "architecture"',
-                    'tags: ["init-brain", "distribution", "configuration"]',
+                    'content: "INIT-BRAIN DISTRIBUTION|COMMON:{common_rules_count}|MASTER:{master_rules_count}|BRAIN:{brain_rules_count}|DATE:{current_date}"',
+                    'category: "' . self::CAT_ARCHITECTURE . '"',
+                    'tags: ["' . self::MTAG_DECISION . '", "' . self::MTAG_PROJECT_WIDE . '"]',
                 ))
             )
             ->phase(
                 VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "Vector Memory Mining - Common: {vector_common_count}, Master: {vector_master_count}, Brain: {vector_brain_count}, Total validated: {vector_total_validated}, Date: {current_date}"',
-                    'category: "learning"',
-                    'tags: ["init-brain", "vector-mining", "insights"]',
+                    'content: "INIT-BRAIN MINING|COMMON:{vector_common_count}|MASTER:{vector_master_count}|BRAIN:{vector_brain_count}|VALIDATED:{vector_total_validated}|DATE:{current_date}"',
+                    'category: "' . self::CAT_LEARNING . '"',
+                    'tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_REUSABLE . '"]',
                 ))
             );
 

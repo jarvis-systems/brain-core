@@ -12,6 +12,7 @@ use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Includes\Commands\Task\TaskCommandCommonTrait;
 use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Agents\WebResearchMaster;
@@ -22,12 +23,23 @@ use BrainNode\Mcp\VectorTaskMcp;
 #[Purpose('Aggressive project task initializer with MAXIMUM parallel agent orchestration. Scans every project corner via specialized agents, creates comprehensive epic-level tasks. NEVER executes - only creates.')]
 class InitTaskInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
-        // ============================================
-        // IRON RULES - AGGRESSIVE ORCHESTRATION
-        // ============================================
+        // =========================================================================
+        // IRON RULES (from trait — universal safety)
+        // =========================================================================
+        $this->defineIronExecutionRules();
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
 
+        // =========================================================================
+        // IRON RULES (command-specific)
+        // =========================================================================
         $this->rule('parallel-agent-execution')->critical()
             ->text('Launch INDEPENDENT research agents in PARALLEL (multiple Task calls in single response)')
             ->why('Maximizes coverage, reduces total research time, comprehensive analysis')
@@ -49,9 +61,9 @@ class InitTaskInclude extends IncludeArchetype
             ->onViolation('STOP immediately after task creation');
 
         $this->rule('mandatory-user-approval')->critical()
-            ->text('MUST get explicit user YES/APPROVE/CONFIRM before creating ANY tasks')
-            ->why('User must validate task breakdown before committing')
-            ->onViolation('Present task list and wait for explicit confirmation');
+            ->text('When $HAS_AUTO_APPROVE = false: MUST get explicit user YES/APPROVE/CONFIRM before creating ANY tasks. When $HAS_AUTO_APPROVE = true: auto-approve after presenting summary. Proceed autonomously through creation.')
+            ->why('User must validate task breakdown before committing. -y flag enables pipeline usage.')
+            ->onViolation('If interactive: present task list and wait for explicit confirmation. If auto-approve: show summary and proceed.');
 
         $this->rule('estimate-required')->critical()
             ->text('MUST provide time estimate (8-40h) for EACH epic')
@@ -63,10 +75,12 @@ class InitTaskInclude extends IncludeArchetype
             ->why('Brain config pollutes task list with irrelevant system tasks')
             ->onViolation('Skip ' . Runtime::BRAIN_DIRECTORY . ' in all exploration phases');
 
-        // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('INIT_PARAMS', '{initialization parameters extracted from $RAW_INPUT}'));
+        // =========================================================================
+        // INPUT CAPTURE (from InputCaptureTrait via TaskCommandCommonTrait)
+        // =========================================================================
+        $this->defineInputCaptureWithCustomGuideline([
+            'INIT_SCOPE' => '{optional scope filter from $CLEAN_ARGS: specific area/focus for task generation, or empty for full project}',
+        ]);
 
         // ============================================
         // PHASE 0: PRE-FLIGHT CHECKS
@@ -250,11 +264,11 @@ class InitTaskInclude extends IncludeArchetype
             ->example()
             ->phase('PARALLEL: Multi-probe memory searches:')
             ->do([
-                VectorMemoryMcp::call('search_memories', '{query: "project architecture implementation patterns", limit: 5, category: "architecture"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "project requirements features roadmap", limit: 5, category: "learning"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "bugs issues problems technical debt", limit: 5, category: "bug-fix"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "decisions trade-offs alternatives", limit: 5, category: "code-solution"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "project context conventions standards", limit: 5, category: "project-context"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "project architecture implementation patterns", limit: 5, category: "' . self::CAT_ARCHITECTURE . '"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "project requirements features roadmap", limit: 5, category: "' . self::CAT_LEARNING . '"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "bugs issues problems technical debt", limit: 5, category: "' . self::CAT_BUG_FIX . '"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "decisions trade-offs alternatives", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}'),
+                VectorMemoryMcp::call('search_memories', '{query: "project context conventions standards", limit: 5, category: "' . self::CAT_PROJECT_CONTEXT . '"}'),
             ])
             ->phase(Store::as('PRIOR_KNOWLEDGE', '{memories from all probes, filtered for actionable insights}'));
 
@@ -358,7 +372,7 @@ class InitTaskInclude extends IncludeArchetype
         // ============================================
 
         $this->guideline('phase9-approval')
-            ->goal('Present epics for user approval (MANDATORY GATE)')
+            ->goal('Present epics for user approval (conditional on $HAS_AUTO_APPROVE)')
             ->example()
             ->phase('FORMAT epic list as table:')
             ->do([
@@ -376,11 +390,11 @@ class InitTaskInclude extends IncludeArchetype
                 'Research agents used: {count} (Explore, Doc, Vector, Web)',
                 'Areas analyzed: code, tests, database, config, routes, build, docs, memory',
             ])
-            ->phase('PROMPT:')
-            ->do([
+            ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
                 'Ask: "Approve epic creation? (yes/no/modify)"',
                 Operator::validate('User response is YES, APPROVE, or CONFIRM', 'Wait for explicit approval'),
-            ]);
+            ]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved. Proceeding to task creation.'));
 
         // ============================================
         // PHASE 10: TASK CREATION
@@ -410,9 +424,9 @@ class InitTaskInclude extends IncludeArchetype
             ->phase('STORE initialization insight:')
             ->do([
                 VectorMemoryMcp::call('store_memory', '{
-                    content: "PROJECT_INIT|epics:{count}|hours:{total}|areas:{list}|stack:{tech}|critical_path:{deps}",
-                    category: "architecture",
-                    tags: ["project-init", "epics", "planning", "init-task"]
+                    content: "INIT-TASK|epics:{count}|hours:{total}|areas:{list}|stack:{tech}|critical_path:{deps}",
+                    category: "' . self::CAT_ARCHITECTURE . '",
+                    tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]
                 }'),
             ])
             ->phase('REPORT:')

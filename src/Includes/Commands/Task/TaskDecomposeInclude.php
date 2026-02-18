@@ -125,7 +125,7 @@ class TaskDecomposeInclude extends IncludeArchetype
         // INPUT CAPTURE
         // =========================================================================
 
-        $this->defineInputCaptureWithTaskIdGuideline();
+        $this->defineInputCaptureGuideline();
 
         // =========================================================================
         // WORKFLOW (single unified flow)
@@ -136,7 +136,7 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->example()
 
             // Stage 1: Load
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $TASK_ID}') . ' → ' . Store::as('TASK'))
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
 
             // Extract comment context (accumulated inter-session history)
@@ -145,14 +145,14 @@ class TaskDecomposeInclude extends IncludeArchetype
             // ATOMIC EARLY EXIT: if already evaluated as atomic → STOP immediately
             ->phase(Operator::if('$TASK has tag "'.self::TAG_ATOMIC.'"', [
                 'Task already tagged atomic — decomposition not possible. STOP.',
-                'NEXT: /task:sync {$TASK_ID} [-y] (or /task:async)',
+                'NEXT: /task:sync {$VECTOR_TASK_ID} [-y] (or /task:async)',
             ]))
 
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID, limit: 50}') . ' → ' . Store::as('EXISTING_SUBTASKS'))
             ->phase(Operator::if('EXISTING_SUBTASKS.count > 0 AND NOT $HAS_AUTO_APPROVE', 'Ask: "(1) Add more, (2) Replace all, (3) Abort"'))
 
             // Mark in_progress while decomposing (orchestrator owns status, not agents)
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "in_progress", comment: "Started decomposition", append_comment: true}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started decomposition", append_comment: true}'))
 
             // Stage 2: Documentation (PRIMARY source for structure)
             ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
@@ -211,9 +211,9 @@ Return: {docs_structure: [], code_structure: [], split: [], atomic: true|false, 
 
             // Stage 4.5: Atomic detection (after research + planning — scope-based, NOT time-based)
             ->phase(Operator::if('CODE_INSIGHTS.atomic === true OR SUBTASK_PLAN has only 1 subtask OR subtasks share same file scope OR subtasks are sub-steps of single concern', [
-                VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Atomic: single concern / single file scope — cannot decompose into distinct subtasks. Reason: {atomic_reason}. Ready for direct execution.", append_comment: true, add_tag: "'.self::TAG_ATOMIC.'"}'),
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Atomic: single concern / single file scope — cannot decompose into distinct subtasks. Reason: {atomic_reason}. Ready for direct execution.", append_comment: true, add_tag: "'.self::TAG_ATOMIC.'"}'),
                 'RESULT: ATOMIC — task tagged, returned to pending.',
-                'NEXT: /task:sync {$TASK_ID} [-y] (or /task:async). Task is atomic — execute directly.',
+                'NEXT: /task:sync {$VECTOR_TASK_ID} [-y] (or /task:async). Task is atomic — execute directly.',
                 'STOP.',
             ]))
 
@@ -223,11 +223,11 @@ Return: {docs_structure: [], code_structure: [], split: [], atomic: true|false, 
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create {count} subtasks? (yes/no/modify)"'))
 
             // Stage 6: Create (content MUST contain FILES: [...] and PARALLEL note if parallel: true)
-            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content (with FILES + PARALLEL note), parent_id: $TASK_ID, priority, estimate, order, parallel, tags: ["' . self::TAG_DECOMPOSED . '"]}]}'))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $TASK_ID}') . ' → verify')
+            ->phase(VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content (with FILES + PARALLEL note), parent_id: $VECTOR_TASK_ID, priority, estimate, order, parallel, tags: ["' . self::TAG_DECOMPOSED . '"]}]}'))
+            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → verify')
 
             // Return to pending — decomposition done, task awaits execution
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $TASK_ID, status: "pending", comment: "Decomposed into {count} subtasks. Ready for execution.", append_comment: true}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Decomposed into {count} subtasks. Ready for execution.", append_comment: true}'))
             ->phase('STOP: Do NOT execute. Return control to user.');
 
         // ERROR HANDLING

@@ -6,172 +6,276 @@ namespace BrainCore\Includes\Commands\Doc;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
+use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
+use BrainCore\Compilation\Tools\BashTool;
+use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Compilation\Tools\TaskTool;
+use BrainCore\Includes\Commands\Task\TaskCommandCommonTrait;
+use BrainNode\Mcp\Context7Mcp;
+use BrainNode\Mcp\VectorMemoryMcp;
 
-#[Purpose('The Work command is a guided workflow for writing documentation for a project.')]
+#[Purpose('Documentation workflow command: discover → understand → propose → write → finalize. Interactive, evidence-based .docs/ management with Brain Docs CLI integration, vector memory, and YAML front matter enforcement.')]
 class DocWorkInclude extends IncludeArchetype
 {
-    /**
-     * Handle the architecture logic.
-     *
-     * @return void
-     */
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
         // =========================================================================
         // IRON RULES
         // =========================================================================
+
+        // Universal: no-hallucination, no-verbose (from trait)
+        $this->defineIronExecutionRules();
+
         $this->rule('max-interactivity')->critical()
-            ->text('MUST engage user with clarifying questions via AskUserQuestion tool. NEVER assume.')
-            ->why('Assumptions lead to misalignment and rework.')
-            ->onViolation('Stop and ask clarifying question.');
+            ->text('When $HAS_AUTO_APPROVE = false: MUST engage user with clarifying questions via AskUserQuestion tool. NEVER assume scope, depth, audience, or structure. Documentation is a COLLABORATIVE process — user defines WHAT, agent researches and writes HOW. When $HAS_AUTO_APPROVE = true: infer scope/depth/audience from $CLEAN_ARGS context. Skip clarifying questions. Proceed autonomously through all phases.')
+            ->why('Wrong assumptions about documentation scope = useless output + full rework. Interactive alignment is cheaper than rewrites. But -y flag means user trusts agent to make reasonable decisions autonomously.')
+            ->onViolation('If interactive: STOP and ask clarifying question. If auto-approve: infer from input and proceed.');
+
+        $this->rule('discovery-before-creation')->critical()
+            ->text('ALWAYS search existing docs via brain docs CLI BEFORE creating new files. Flow: brain docs "{keywords}" → found? → READ existing → UPDATE. Not found? → apply aggressive-docs-search (3+ keyword variations). Still not found → CREATE new. NEVER create duplicate documentation for same topic.')
+            ->why('Duplicate docs diverge over time. One source of truth per topic. Updating existing is faster and preserves history.')
+            ->onViolation('Run brain docs first. Found → update. Not found after 3+ searches → create new.');
+
+        $this->rule('evidence-based')->critical()
+            ->text('ALL documentation content MUST be based on: 1) actual codebase reading (Read tool, Explore agent), 2) vector memory search, 3) existing .docs/ content, 4) verified web research. NEVER write documentation from assumptions or "common knowledge". Every technical claim must be verifiable against source code.')
+            ->why('Documentation based on assumptions becomes lies when code changes. Evidence-based = always accurate.')
+            ->onViolation('Read source code FIRST. Verify every claim against actual implementation.');
 
         $this->rule('500-line-limit')->critical()
-            ->text('Each file MUST NOT exceed 500 lines. Split into part-1.md, part-2.md if needed.')
-            ->why('Maintains readability.')
-            ->onViolation('Split content with clear naming and cross-references.');
+            ->text('Each documentation file MUST NOT exceed 500 lines. If content exceeds → split into {topic}-part-1.md, {topic}-part-2.md with cross-references and YAML front matter part: N field.')
+            ->why('Readability and token efficiency. Long files are unnavigable and expensive to load.')
+            ->onViolation('Split content. Add part field to YAML. Add cross-references between parts.');
 
-        $this->rule('docs-folder-structure')->high()
-            ->text('All documentation in .docs/ with hierarchy: features/, modules/, concepts/, architecture/, guides/, api/, tor/, reference/')
-            ->why('Ensures organization and discoverability.')
-            ->onViolation('Restructure to comply with folder hierarchy.');
+        $this->rule('yaml-front-matter-mandatory')->critical()
+            ->text('EVERY .docs/ file MUST start with YAML front matter. Required: name, description. Optional: part, type, date, version. brain docs CLI indexes ONLY files with valid YAML front matter — no front matter = invisible to search and discovery.')
+            ->why('brain docs CLI parses YAML for index and search. Docs without front matter are undiscoverable by other commands and agents.')
+            ->onViolation('Add YAML front matter before any markdown content. Verify with brain docs after writing.');
 
-        $this->rule('evidence-based')->high()
-            ->text('Content MUST be based on codebase exploration, file reading, or verified web research.')
-            ->why('Prevents speculation.')
-            ->onViolation('Use Explore agent, Read tool, or Web Research Master first.');
+        $this->rule('text-first-code-last')->critical()
+            ->text('Documentation is DESCRIPTION for humans. Minimize code to absolute minimum. Include code ONLY when: 1) text explanation would cost more tokens, AND 2) no other representation works. NEVER dump code blocks as documentation. Prefer: textual description > text-based diagram > minimal code snippet.')
+            ->why('Code in docs is expensive, hard to read, becomes stale faster than text. Text-first = maintainable, scannable, token-efficient.')
+            ->onViolation('Replace code with clear textual description. Keep only essential, minimal code examples.');
 
         $this->rule('validation-checkpoints')->high()
-            ->text('Obtain user approval at: structure proposal, first draft section, before finalization.')
-            ->why('Ensures alignment with expectations.')
-            ->onViolation('Pause and request validation.');
+            ->text('When $HAS_AUTO_APPROVE = false: obtain user approval at 3 checkpoints: 1) structure proposal (before writing), 2) first section draft (validate tone/depth/style), 3) final documentation (before saving). Between checkpoints: proceed autonomously. When $HAS_AUTO_APPROVE = true: skip ALL checkpoints, proceed through all phases to completion. Still SHOW summary of what was done at end.')
+            ->why('3 checkpoints = balance between user control and flow. -y flag = user trusts agent to complete full cycle without interruption.')
+            ->onViolation('If interactive: pause at checkpoint, AskUserQuestion. If auto-approve: skip, continue to next phase.');
+
+        // Auto-approval mode — consistent with task commands (from trait concept, doc-specific behavior)
+        $this->rule('auto-approve-mode')->critical()
+            ->text('$HAS_AUTO_APPROVE = true → AUTONOMOUS MODE. Skip ALL checkpoints (structure approval, first section review, final approval). Infer scope/depth/audience from $CLEAN_ARGS. Choose reasonable defaults: depth=detailed, audience=developer, structure=standard for TARGET_TYPE. Proceed through all phases to completion. Write files directly. Show summary at end. $HAS_AUTO_APPROVE = false → INTERACTIVE MODE. Full checkpoint flow, clarifying questions, user drives decisions.')
+            ->why('User explicitly chose autonomous mode via -y flag. Documentation command must support pipeline usage (e.g., after task execution, auto-create docs). Every pause breaks automation flow.')
+            ->onViolation('If auto-approve: remove the question, use defaults, continue. If interactive: ask and wait.');
+
+        // Secrets protection — docs should never contain secrets from .env or configs (from trait)
+        $this->defineSecretsPiiProtectionRules();
+
+        // No destructive git — doc edits must not wreck git state or memory/ (from trait)
+        $this->defineNoDestructiveGitRules();
+
+        // Tag taxonomy — predefined tags for memory storage when storing doc insights (from trait)
+        $this->defineTagTaxonomyRules();
+
+        // Failure policy — universal tool error / missing info handling (from trait)
+        $this->defineFailurePolicyRules();
+
+        // Aggressive docs search — multi-keyword discovery pattern (from trait)
+        $this->defineAggressiveDocsSearchGuideline();
+
+        $this->rule('external-docs-via-context7')->high()
+            ->text('When documenting features that use external packages/libraries: resolve library via '.Context7Mcp::call('resolve-library-id', '{libraryName: "{package}"}').' then query docs via '.Context7Mcp::call('query-docs', '{libraryId: "{resolved_id}", query: "{specific_topic}"}').'. Use Context7 for KNOWN packages (composer/npm dependencies). Use web-research-master for broader context or unknown sources. NEVER guess external API behavior — verify against official docs.')
+            ->why('Documentation referencing external packages must be accurate. Guessing package behavior = docs become lies on first version bump. Context7 provides indexed, version-aware library docs.')
+            ->onViolation('Identify external dependencies from codebase research. Resolve and query via Context7 before writing docs about them.');
 
         // =========================================================================
-        // COMMAND INPUT (IMMEDIATE CAPTURE)
+        // INPUT CAPTURE (from InputCaptureTrait via TaskCommandCommonTrait)
         // =========================================================================
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('DOC_TARGET', '{documentation target extracted from $RAW_INPUT}'));
+        $this->defineInputCaptureWithCustomGuideline([
+            'DOC_TARGET' => '{documentation target extracted from $CLEAN_ARGS: feature name, module, concept, topic}',
+            'TARGET_TYPE' => '{detect from $CLEAN_ARGS prefix or context: feature|module|concept|architecture|guide|api|reference|topic}',
+        ]);
 
-        // =========================================================================
-        // ARGUMENTS FORMAT
-        // =========================================================================
         $this->guideline('arguments-format')
-            ->text('Input accepts: feature:X, module:X, concept:X, file:X, topic:X, or plain text description.');
+            ->text('Input formats: feature:X, module:X, concept:X, architecture:X, guide:X, api:X, topic:X, or plain text description.')
+            ->example('feature:focus-mode → TARGET_TYPE=feature, DOC_TARGET=focus-mode')->key('typed')
+            ->example('deployment guide → TARGET_TYPE=guide, DOC_TARGET=deployment')->key('plain')
+            ->example('how task delegation works → TARGET_TYPE=concept, DOC_TARGET=task delegation')->key('natural');
 
         // =========================================================================
-        // WORKFLOW PHASES
+        // .docs/ FOLDER STRUCTURE
         // =========================================================================
-        $this->guideline('phase-1-understanding')
-            ->text('Phase 1: Understand what to document through maximum interactivity.')
-            ->example()
-            ->phase(Store::as('TARGET_TYPE', '{detect type from $RAW_INPUT: feature|module|concept|file|topic}'))
-            ->phase(Store::as('TARGET_VALUE', '{extract value after type prefix from $RAW_INPUT}'))
-            ->phase('step-1', 'Parse $RAW_INPUT to identify $TARGET_TYPE and scope via $TARGET_VALUE')
-            ->phase('step-2', 'Ask: What aspects? What depth? Target audience? Use cases?')
-            ->phase('step-3', 'Use AskUserQuestion until crystal clear')
-            ->phase('validation', 'Requirements clarity >= 95%');
-
-        $this->guideline('phase-2-information-gathering')
-            ->text('Phase 2: Gather comprehensive information.')
-            ->example()
-            ->phase('step-1', 'Task(subagent_type="Explore") for codebase structure')
-            ->phase('step-2', 'Read relevant files')
-            ->phase('step-3', 'Search vector memory: mcp__vector-memory__search_memories')
-            ->phase('step-4', 'If external context needed: Task(@agent-web-research-master)')
-            ->phase('validation', 'Evidence-based content >= 95%');
-
-        $this->guideline('phase-3-structure-proposal')
-            ->text('Phase 3: Propose structure and get approval.')
-            ->example()
-            ->phase('step-1', 'Design folder hierarchy within .docs/')
-            ->phase('step-2', 'Create outline: sections, code examples, diagrams')
-            ->phase('step-3', 'Estimate length, plan multi-file split if > 500 lines')
-            ->phase('step-4', 'AskUserQuestion for approval')
-            ->phase('validation', 'User explicitly approves structure');
-
-        $this->guideline('phase-4-writing')
-            ->text('Phase 4: Write professional documentation.')
-            ->example()
-            ->phase('step-1', 'Write first major section')
-            ->phase('step-2', 'Use TodoWrite to track progress')
-            ->phase('step-3', 'Show first section to user for validation')
-            ->phase('step-4', 'Continue based on feedback')
-            ->phase('step-5', 'Include: code examples, architecture diagrams (text-based), use cases')
-            ->phase('validation', 'Each section <= 500 lines, user validates first section');
-
-        $this->guideline('phase-5-finalization')
-            ->text('Phase 5: Review, finalize, deliver.')
-            ->example()
-            ->phase('step-1', 'Final review: 500-line limits, cross-references, completeness')
-            ->phase('step-2', 'Create TOC if multi-file')
-            ->phase('step-3', 'Present final for approval')
-            ->phase('step-4', 'Store insights: mcp__vector-memory__store_memory')
-            ->phase('step-5', 'Write files to .docs/')
-            ->phase('validation', 'User approves final documentation');
+        $this->guideline('docs-folder-structure')
+            ->goal('Organize documentation with clear hierarchy within .docs/')
+            ->text('Root: .docs/ — all project documentation. Subdirectories by content type:')
+            ->example('.docs/features/ — feature descriptions and usage')->key('features')
+            ->example('.docs/modules/ — internal module documentation')->key('modules')
+            ->example('.docs/concepts/ — conceptual explanations')->key('concepts')
+            ->example('.docs/architecture/ — system design and flows')->key('architecture')
+            ->example('.docs/guides/ — how-to guides and tutorials')->key('guides')
+            ->example('.docs/api/ — API specifications and contracts')->key('api')
+            ->example('.docs/tor/ — terms of reference / requirements')->key('tor')
+            ->example('.docs/reference/ — reference material and lookups')->key('reference');
 
         // =========================================================================
-        // YAML FRONT MATTER
+        // YAML FRONT MATTER STRUCTURE
         // =========================================================================
-        $this->rule('yaml-front-matter')->critical()
-            ->text('EVERY file MUST start with YAML front matter for brain docs indexing.')
-            ->why('brain docs parses metadata for index and search.')
-            ->onViolation('Add YAML front matter before markdown content.');
-
         $this->guideline('yaml-structure')
-            ->text('Required YAML structure: name (required), description (required), part/type/date/version (optional).')
-            ->example('---
-name: "Document Title"
-description: "Brief description"
-part: 1
-type: "guide"
-date: "2025-11-20"
-version: "1.0.0"
----')->key('structure');
+            ->goal('Consistent YAML front matter for brain docs indexing')
+            ->text('Required: name (string), description (string). Optional: part (int), type (string), date (YYYY-MM-DD), version (semver).')
+            ->text('Type values: guide | api | concept | architecture | reference | tor')
+            ->example("---\nname: \"Feature Name\"\ndescription: \"Brief description\"\ntype: \"guide\"\ndate: \"".date('Y-m-d')."\"\nversion: \"1.0.0\"\n---")->key('single-file')
+            ->example("---\nname: \"Feature Name (Part 1: Overview)\"\ndescription: \"Architecture and key concepts\"\npart: 1\ntype: \"guide\"\ndate: \"".date('Y-m-d')."\"\nversion: \"1.0.0\"\n---")->key('multi-part');
 
         // =========================================================================
-        // QUALITY STANDARDS
+        // WORKFLOW
         // =========================================================================
-        $this->guideline('professional-writing')
-            ->text('Technical writing standards.')
-            ->example('Clear, concise language')->key('language')
-            ->example('Logical structure with proper hierarchy')->key('structure')
-            ->example('Code examples with context (minimal, only when cheaper than text)')->key('code')
-            ->example('Text-based architecture diagrams')->key('diagrams')
-            ->example('Cross-references to related docs')->key('refs')
-            ->example('Proper markdown with syntax highlighting')->key('format');
+        $this->guideline('workflow')
+            ->goal('Documentation workflow: capture → discover → research → propose → write → finalize')
+            ->example()
+
+            // Phase 1: Capture input & discover existing docs
+            ->phase('=== PHASE 1: CAPTURE & DISCOVER ===')
+            ->phase(Store::as('RAW_INPUT', '$ARGUMENTS'))
+            ->phase(Store::as('HAS_AUTO_APPROVE', '{true if -y or --yes in RAW_INPUT}'))
+            ->phase(Store::as('CLEAN_ARGS', '{RAW_INPUT with flags removed}'))
+            ->phase(Store::as('DOC_TARGET', '{extract target from CLEAN_ARGS}'))
+            ->phase(Store::as('TARGET_TYPE', '{detect type from CLEAN_ARGS}'))
+
+            // 1.1: Discovery via Brain Docs CLI
+            ->phase(BashTool::call(BrainCLI::DOCS('{DOC_TARGET keywords}')).' → '.Store::as('EXISTING_DOCS'))
+            ->phase(Operator::if(Store::get('EXISTING_DOCS').' is empty', [
+                'Apply aggressive-docs-search: 3+ keyword variations (split CamelCase, strip suffixes, domain words)',
+                BashTool::call(BrainCLI::DOCS('{variation_1}')),
+                BashTool::call(BrainCLI::DOCS('{variation_2}')),
+                BashTool::call(BrainCLI::DOCS('{variation_3}')),
+            ]))
+
+            // 1.2: Determine mode
+            ->phase(Operator::if(Store::get('EXISTING_DOCS').' found', [
+                ReadTool::call('{existing doc paths}').' → '.Store::as('CURRENT_CONTENT'),
+                Store::as('DOC_MODE', 'update'),
+                'Show: "Found existing docs: {paths}. Mode: UPDATE."',
+            ]))
+            ->phase(Operator::if(Store::get('EXISTING_DOCS').' NOT found after all searches', [
+                Store::as('DOC_MODE', 'create'),
+                'Show: "No existing docs for {DOC_TARGET}. Mode: CREATE."',
+            ]))
+
+            // 1.3: Vector memory context
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$DOC_TARGET", limit: 5}').' → '.Store::as('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$DOC_TARGET architecture design", limit: 3}').' → append to '.Store::get('MEMORY_CONTEXT'))
+
+            // 1.4: Scope clarification (interactive or auto-inferred)
+            ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
+                'AskUserQuestion: What aspects to cover? Depth (overview/detailed/reference)? Target audience (developer/user/admin)?',
+                Store::as('USER_REQUIREMENTS', '{user answers: aspects, depth, audience, special_requests}'),
+            ]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', [
+                Store::as('USER_REQUIREMENTS', '{inferred from $CLEAN_ARGS context: depth=detailed, audience=developer, aspects=all relevant}'),
+                'Auto-inferred scope from input. Proceeding autonomously.',
+            ]))
+
+            // Phase 2: Research (evidence gathering)
+            ->phase('=== PHASE 2: EVIDENCE GATHERING ===')
+            ->phase(TaskTool::agent('explore', 'CODEBASE RESEARCH for documenting {$DOC_TARGET}: 1) Find all related source files (classes, traits, interfaces, configs). 2) Identify public API: method signatures, parameters, return types. 3) Find existing tests (test behavior = specification). 4) Check inline comments, PHPDoc, README fragments. 5) Map dependencies and relationships. Return: {source_files: [], public_api: [], config_options: [], test_files: [], inline_docs: [], dependencies: []}.').' → '.Store::as('CODEBASE_RESEARCH'))
+            // 2.2: External package docs via Context7 (if dependencies detected)
+            ->phase(Operator::if('$CODEBASE_RESEARCH reveals external packages/libraries', [
+                'For each significant dependency: resolve library ID',
+                Context7Mcp::call('resolve-library-id', '{libraryName: "{package_name}"}').' → '.Store::as('LIBRARY_ID'),
+                Context7Mcp::call('query-docs', '{libraryId: "$LIBRARY_ID", query: "{relevant_topic}"}').' → append to '.Store::get('CODEBASE_RESEARCH'),
+            ]))
+            // 2.3: Broader context via web research (if needed beyond package docs)
+            ->phase(Operator::if('external context needed beyond package docs (architecture patterns, industry practices)', [
+                TaskTool::agent('web-research-master', 'Research {$DOC_TARGET} context: best practices, standard approaches, related documentation patterns').' → '.Store::as('EXTERNAL_CONTEXT'),
+            ]))
+
+            // Phase 3: Structure proposal (CHECKPOINT 1 — interactive only)
+            ->phase('=== PHASE 3: STRUCTURE PROPOSAL ===')
+            ->phase(Store::as('DOC_PLAN', '{proposed_path, sections_outline, estimated_lines, split_plan}'))
+            ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
+                'Present to user (CHECKPOINT 1):',
+                '  Path: .docs/{TARGET_TYPE}/{doc-name}.md',
+                '  Sections: {outline with estimated line counts per section}',
+                '  Split plan: {if estimated > 500 lines: part-1 = sections A-C, part-2 = sections D-F}',
+                '  Evidence: "{N} source files, {N} tests, {N} memory insights found"',
+                '  Mode: {DOC_MODE} (create new / update existing)',
+                'AskUserQuestion → WAIT for explicit approval or changes',
+                Operator::if('user requests changes', 'Revise plan, re-propose'),
+            ]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved structure. Proceeding to writing.'))
+
+            // Phase 4: Writing (CHECKPOINT 2 — interactive only)
+            ->phase('=== PHASE 4: WRITING ===')
+            ->phase('Write YAML front matter + first major section')
+            ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
+                'Present first section to user (CHECKPOINT 2)',
+                'AskUserQuestion → WAIT for feedback on tone, depth, style',
+                Operator::if('approved', 'Continue writing remaining sections'),
+                Operator::if('changes needed', 'Apply feedback, show revised, then continue'),
+            ]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Continue writing all sections without pause'))
+            ->phase('Complete all sections. Enforce at each section:')
+            ->phase('  - Evidence-based claims (cite source files)')
+            ->phase('  - Text-first, minimal code')
+            ->phase('  - Proper heading hierarchy')
+            ->phase('  - Cross-references to related docs')
+            ->phase('  - Running line count (split if approaching 500)')
+
+            // Phase 5: Finalization (CHECKPOINT 3 — interactive only)
+            ->phase('=== PHASE 5: FINALIZATION ===')
+            ->phase('Final review checklist:')
+            ->phase('  - YAML front matter present and valid')
+            ->phase('  - Line count ≤ 500 per file')
+            ->phase('  - All cross-references valid')
+            ->phase('  - No secrets or PII')
+            ->phase('  - Code examples minimal and accurate')
+            ->phase(Operator::if(Store::get('DOC_MODE').' === "update"', 'Diff: show what changed vs original'))
+            ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
+                'Present final to user (CHECKPOINT 3)',
+                'AskUserQuestion → WAIT for final approval',
+            ]))
+            ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Self-review passed. Writing files.'))
+            ->phase(Operator::if('approved OR $HAS_AUTO_APPROVE', [
+                'Write files to .docs/',
+                BashTool::call(BrainCLI::DOCS('{DOC_TARGET keywords}')).' → verify files indexed by brain docs',
+                Operator::if('NOT indexed', 'Check YAML front matter format. Fix and retry.'),
+                VectorMemoryMcp::call('store_memory', '{content: "Documentation {created|updated}: {DOC_TARGET}. Path: {file_paths}. Sections: {section_names}. Based on: {source_files}.", category: "'.self::CAT_PROJECT_CONTEXT.'", tags: ["'.self::MTAG_INSIGHT.'", "'.self::MTAG_REUSABLE.'"]}'),
+                'RESULT: Documentation {DOC_MODE}d at {paths}. Indexed in brain docs.',
+            ]));
+
+        // =========================================================================
+        // WRITING STANDARDS
+        // =========================================================================
+        $this->guideline('writing-standards')
+            ->goal('Professional technical writing for .docs/')
+            ->text('Language: clear, concise, jargon-free where possible. Match depth to declared audience.')
+            ->text('Structure: logical heading hierarchy (# → ## → ###). Each section = one concept. No orphan sections.')
+            ->text('Code examples: MINIMAL. Only when text would cost more tokens or be less clear. Always: language tag, context comment, what it demonstrates.')
+            ->text('Diagrams: text-based (ASCII, Mermaid) when visual adds value. Never images (not indexable, not diffable).')
+            ->text('Cross-references: relative paths ([See X](../concepts/x.md)). Verify targets exist.')
+            ->text('Consistency: follow existing .docs/ style if any docs already exist. Match tone, format, heading style.');
 
         // =========================================================================
         // FILE NAMING
         // =========================================================================
         $this->guideline('file-naming')
-            ->text('Naming conventions: lowercase with hyphens, no spaces.')
-            ->example('Single: topic-name.md')->key('single')
-            ->example('Multi-part: topic-name-part-1.md, topic-name-part-2.md')->key('multi')
-            ->example('Index: README.md for folder overview')->key('index');
+            ->text('Lowercase, hyphens, descriptive, no spaces.')
+            ->example('Single file: feature-name.md')->key('single')
+            ->example('Multi-part: feature-name-part-1.md, feature-name-part-2.md')->key('multi')
+            ->example('Topic split: feature-name-overview.md, feature-name-api.md')->key('topic');
 
         // =========================================================================
-        // CROSS-REFERENCING
+        // ERROR HANDLING
         // =========================================================================
-        $this->guideline('cross-referencing')
-            ->text('Use relative paths for cross-references.')
-            ->example('[See Part 2](./topic-name-part-2.md)')->key('part')
-            ->example('[Related concept](../concepts/delegation.md)')->key('concept');
-
-        // =========================================================================
-        // TOOL INTEGRATION
-        // =========================================================================
-        $this->guideline('tool-integration')
-            ->text('Tool usage patterns.')
-            ->example('Explore: Task(subagent_type="Explore", prompt="...")')->key('explore')
-            ->example('Web research: Task(@agent-web-research-master, "...")')->key('web')
-            ->example('Memory search: mcp__vector-memory__search_memories')->key('memory-search')
-            ->example('Memory store: mcp__vector-memory__store_memory')->key('memory-store');
-
-        // =========================================================================
-        // DIRECTIVE
-        // =========================================================================
-        $this->guideline('directive')
-            ->text('Ask constantly! Explore thoroughly! Validate frequently! Write professionally!');
+        $this->guideline('error-handling')->example()
+            ->phase(Operator::if('brain docs CLI unavailable', 'Fallback: Glob(".docs/**/*.md") + Read YAML headers manually'))
+            ->phase(Operator::if('no source code found for topic', 'AskUserQuestion: is this conceptual-only or should match code? Conceptual → proceed with user input. Code-based → verify topic name and search again.'))
+            ->phase(Operator::if('user rejects structure at checkpoint', 'Revise based on specific feedback. Re-propose. Max 2 revisions, then AskUserQuestion for precise direction.'))
+            ->phase(Operator::if('content exceeds 500 lines mid-writing', 'STOP writing. Propose split plan. Get approval. Split and continue.'))
+            ->phase(Operator::if('existing doc found but format is wrong', 'Propose migration: fix YAML front matter, restructure to standards. AskUserQuestion before changing.'));
     }
 }

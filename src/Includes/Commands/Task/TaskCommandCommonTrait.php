@@ -8,6 +8,7 @@ use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
+use BrainCore\Includes\Commands\InputCaptureTrait;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -26,6 +27,8 @@ use BrainNode\Mcp\VectorTaskMcp;
  */
 trait TaskCommandCommonTrait
 {
+    use InputCaptureTrait;
+
     // =========================================================================
     // TAG TAXONOMY — INDIVIDUAL CONSTANTS (SINGLE SOURCE OF TRUTH)
     // =========================================================================
@@ -217,46 +220,20 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
-    // INPUT CAPTURE PATTERNS
+    // INPUT CAPTURE PATTERNS (base + description in InputCaptureTrait)
     // =========================================================================
 
     /**
-     * Define input capture guideline for commands with VECTOR_TASK_ID.
+     * Define input capture guideline for task commands with VECTOR_TASK_ID.
      * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
-     *          TaskTestValidateInclude, TaskValidateSyncInclude
+     *          TaskTestValidateInclude, TaskValidateSyncInclude,
+     *          TaskDecomposeInclude, TaskBrainstormInclude
      */
     protected function defineInputCaptureGuideline(): void
     {
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
-            ->text(Store::as('VECTOR_TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
-    }
-
-    /**
-     * Define input capture guideline for commands with TASK_ID (decompose style).
-     * Used by: TaskDecomposeInclude
-     */
-    protected function defineInputCaptureWithTaskIdGuideline(): void
-    {
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with flags removed}'))
-            ->text(Store::as('TASK_ID', '{numeric ID extracted from $CLEAN_ARGS}'));
-    }
-
-    /**
-     * Define input capture guideline for create command.
-     * Used by: TaskCreateInclude
-     */
-    protected function defineInputCaptureWithDescriptionGuideline(): void
-    {
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('TASK_DESCRIPTION', '{$RAW_INPUT with -y flag removed}'));
+        $this->defineInputCaptureWithCustomGuideline([
+            'VECTOR_TASK_ID' => '{numeric ID extracted from $CLEAN_ARGS}',
+        ]);
     }
 
     // =========================================================================
@@ -708,7 +685,7 @@ trait TaskCommandCommonTrait
     protected function defineVectorTaskIdRequiredRule(string $alternativeCommand): void
     {
         $this->rule('vector-task-id-required')->critical()
-            ->text('$TASK_ID MUST be a valid vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest '.$alternativeCommand.' for text-based tasks.')
+            ->text('$VECTOR_TASK_ID MUST be a valid vector task ID reference. Valid formats: "15", "#15", "task 15", "task:15", "task-15". If not a valid task ID, abort and suggest '.$alternativeCommand.' for text-based tasks.')
             ->why('This command is exclusively for vector task execution. Text descriptions belong to '.$alternativeCommand.'.')
             ->onViolation('STOP. Report: "Invalid task ID. Use '.$alternativeCommand.' for text-based tasks or provide valid task ID."');
     }

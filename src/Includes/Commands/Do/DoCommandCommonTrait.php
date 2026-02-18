@@ -9,6 +9,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainCore\Includes\Commands\InputCaptureTrait;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 /**
@@ -36,32 +37,22 @@ use BrainNode\Mcp\VectorMemoryMcp;
  */
 trait DoCommandCommonTrait
 {
-    // =========================================================================
-    // INPUT CAPTURE PATTERNS
-    // =========================================================================
+    use InputCaptureTrait;
 
-    /**
-     * Define input capture guideline for do:async/do:sync commands.
-     * Captures $RAW_INPUT, $HAS_AUTO_APPROVE, $TASK_DESCRIPTION
-     */
-    protected function defineInputCaptureWithDescriptionGuideline(): void
-    {
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('TASK_DESCRIPTION', '{$RAW_INPUT with flags removed}'));
-    }
+    // =========================================================================
+    // INPUT CAPTURE PATTERNS (base + description in InputCaptureTrait)
+    // =========================================================================
 
     /**
      * Define input capture guideline for do:validate/do:test-validate commands.
-     * Captures $RAW_INPUT, $HAS_AUTO_APPROVE, $VALIDATION_TARGET
+     * Base + VALIDATION_TARGET extracted from CLEAN_ARGS.
+     * Used by: DoValidateInclude, DoTestValidateInclude
      */
     protected function defineInputCaptureWithAutoApproveGuideline(): void
     {
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('VALIDATION_TARGET', '{target to validate extracted from $RAW_INPUT}'));
+        $this->defineInputCaptureWithCustomGuideline([
+            'VALIDATION_TARGET' => '{target to validate extracted from $CLEAN_ARGS}',
+        ]);
     }
 
     // =========================================================================

@@ -11,16 +11,30 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
+use BrainCore\Includes\Commands\Task\TaskCommandCommonTrait;
 use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Mcp\VectorMemoryMcp;
 
-#[Purpose('The /init-vector command automates project knowledge base setup via parallel agent execution.')]
+#[Purpose('Vector memory initialization: parallel project scanning, dense knowledge storage, brain docs integration. Populates vector memory with project structure, code, docs, and config insights for agent context.')]
 class InitVectorInclude extends IncludeArchetype
 {
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
-        // Iron Rules - Compact
+        // =========================================================================
+        // IRON RULES (from trait — universal safety)
+        // =========================================================================
+        $this->defineIronExecutionRules();
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+
+        // =========================================================================
+        // IRON RULES (command-specific)
+        // =========================================================================
         $this->rule('parallel-execution')->critical()
             ->text('Launch INDEPENDENT areas in PARALLEL (multiple Task calls in single response)')
             ->why('Maximizes throughput, reduces total initialization time')
@@ -41,20 +55,26 @@ class InitVectorInclude extends IncludeArchetype
             ->why('Context continuity between agents')
             ->onViolation('Add mandatory memory operations');
 
-        $this->rule('no-questions')->high()
-            ->text('Fully automated - no user prompts')
-            ->why('Batch initialization workflow')
-            ->onViolation('Proceed autonomously');
+        $this->rule('auto-approve-default')->high()
+            ->text('Default behavior is FULLY AUTOMATED (no user prompts). $HAS_AUTO_APPROVE = true confirms. Without -y: show completion summary. With -y: silent completion.')
+            ->why('Batch initialization workflow requires zero interaction by default.')
+            ->onViolation('Proceed autonomously. Never block on user input.');
 
         $this->rule('exclude-brain-directory')->critical()
             ->text('NEVER scan ' . Runtime::BRAIN_DIRECTORY . ' - Brain system internals, not project code')
             ->why('Brain config files pollute vector memory with irrelevant system data')
             ->onViolation('Skip ' . Runtime::BRAIN_DIRECTORY . ' in structure discovery and all exploration phases');
 
-        // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('INIT_PARAMS', '{initialization parameters extracted from $RAW_INPUT}'));
+        // =========================================================================
+        // INPUT CAPTURE (from InputCaptureTrait via TaskCommandCommonTrait)
+        // =========================================================================
+        $this->defineInputCaptureWithCustomGuideline([
+            'INIT_SCOPE' => '{optional scope filter from $CLEAN_ARGS: specific area/module to scan, or empty for full project}',
+        ]);
+
+        // =========================================================================
+        // WORKFLOW
+        // =========================================================================
 
         // Phase 1: Memory Status Check
         $this->guideline('phase1-status')
@@ -75,6 +95,7 @@ class InitVectorInclude extends IncludeArchetype
                         'Glob("*") → list root directories',
                         'EXCLUDE: ' . Runtime::BRAIN_DIRECTORY . ', vendor/, node_modules/, .git/',
                         'Classify: code(src/app), tests, config, docs(.docs), build, deps',
+                        Operator::if('$INIT_SCOPE not empty', 'FOCUS on areas matching $INIT_SCOPE only'),
                         'Output JSON: {areas: [{path, type, priority}]}',
                     ]),
                     Operator::output('{areas: [{path, type, priority: high|medium|low}]}'),
@@ -95,7 +116,7 @@ class InitVectorInclude extends IncludeArchetype
                         'BEFORE: search_memories("src code architecture", 3)',
                         'DO: Glob(**/*.php), Grep(class|function|namespace)',
                         'EXTRACT: {path|files|classes|namespaces|patterns|deps}',
-                        'AFTER: store_memory(compact_json, "architecture", ["init-vector","src"])',
+                        'AFTER: store_memory(compact_json, "' . self::CAT_ARCHITECTURE . '", ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"])',
                     ]),
                     Operator::output('{path:"src",files:N,classes:N,key_patterns:[]}')
                 ),
@@ -106,7 +127,7 @@ class InitVectorInclude extends IncludeArchetype
                         'BEFORE: search_memories("tests structure", 3)',
                         'DO: Glob(**/*Test.php), identify test framework',
                         'EXTRACT: {path|test_files|coverage_areas|framework}',
-                        'AFTER: store_memory(compact_json, "architecture", ["init-vector","tests"])',
+                        'AFTER: store_memory(compact_json, "' . self::CAT_ARCHITECTURE . '", ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_MODULE_SPECIFIC . '"])',
                     ]),
                     Operator::output('{path:"tests",files:N,framework:str}')
                 ),
@@ -136,7 +157,7 @@ class InitVectorInclude extends IncludeArchetype
                         'Docs batch: [{path1}, {path2}, {path3}]',
                         'Read each doc via Read tool',
                         'EXTRACT per doc: {name|type|key_concepts|related_to}',
-                        'AFTER: store_memory(compact_json, "learning", ["init-vector","docs","{type}"])',
+                        'AFTER: store_memory(compact_json, "' . self::CAT_LEARNING . '", ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_REUSABLE . '"])',
                     ]),
                     Operator::output('{docs_analyzed:3,topics:[]}')
                 ),
@@ -145,7 +166,7 @@ class InitVectorInclude extends IncludeArchetype
                         'Docs batch: [{path4}, {path5}, {path6}]',
                         'Read each doc via Read tool',
                         'EXTRACT per doc: {name|type|key_concepts|related_to}',
-                        'AFTER: store_memory(compact_json, "learning", ["init-vector","docs","{type}"])',
+                        'AFTER: store_memory(compact_json, "' . self::CAT_LEARNING . '", ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_REUSABLE . '"])',
                     ]),
                     Operator::output('{docs_analyzed:3,topics:[]}')
                 ),
@@ -164,7 +185,7 @@ class InitVectorInclude extends IncludeArchetype
                         'Thoroughness: quick',
                         'DO: Glob(config/*.php), extract key names',
                         'EXTRACT: {configs:[names],env_vars:[],services:[]}',
-                        'AFTER: store_memory(compact_json, "architecture", ["init-vector","config"])',
+                        'AFTER: store_memory(compact_json, "' . self::CAT_ARCHITECTURE . '", ["' . self::MTAG_INSIGHT . '"])',
                     ]),
                     Operator::output('{path:"config",configs:[]}')
                 ),
@@ -174,7 +195,7 @@ class InitVectorInclude extends IncludeArchetype
                         'Thoroughness: quick',
                         'DO: Find .github/, docker*, Makefile, composer.json, package.json',
                         'EXTRACT: {ci:bool,docker:bool,deps:{php:[],js:[]}}',
-                        'AFTER: store_memory(compact_json, "architecture", ["init-vector","build"])',
+                        'AFTER: store_memory(compact_json, "' . self::CAT_ARCHITECTURE . '", ["' . self::MTAG_INSIGHT . '"])',
                     ]),
                     Operator::output('{ci:bool,docker:bool,deps:{}}')
                 ),
@@ -184,13 +205,13 @@ class InitVectorInclude extends IncludeArchetype
         $this->guideline('phase4-synthesis')
             ->goal('Synthesize all findings into project-wide architecture')
             ->example()
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "init-vector", limit: 20, tags: ["init-vector"]}'))
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "project structure architecture stack patterns", limit: 20, category: "' . self::CAT_ARCHITECTURE . '"}'))
             ->phase(Store::as('ALL_FINDINGS'))
             ->phase(
                 VectorMemoryMcp::call('store_memory', '{
-                    content: "PROJECT:{type}|AREAS:{list}|STACK:{tech}|PATTERNS:{arch}|DEPS:{graph}",
-                    category: "architecture",
-                    tags: ["init-vector", "project-wide", "synthesis"]
+                    content: "INIT-VECTOR SYNTHESIS|PROJECT:{type}|AREAS:{list}|STACK:{tech}|PATTERNS:{arch}|DEPS:{graph}",
+                    category: "' . self::CAT_ARCHITECTURE . '",
+                    tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]
                 }')
             );
 
@@ -200,11 +221,15 @@ class InitVectorInclude extends IncludeArchetype
             ->example()
             ->phase(VectorMemoryMcp::call('get_memory_stats', '{}'))
             ->phase(Operator::output([
-                '═══ INIT-VECTOR COMPLETE ═══',
+                '=== INIT-VECTOR COMPLETE ===',
                 'Areas: {count} | Memories: {total} | Time: {elapsed}',
                 'Parallel batches: 2 | Agents launched: {agent_count}',
-                '═══════════════════════════',
+                '============================',
             ]));
+
+        // =========================================================================
+        // REFERENCE GUIDELINES
+        // =========================================================================
 
         // Dense Storage Format
         $this->guideline('storage-format')
@@ -232,9 +257,9 @@ class InitVectorInclude extends IncludeArchetype
             ->example('Then: DocumentationMaster reads & analyzes actual content')->key('analyze')
             ->example('Each doc → Read → Extract key concepts → store_memory')->key('flow');
 
-        // Error Handling (Compact)
+        // Error Handling (supplements defineFailurePolicyRules from trait)
         $this->guideline('errors')
-            ->text('Error handling')
+            ->text('Command-specific error handling (trait provides baseline tool error / MCP failure policy)')
             ->example('MCP unavailable → abort, report')->key('memory-fail')
             ->example('Agent timeout → skip area, continue, report in summary')->key('timeout')
             ->example('Empty area → store minimal, proceed')->key('empty');
@@ -249,11 +274,11 @@ class InitVectorInclude extends IncludeArchetype
             ->phase('3b', 'brain docs → 8 docs found → batch into 3+3+2')
             ->phase('3b-parallel', 'PARALLEL: 3x DocumentationMaster agents')
             ->phase('3c', 'PARALLEL: ExploreMaster(config/) + ExploreMaster(build/) → 2 agents')
-            ->phase('4', 'Synthesis: search init-vector memories → project-wide summary')
+            ->phase('4', 'Synthesis: search architecture memories → project-wide summary')
             ->phase('5', 'Complete: 15 memories, 7 agents (4 Explore + 3 DocMaster)');
 
         // Directive
         $this->guideline('directive')
-            ->text('PARALLEL agents! brain docs → DocumentationMaster! Dense storage! Fast init!');
+            ->text('PARALLEL agents! brain docs → DocumentationMaster! Dense storage! Predefined tags! Fast init!');
     }
 }

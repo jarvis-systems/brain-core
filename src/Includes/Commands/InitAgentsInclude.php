@@ -13,6 +13,7 @@ use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
+use BrainCore\Includes\Commands\Task\TaskCommandCommonTrait;
 use BrainNode\Agents\AgentMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Agents\WebResearchMaster;
@@ -22,14 +23,22 @@ use BrainNode\Mcp\VectorMemoryMcp;
 #[Purpose('The InitAgents command initializes the project with agents based on industry best practices.')]
 class InitAgentsInclude extends IncludeArchetype
 {
-    /**
-     * Handle the architecture logic.
-     *
-     * @return void
-     */
+    use TaskCommandCommonTrait;
+
     protected function handle(): void
     {
-        // Iron Rules
+        // =========================================================================
+        // IRON RULES (from trait — universal safety)
+        // =========================================================================
+        $this->defineIronExecutionRules();
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+
+        // =========================================================================
+        // IRON RULES (command-specific)
+        // =========================================================================
         $this->rule('mandatory-agentmaster-delegation')->critical()
             ->text('Brain MUST delegate ALL agent generation to AgentMaster. FORBIDDEN: Brain creating agents directly.')
             ->why('Separation of orchestration (Brain) and execution (AgentMaster). Brain is NOT an executor.')
@@ -59,10 +68,10 @@ class InitAgentsInclude extends IncludeArchetype
             ->why('Maximizes throughput. Sequential generation wastes time. Parallel = 5x faster.')
             ->onViolation('Batch agents into groups of 3, delegate to 5 AgentMasters concurrently.');
 
-        $this->rule('no-interactive-questions')->critical()
-            ->text('NO interactive questions. Fully automated gap analysis and generation.')
-            ->why('Automated workflow requires zero user prompts')
-            ->onViolation('Execute fully automated');
+        $this->rule('auto-approve-default')->critical()
+            ->text('Default behavior is FULLY AUTOMATED (no user prompts). $HAS_AUTO_APPROVE = true confirms. Gap analysis and generation run autonomously. Without -y: show summary before generation starts. With -y: fully silent pipeline.')
+            ->why('Automated workflow requires zero interaction by default.')
+            ->onViolation('Proceed autonomously. Never block on user input.');
 
         $this->rule('brain-make-master-only')->critical()
             ->text(['AgentMaster MUST use', BashTool::call(BrainCLI::MAKE_MASTER), 'for creation - NOT Write() or Edit()'])
@@ -79,10 +88,12 @@ class InitAgentsInclude extends IncludeArchetype
             ->why('Maintains delegation hierarchy')
             ->onViolation('Delegate to WebResearchMaster');
 
-        // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('INIT_PARAMS', '{initialization parameters extracted from $RAW_INPUT}'));
+        // =========================================================================
+        // INPUT CAPTURE (from InputCaptureTrait via TaskCommandCommonTrait)
+        // =========================================================================
+        $this->defineInputCaptureWithCustomGuideline([
+            'TARGET_DOMAIN' => '{optional domain hint from $CLEAN_ARGS: "Laravel", "React", "API", or empty for full discovery}',
+        ]);
 
         // Phase 0: Arguments Processing
         $this->guideline('phase0-arguments-processing')
@@ -94,15 +105,14 @@ class InitAgentsInclude extends IncludeArchetype
                 '=== PHASE 0: ARGUMENTS PROCESSING ===',
                 'Processing input...',
             ]))
-            ->phase(Store::as('TARGET_DOMAIN', '{extract domain hint from $RAW_INPUT if provided}'))
-            ->phase('Parse $RAW_INPUT for specific domain/technology/agent hints')
-            ->phase(Operator::if('$RAW_INPUT provided', [
-                'Extract: target_domain from $TARGET_DOMAIN (e.g., "Laravel", "React", "API"), target_technology, specific_agents',
+            ->phase('Parse $CLEAN_ARGS for specific domain/technology/agent hints')
+            ->phase(Operator::if('$CLEAN_ARGS not empty', [
+                'Extract from $TARGET_DOMAIN: technology, specific_agents',
                 Store::as('SEARCH_FILTER', '{domain: $TARGET_DOMAIN, tech: ..., agents: [...], keywords: [...]}'),
                 'Set search_mode = "targeted"',
                 'Log: "Targeted mode: focusing on {domain}/{tech}"'
             ]))
-            ->phase(Operator::if('$RAW_INPUT empty', [
+            ->phase(Operator::if('$CLEAN_ARGS empty', [
                 'Set search_mode = "discovery"',
                 'Use full project analysis workflow',
                 'Log: "Discovery mode: full project analysis"'
@@ -154,7 +164,7 @@ class InitAgentsInclude extends IncludeArchetype
                     Store::as('INDUSTRY_PATTERNS')
                 ),
                 Operator::if('fresh research performed', 'Store results in vector memory'),
-                VectorMemoryMcp::call('store_memory', '{content: $INDUSTRY_PATTERNS, category: "learning", tags: ["agent-patterns", "best-practices", "{CURRENT_YEAR}"]}')
+                VectorMemoryMcp::call('store_memory', '{content: $INDUSTRY_PATTERNS, category: "' . self::CAT_LEARNING . '", tags: ["' . self::MTAG_PATTERN . '", "' . self::MTAG_REUSABLE . '"]}')
             ]))
             ->phase(Operator::if('search_mode === "targeted"', [
                 'Use $CACHED_PATTERNS from phase 1 if available',
@@ -230,7 +240,7 @@ class InitAgentsInclude extends IncludeArchetype
                 )
             )
             ->phase('Cache technology patterns in vector memory')
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: $TECH_PATTERNS, category: "learning", tags: ["tech-patterns", $PROJECT_STACK.primary_stack, "{CURRENT_YEAR}"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: $TECH_PATTERNS, category: "' . self::CAT_LEARNING . '", tags: ["' . self::MTAG_PATTERN . '", "' . self::MTAG_REUSABLE . '"]}'))
             ->phase(Operator::if('search_mode === "targeted"', [
                 'Log: "Found {count} patterns for {$SEARCH_FILTER.tech}"',
                 'Boost relevance score for matching patterns'
@@ -366,11 +376,11 @@ class InitAgentsInclude extends IncludeArchetype
             ->phase(Operator::if('agents_generated > 0', [
                 'Calculate: avg_confidence = average(generated_agents.confidence)',
                 'Calculate: avg_industry_alignment = average(generated_agents.industry_alignment)',
-                VectorMemoryMcp::call('store_memory', '{content: "Init Gap Analysis: mode={search_mode}, technologies={$PROJECT_STACK.technologies}, agents_generated={agents_count}, avg_confidence={avg_confidence}, avg_industry_alignment={avg_industry_alignment}, coverage=improved, date={$CURRENT_DATE}", category: "architecture", tags: ["init", "gap-analysis", "agents", "{CURRENT_YEAR}"]}'),
+                VectorMemoryMcp::call('store_memory', '{content: "INIT-AGENTS|mode={search_mode}|tech={$PROJECT_STACK.technologies}|agents={agents_count}|confidence={avg_confidence}|alignment={avg_industry_alignment}|coverage=improved", category: "' . self::CAT_ARCHITECTURE . '", tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]}'),
                 Operator::output('Generation summary with agent details, confidence scores, and industry alignment metrics'),
             ]))
             ->phase(Operator::if('agents_generated === 0', [
-                VectorMemoryMcp::call('store_memory', '{content: "Init Gap Analysis: mode={search_mode}, result=full_coverage, agents={agents_count}, date={$CURRENT_DATE}", category: "architecture", tags: ["init", "full-coverage", "{CURRENT_YEAR}"]}'),
+                VectorMemoryMcp::call('store_memory', '{content: "INIT-AGENTS|mode={search_mode}|result=full_coverage|agents={agents_count}", category: "' . self::CAT_ARCHITECTURE . '", tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]}'),
                 Operator::output('Full coverage confirmation with existing agent list and industry coverage score'),
             ]))
             ->phase('Include cache performance metrics: {cache_hits}, {web_searches_performed}');
@@ -386,9 +396,9 @@ class InitAgentsInclude extends IncludeArchetype
             ->phase(['Created:', Runtime::NODE_DIRECTORY('Agents/'),'| Compiled:', Runtime::AGENTS_FOLDER])
             ->phase(['Ready via:', TaskTool::agent('{name}', '...')]);
 
-        // Error Recovery (compressed)
+        // Error Recovery (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')
-            ->text('Graceful degradation')
+            ->text('Command-specific error handling (trait provides baseline tool error / MCP failure policy)')
             ->example('no .docs/ → Brain context only, continue')
             ->example('agent exists → skip, log preserved')
             ->example('system agent suggested → skip, log "system agent protected"')
