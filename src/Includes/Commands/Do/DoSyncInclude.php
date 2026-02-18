@@ -30,6 +30,24 @@ class DoSyncInclude extends IncludeArchetype
      */
     protected function handle(): void
     {
+        // Universal safety rules
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
+        $this->defineDocumentationIsLawRules();
+
+        // Code quality rules (DoSync executes directly — needs same quality as TaskSync)
+        $this->defineCodebasePatternReuseRule();
+        $this->defineImpactRadiusAnalysisRule();
+        $this->defineLogicEdgeCaseVerificationRule();
+        $this->definePerformanceAwarenessRule();
+        $this->defineCodeHallucinationPreventionRule();
+        $this->defineCleanupAfterChangesRule();
+        $this->defineTestCoverageDuringExecutionRule();
+        $this->defineDocumentationDuringExecutionRule();
+
         // Iron Rules - Zero Tolerance
         $this->defineZeroDistractionsRule();
 
@@ -59,9 +77,7 @@ class DoSyncInclude extends IncludeArchetype
             ->onViolation('Include memory search in analysis, store insights after.');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input')
-            ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->text(Store::as('TASK_DESCRIPTION', '{task description extracted from $RAW_INPUT}'));
+        $this->defineInputCaptureWithDescriptionGuideline();
 
         // Phase 1: Context Analysis
         $this->guideline('phase1-context-analysis')
@@ -182,8 +198,8 @@ class DoSyncInclude extends IncludeArchetype
                 '{outcomes}',
             ]));
 
-        // Error Handling
-        $this->guideline('error-handling')
+        // Error Recovery
+        $this->guideline('error-recovery')
             ->text('Direct error handling without agent fallback')
             ->example()
             ->phase()->if('file not found', [
@@ -198,6 +214,11 @@ class DoSyncInclude extends IncludeArchetype
                 'Accept modifications',
                 'Rebuild plan',
                 'Re-present for approval',
+            ])
+            ->phase()->if('memory storage fails', [
+                'Log: "Failed to store to memory: {error}"',
+                'Report findings in output instead',
+                'Continue with report',
             ]);
 
         // Examples
@@ -233,6 +254,7 @@ class DoSyncInclude extends IncludeArchetype
             ->phase('USE /do:async', 'Complex multi-file tasks, tasks requiring research, architecture changes, tasks benefiting from specialized agents');
 
         // Response Format
-        $this->defineResponseFormatGuideline('=== headers | single approval | progress | files | Direct execution, no filler');
+        $this->guideline('response-format')
+            ->text('=== headers | single approval | progress | files | Direct execution, no filler');
     }
 }

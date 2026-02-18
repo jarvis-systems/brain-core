@@ -28,6 +28,13 @@ class DoValidateInclude extends IncludeArchetype
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
         $this->defineEntryPointBlockingRule('VALIDATE');
 
+        // Universal safety rules
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
+
         // Iron Rules - Zero Tolerance
         $this->defineValidationOnlyNoExecutionRule();
 
@@ -292,12 +299,41 @@ class DoValidateInclude extends IncludeArchetype
                 'Validation stored to vector memory.',
             ]));
 
-        // Error Handling
-        $this->defineErrorHandlingGuideline(
-            includeAgentErrors: true,
-            includeDocErrors: true,
-            isValidation: true
-        );
+        // Error Recovery
+        $this->guideline('error-recovery')
+            ->text('Graceful error handling with recovery options')
+            ->example()
+            ->phase()->if('user rejects plan', [
+                'Accept modifications',
+                'Rebuild plan',
+                'Re-submit for approval',
+            ])
+            ->phase()->if('task ID pattern detected', [
+                'Report: "Detected vector task ID. Use /task:validate for vector tasks."',
+                'Abort command',
+            ])
+            ->phase()->if('no agents available', [
+                'Report: "No agents found via brain list:masters"',
+                'Suggest: Run /init-agents first',
+                'Abort command',
+            ])
+            ->phase()->if('agent execution fails', [
+                'Log: "Validation agent {N} failed: {error}"',
+                'Offer options:',
+                '  1. Retry current agent',
+                '  2. Skip and continue',
+                '  3. Abort remaining validation',
+                'WAIT for user decision',
+            ])
+            ->phase()->if('documentation scan fails', [
+                'Log: "brain docs command failed or no documentation found"',
+                'Proceed without documentation context',
+            ])
+            ->phase()->if('memory storage fails', [
+                'Log: "Failed to store to memory: {error}"',
+                'Report findings in output instead',
+                'Continue with report',
+            ]);
 
         // Constraints and Validation
         $this->guideline('constraints')
@@ -345,6 +381,7 @@ class DoValidateInclude extends IncludeArchetype
         );
 
         // Response Format
-        $this->defineResponseFormatGuideline('=== headers | Parallel: agent batch indicators | Tables: validation results | No filler | Created memories listed');
+        $this->guideline('response-format')
+            ->text('=== headers | Parallel: agent batch indicators | Tables: validation results | No filler | Created memories listed');
     }
 }

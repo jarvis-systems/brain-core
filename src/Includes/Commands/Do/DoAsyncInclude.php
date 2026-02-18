@@ -28,6 +28,13 @@ class DoAsyncInclude extends IncludeArchetype
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
         $this->defineEntryPointBlockingRule('ASYNC');
 
+        // Universal safety rules
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
+
         // Iron Rules - Zero Tolerance
         $this->defineZeroDistractionsRule();
 
@@ -298,17 +305,28 @@ class DoAsyncInclude extends IncludeArchetype
             ])
             ->phase('CRITICAL: Vector memory is the communication channel between agents. Your learnings enable the next agent!');
 
-        // Error Handling
-        $this->defineErrorHandlingGuideline(
-            includeAgentErrors: true,
-            includeDocErrors: true,
-            isValidation: false
-        );
-
-        // Additional error cases specific to async
-        $this->guideline('error-handling-async-specific')
-            ->text('Additional error handling for async execution')
+        // Error Recovery
+        $this->guideline('error-recovery')
+            ->text('Graceful error handling with recovery options')
             ->example()
+            ->phase()->if('user rejects plan', [
+                'Accept modifications',
+                'Rebuild plan',
+                'Re-submit for approval',
+            ])
+            ->phase()->if('no agents available', [
+                'Report: "No agents found via brain list:masters"',
+                'Suggest: Run /init-agents first',
+                'Abort command',
+            ])
+            ->phase()->if('agent execution fails', [
+                'Log: "Step/Agent {N} failed: {error}"',
+                'Offer options:',
+                '  1. Retry current step',
+                '  2. Skip and continue',
+                '  3. Abort remaining steps',
+                'WAIT for user decision',
+            ])
             ->phase()->if('web research timeout', [
                 'Log: "Web research timed out - continuing without external knowledge"',
                 'Proceed with local context only',
@@ -317,6 +335,15 @@ class DoAsyncInclude extends IncludeArchetype
                 'Log: "Failed to gather {context_type}"',
                 'Proceed with available context',
                 'Warn: "Limited context may affect quality"',
+            ])
+            ->phase()->if('documentation scan fails', [
+                'Log: "brain docs command failed or no documentation found"',
+                'Proceed without documentation context',
+            ])
+            ->phase()->if('memory storage fails', [
+                'Log: "Failed to store to memory: {error}"',
+                'Report findings in output instead',
+                'Continue with report',
             ]);
 
         // Constraints and Validation
@@ -362,6 +389,7 @@ class DoAsyncInclude extends IncludeArchetype
             ->phase('result', '3/3 ✓ (faster than sequential)');
 
         // Response Format
-        $this->defineResponseFormatGuideline('=== headers | ⚠️ approval gates | ▶️✅❌ progress | 📁 file scope | No filler');
+        $this->guideline('response-format')
+            ->text('=== headers | approval gates | progress | file scope | No filler');
     }
 }

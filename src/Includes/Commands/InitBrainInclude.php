@@ -38,6 +38,11 @@ class InitBrainInclude extends IncludeArchetype
         // =========================================================================
         // IRON RULES (command-specific)
         // =========================================================================
+        $this->rule('auto-approve-default')->critical()
+            ->text('Default behavior is FULLY AUTOMATED (no user prompts). $HAS_AUTO_APPROVE = true confirms. Without -y: show summary before writing files. With -y: fully silent pipeline.')
+            ->why('Automated workflow requires zero interaction by default.')
+            ->onViolation('Proceed autonomously. Never block on user input.');
+
         $this->rule('temporal-context-first')->critical()
             ->text(['Temporal context MUST be initialized first:', BashTool::call('date +"%Y-%m-%d %H:%M:%S %Z"')])
             ->why('Ensures all research and recommendations reflect current year best practices')
@@ -895,7 +900,7 @@ class InitBrainInclude extends IncludeArchetype
         // =====================================================
 
         $this->guideline('error-recovery')
-            ->text('Comprehensive error handling for all failure scenarios')
+            ->text('Command-specific error handling (trait provides baseline tool error / MCP failure policy)')
             ->example()
             ->phase()->if('no .docs/ found', [
                 'Continue with codebase analysis only',

@@ -60,7 +60,7 @@ class InitTaskInclude extends IncludeArchetype
             ->why('Init-task creates strategic foundation. Execution via /task:next or /do')
             ->onViolation('STOP immediately after task creation');
 
-        $this->rule('mandatory-user-approval')->critical()
+        $this->rule('auto-approve-default')->critical()
             ->text('When $HAS_AUTO_APPROVE = false: MUST get explicit user YES/APPROVE/CONFIRM before creating ANY tasks. When $HAS_AUTO_APPROVE = true: auto-approve after presenting summary. Proceed autonomously through creation.')
             ->why('User must validate task breakdown before committing. -y flag enables pipeline usage.')
             ->onViolation('If interactive: present task list and wait for explicit confirmation. If auto-approve: show summary and proceed.');
@@ -464,6 +464,30 @@ class InitTaskInclude extends IncludeArchetype
             ->example('24-32h: Architectural, integrations')->key('large')
             ->example('32-40h: Foundational, high complexity')->key('xlarge')
             ->example('>40h: Split into multiple epics')->key('split');
+
+        // Error Recovery (supplements defineFailurePolicyRules from trait)
+        $this->guideline('error-recovery')
+            ->text('Command-specific error handling (trait provides baseline tool error / MCP failure policy)')
+            ->example('no .docs/ → codebase analysis only, continue')->key('no-docs')
+            ->example('agent timeout → skip area, continue, report in summary')->key('timeout')
+            ->example('task_create_bulk fails → retry individually, report failures')->key('create-fail')
+            ->example('vector memory unavailable → skip prior knowledge, continue')->key('memory-fail')
+            ->example('user rejects epics → revise based on feedback, re-propose')->key('rejected')
+            ->example('external research fails → local analysis only, -0.2 confidence')->key('web-fail');
+
+        // Quality Gates
+        $this->guideline('quality-gates')
+            ->text('Validation checkpoints')
+            ->example('Gate 1: pre-flight task state checked')
+            ->example('Gate 2: structure discovery completed (PROJECT_AREAS populated)')
+            ->example('Gate 3: all parallel exploration batches returned')
+            ->example('Gate 4: documentation analysis completed')
+            ->example('Gate 5: vector memory research completed')
+            ->example('Gate 6: synthesis produced actionable epics')
+            ->example('Gate 7: each epic has title, content, priority, estimate, tags')
+            ->example('Gate 8: user approval obtained (or auto-approved)')
+            ->example('Gate 9: task_create_bulk succeeded')
+            ->example('Gate 10: completion insight stored to vector memory');
 
         $this->guideline('parallel-pattern')
             ->text('How to execute agents in parallel')

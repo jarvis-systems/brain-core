@@ -35,6 +35,7 @@ class InitAgentsInclude extends IncludeArchetype
         $this->defineNoDestructiveGitRules();
         $this->defineTagTaxonomyRules();
         $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
 
         // =========================================================================
         // IRON RULES (command-specific)

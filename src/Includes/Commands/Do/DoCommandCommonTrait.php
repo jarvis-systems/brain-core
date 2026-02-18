@@ -9,7 +9,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
-use BrainCore\Includes\Commands\InputCaptureTrait;
+use BrainCore\Includes\Commands\SharedCommandTrait;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 /**
@@ -37,7 +37,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
  */
 trait DoCommandCommonTrait
 {
-    use InputCaptureTrait;
+    use SharedCommandTrait;
 
     // =========================================================================
     // INPUT CAPTURE PATTERNS (base + description in InputCaptureTrait)
@@ -390,87 +390,6 @@ trait DoCommandCommonTrait
                 'Requirements extracted: {'.Store::var('DOCUMENTATION_REQUIREMENTS.count').'}',
                 '{requirements summary}',
             ]));
-    }
-
-    // =========================================================================
-    // ERROR HANDLING
-    // =========================================================================
-
-    /**
-     * Define error handling guideline for do commands.
-     * Used by: DoAsyncInclude, DoSyncInclude, DoValidateInclude, DoTestValidateInclude
-     *
-     * @param bool $includeAgentErrors Whether to include agent-specific error handling
-     * @param bool $includeDocErrors Whether to include documentation error handling
-     * @param bool $isValidation Whether this is a validation command (different error patterns)
-     */
-    protected function defineErrorHandlingGuideline(
-        bool $includeAgentErrors = true,
-        bool $includeDocErrors = true,
-        bool $isValidation = false
-    ): void {
-        $guideline = $this->guideline('error-handling')
-            ->text('Graceful error handling with recovery options')
-            ->example()
-            ->phase()->if('user rejects plan', [
-                'Accept modifications',
-                'Rebuild plan',
-                'Re-submit for approval',
-            ]);
-
-        if ($isValidation) {
-            $guideline->phase()->if('task ID pattern detected', [
-                'Report: "Detected vector task ID. Use /task:validate for vector tasks."',
-                'Abort command',
-            ]);
-        }
-
-        if ($includeAgentErrors) {
-            $guideline->phase()->if('no agents available', [
-                'Report: "No agents found via brain list:masters"',
-                'Suggest: Run /init-agents first',
-                'Abort command',
-            ]);
-
-            $guideline->phase()->if('agent execution fails', [
-                'Log: "Step/Agent {N} failed: {error}"',
-                'Offer options:',
-                '  1. Retry current step',
-                '  2. Skip and continue',
-                '  3. Abort remaining steps',
-                'WAIT for user decision',
-            ]);
-        }
-
-        if ($includeDocErrors) {
-            $guideline->phase()->if('documentation scan fails', [
-                'Log: "brain docs command failed or no documentation found"',
-                'Proceed without documentation context',
-                'Note: "Documentation context unavailable"',
-            ]);
-        }
-
-        $guideline->phase()->if('memory storage fails', [
-            'Log: "Failed to store to memory: {error}"',
-            'Report findings in output instead',
-            'Continue with report',
-        ]);
-    }
-
-    // =========================================================================
-    // RESPONSE FORMAT
-    // =========================================================================
-
-    /**
-     * Define response format guideline.
-     * Used by: ALL Do commands
-     *
-     * @param string $formatSpec Format specification string
-     */
-    protected function defineResponseFormatGuideline(string $formatSpec): void
-    {
-        $this->guideline('response-format')
-            ->text($formatSpec);
     }
 
     // =========================================================================

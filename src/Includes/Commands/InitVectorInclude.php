@@ -31,6 +31,7 @@ class InitVectorInclude extends IncludeArchetype
         $this->defineNoDestructiveGitRules();
         $this->defineTagTaxonomyRules();
         $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
 
         // =========================================================================
         // IRON RULES (command-specific)
@@ -55,7 +56,7 @@ class InitVectorInclude extends IncludeArchetype
             ->why('Context continuity between agents')
             ->onViolation('Add mandatory memory operations');
 
-        $this->rule('auto-approve-default')->high()
+        $this->rule('auto-approve-default')->critical()
             ->text('Default behavior is FULLY AUTOMATED (no user prompts). $HAS_AUTO_APPROVE = true confirms. Without -y: show completion summary. With -y: silent completion.')
             ->why('Batch initialization workflow requires zero interaction by default.')
             ->onViolation('Proceed autonomously. Never block on user input.');
@@ -258,11 +259,22 @@ class InitVectorInclude extends IncludeArchetype
             ->example('Each doc → Read → Extract key concepts → store_memory')->key('flow');
 
         // Error Handling (supplements defineFailurePolicyRules from trait)
-        $this->guideline('errors')
+        $this->guideline('error-recovery')
             ->text('Command-specific error handling (trait provides baseline tool error / MCP failure policy)')
             ->example('MCP unavailable → abort, report')->key('memory-fail')
             ->example('Agent timeout → skip area, continue, report in summary')->key('timeout')
             ->example('Empty area → store minimal, proceed')->key('empty');
+
+        // Quality Gates
+        $this->guideline('quality-gates')
+            ->text('Validation checkpoints')
+            ->example('Gate 1: memory status checked (fresh vs augment)')
+            ->example('Gate 2: structure discovery completed (AREAS populated)')
+            ->example('Gate 3: parallel code exploration returned')
+            ->example('Gate 4: documentation indexed and analyzed')
+            ->example('Gate 5: config/build exploration returned')
+            ->example('Gate 6: synthesis stored to vector memory')
+            ->example('Gate 7: get_memory_stats confirms new entries');
 
         // Example: Fresh Init
         $this->guideline('example-fresh')

@@ -28,6 +28,13 @@ class DoBrainstormInclude extends IncludeArchetype
     {
         $this->defineEntryPointBlockingRule('BRAINSTORM');
 
+        // Universal safety rules
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
+
         $this->rule('topic-required')->critical()
             ->text('Brainstorm topic MUST be provided as first argument. If empty, ask user for topic before proceeding.')
             ->why('Cannot brainstorm without a subject. Topic defines the entire session direction.')
@@ -56,12 +63,14 @@ class DoBrainstormInclude extends IncludeArchetype
         $this->defineVectorMemoryMandatoryRule('brainstorm topic');
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
-        $this->guideline('input-capture')
-            ->goal('Capture brainstorm topic from command arguments')
+        $this->defineInputCaptureWithCustomGuideline([
+            'BRAINSTORM_TOPIC' => '{brainstorm topic extracted from $CLEAN_ARGS}',
+        ]);
+
+        $this->guideline('input-brainstorm-fallback')
+            ->goal('Handle empty brainstorm topic')
             ->example()
-            ->phase(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->phase(Store::as('BRAINSTORM_TOPIC', '{brainstorm topic extracted from $RAW_INPUT}'))
-            ->phase(Operator::if('$BRAINSTORM_TOPIC is empty OR $RAW_INPUT is empty', [
+            ->phase(Operator::if('$BRAINSTORM_TOPIC is empty OR $CLEAN_ARGS is empty', [
                 Operator::output([
                     '=== DO:BRAINSTORM ===',
                     '',
@@ -346,16 +355,9 @@ class DoBrainstormInclude extends IncludeArchetype
                 'Use /task:brainstorm #{id} to brainstorm specific aspects of created tasks.',
             ]));
 
-        // Error Handling
-        $this->defineErrorHandlingGuideline(
-            includeAgentErrors: true,
-            includeDocErrors: true,
-            isValidation: false
-        );
-
-        // Additional brainstorm-specific errors
-        $this->guideline('error-handling-brainstorm')
-            ->text('Brainstorm-specific error handling')
+        // Error Recovery
+        $this->guideline('error-recovery')
+            ->text('Graceful error handling with recovery options')
             ->example()
             ->phase()->if('topic is too vague', [
                 'Ask for clarification: "Could you be more specific? E.g., architecture for X, implementation of Y"',
@@ -368,9 +370,29 @@ class DoBrainstormInclude extends IncludeArchetype
             ->phase()->if('no relevant memory/research found', [
                 'Proceed with general knowledge',
                 'Note to user: "No prior context found. Starting fresh brainstorm."',
+            ])
+            ->phase()->if('no agents available', [
+                'Report: "No agents found via brain list:masters"',
+                'Suggest: Run /init-agents first',
+                'Abort command',
+            ])
+            ->phase()->if('agent execution fails', [
+                'Log: "Agent {name} failed: {error}"',
+                'Proceed without agent input',
+                'Note: "Agent consultation unavailable"',
+            ])
+            ->phase()->if('documentation scan fails', [
+                'Log: "brain docs command failed or no documentation found"',
+                'Proceed without documentation context',
+            ])
+            ->phase()->if('memory storage fails', [
+                'Log: "Failed to store to memory: {error}"',
+                'Report findings in output instead',
+                'Continue with report',
             ]);
 
         // Response Format
-        $this->defineResponseFormatGuideline('=== headers | ## sections | structured analysis | options list | collaborative prompts');
+        $this->guideline('response-format')
+            ->text('=== headers | ## sections | structured analysis | options list | collaborative prompts');
     }
 }

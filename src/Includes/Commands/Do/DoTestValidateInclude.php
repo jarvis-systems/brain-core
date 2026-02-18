@@ -27,6 +27,13 @@ class DoTestValidateInclude extends IncludeArchetype
         // ABSOLUTE FIRST - BLOCKING ENTRY RULE
         $this->defineEntryPointBlockingRule('TEST-VALIDATE');
 
+        // Universal safety rules
+        $this->defineSecretsPiiProtectionRules();
+        $this->defineNoDestructiveGitRules();
+        $this->defineTagTaxonomyRules();
+        $this->defineFailurePolicyRules();
+        $this->defineAggressiveDocsSearchGuideline();
+
         // Iron Rules - Zero Tolerance
         $this->defineTestValidationOnlyRule();
 
@@ -304,17 +311,32 @@ class DoTestValidateInclude extends IncludeArchetype
                 '- Or create vector tasks with /task:create for systematic tracking',
             ]));
 
-        // Error Handling
-        $this->defineErrorHandlingGuideline(
-            includeAgentErrors: true,
-            includeDocErrors: true,
-            isValidation: true
-        );
-
-        // Additional test-specific error handling
-        $this->guideline('error-handling-test-specific')
-            ->text('Additional error handling for test validation')
+        // Error Recovery
+        $this->guideline('error-recovery')
+            ->text('Graceful error handling with recovery options')
             ->example()
+            ->phase()->if('user rejects plan', [
+                'Accept modifications',
+                'Rebuild plan',
+                'Re-submit for approval',
+            ])
+            ->phase()->if('task ID pattern detected', [
+                'Report: "Detected vector task ID. Use /task:test-validate for vector tasks."',
+                'Abort command',
+            ])
+            ->phase()->if('no agents available', [
+                'Report: "No agents found via brain list:masters"',
+                'Suggest: Run /init-agents first',
+                'Abort command',
+            ])
+            ->phase()->if('agent execution fails', [
+                'Log: "Test validation agent {N} failed: {error}"',
+                'Offer options:',
+                '  1. Retry current agent',
+                '  2. Skip and continue',
+                '  3. Abort remaining validation',
+                'WAIT for user decision',
+            ])
             ->phase()->if('no tests found', [
                 'Report: "No tests found for {$TASK_DESCRIPTION}"',
                 'Store to memory: "Write initial tests for {$TASK_DESCRIPTION}"',
@@ -324,6 +346,15 @@ class DoTestValidateInclude extends IncludeArchetype
                 'Log: "Test execution failed: {error}"',
                 'Mark tests as "execution_unknown"',
                 'Continue with static analysis',
+            ])
+            ->phase()->if('documentation scan fails', [
+                'Log: "brain docs command failed or no documentation found"',
+                'Proceed without documentation context',
+            ])
+            ->phase()->if('memory storage fails', [
+                'Log: "Failed to store to memory: {error}"',
+                'Report findings in output instead',
+                'Continue with report',
             ]);
 
         // Test Quality Criteria
@@ -393,6 +424,7 @@ class DoTestValidateInclude extends IncludeArchetype
         );
 
         // Response Format
-        $this->defineResponseFormatGuideline('=== headers | Parallel: agent batch indicators | Tables: coverage metrics + issue counts | Coverage % | Health score | Memory storage confirmation');
+        $this->guideline('response-format')
+            ->text('=== headers | Parallel: agent batch indicators | Tables: coverage metrics + issue counts | Coverage % | Health score | Memory storage confirmation');
     }
 }
