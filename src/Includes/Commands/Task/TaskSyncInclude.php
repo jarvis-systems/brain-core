@@ -32,6 +32,7 @@ class TaskSyncInclude extends IncludeArchetype
         $this->defineStatusSemanticsRule();
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze and validate.');
         $this->defineIronExecutionRules();
+        $this->defineOneTaskPerCycleRule();
         $this->defineMachineReadableProgressRule();
         $this->defineNextStepFlowRule();
 
@@ -78,6 +79,9 @@ class TaskSyncInclude extends IncludeArchetype
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
         $this->defineFailurePolicyRules();
+
+        // RETRY CIRCUIT BREAKER (from trait - prevents infinite retry loops in auto-approve)
+        $this->defineRetryCircuitBreakerRule('exec');
 
         $this->rule('escalate-stuck-problems')->high()
             ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives, ask user, or delegate to web-research-master.')
@@ -160,11 +164,11 @@ class TaskSyncInclude extends IncludeArchetype
         // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when parallel: true)
         $this->defineParallelExecutionAwarenessRules();
 
-        // SUBTASKS HANDLING
-        $this->rule('subtasks-before-parent')->high()
-            ->text('Parent task with pending subtasks: complete subtasks FIRST. Order by: order field (strict). -y = execute per parallel flags, no -y = show list and ask.');
-        $this->rule('subtasks-parallel-option')->medium()
-            ->text('USE parallel field from subtask data BUT verify isolation before concurrent execution. Apply parallel-isolation-checklist: list files per subtask, cross-reference for overlap. Override parallel: true → false if isolation violated. -y = auto-execute, no -y = show grouping and ask.');
+        // SUBTASKS HANDLING (one-task-per-cycle compliant)
+        $this->rule('subtasks-first-child-only')->high()
+            ->text('Parent task with pending subtasks: execute FIRST pending child only (by order field). If first pending children are adjacent parallel=true and pass isolation check → execute as group. After child/group completes → STOP. Remaining children require separate execution cycles per one-task-per-cycle.')
+            ->why('Sequential inline-execution of ALL children is unpredictable: context may exhaust mid-work. First-child-only gives orchestrator control points.')
+            ->onViolation('STOP after first child/group. Return RESULT with progress and NEXT with remaining children info.');
 
         // BREAKING CHANGES
         $this->rule('breaking-change-detection')->high()
@@ -207,6 +211,15 @@ class TaskSyncInclude extends IncludeArchetype
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
+            // 1.21 CIRCUIT BREAKER: prevent infinite retry loops (check BEFORE starting work)
+            ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [exec]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))
+            ->phase(Operator::if(Store::get('TASK') . '.tags contains "' . self::TAG_STUCK . '"', Operator::abort('Task is STUCK. Remove "' . self::TAG_STUCK . '" tag to retry.')))
+            ->phase(Operator::if(Store::get('ATTEMPT_COUNT') . ' >= 3', [
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, add_tag: "' . self::TAG_STUCK . '", comment: "CIRCUIT BREAKER: 3 exec attempts exhausted. Needs human investigation.", append_comment: true}'),
+                VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{id} failed 3x exec. See task comments.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                Operator::abort('Circuit breaker → tagged "' . self::TAG_STUCK . '".'),
+            ]))
+
             // 1.25 Parallel execution awareness (if parallel: true → identify siblings, interpret statuses, read scopes from comments)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
                 VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
@@ -218,13 +231,20 @@ class TaskSyncInclude extends IncludeArchetype
             ]))
 
             // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "ATTEMPT [exec]: {$ATTEMPT_COUNT + 1}/3. Started work.", append_comment: true}'))
 
-            // 1.5 Subtasks check
+            // 1.5 Subtasks check (one-task-per-cycle: first child/batch only, then STOP)
             ->phase(Operator::if(Store::get('SUBTASKS') . ' has pending items', [
-                Store::as('PENDING_SUBTASKS', 'filter SUBTASKS where status=pending, order by priority,order,created_at'),
-                Operator::if('$HAS_AUTO_APPROVE', 'Execute subtasks sequentially before parent'),
-                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N pending subtasks. Execute them first?"'),
+                Store::as('PENDING_SUBTASKS', 'filter SUBTASKS where status=pending, order by order,priority,created_at'),
+                Store::as('FIRST_BATCH', 'first group of adjacent parallel=true pending subtasks (verify isolation) OR single next sequential pending subtask'),
+                Store::as('REMAINING_SUBTASKS', 'pending subtasks NOT in first batch'),
+                Operator::if('$HAS_AUTO_APPROVE', [
+                    'Execute ONLY $FIRST_BATCH (inline for sync)',
+                    'After $FIRST_BATCH completes → STOP.',
+                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}.", append_comment: true}'),
+                    'RESULT: PARTIAL — batch completed. NEXT: /task:sync {$VECTOR_TASK_ID} [-y] (remaining children)',
+                ]),
+                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N pending subtasks. Execute first ({FIRST_BATCH})?"'),
             ]))
 
             // 1.7 Documentation check (MANDATORY before any work)

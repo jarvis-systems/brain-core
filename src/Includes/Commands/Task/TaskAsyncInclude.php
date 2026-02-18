@@ -27,6 +27,7 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->defineStatusSemanticsRule();
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to delegate.');
         $this->defineIronExecutionRules();
+        $this->defineOneTaskPerCycleRule();
         $this->defineMachineReadableProgressRule();
         $this->defineNextStepFlowRule();
 
@@ -71,6 +72,9 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
         $this->defineFailurePolicyRules();
+
+        // RETRY CIRCUIT BREAKER (from trait - prevents infinite retry loops in auto-approve)
+        $this->defineRetryCircuitBreakerRule('exec');
 
         $this->rule('escalate-stuck-problems')->high()
             ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT delegate same approach. Research alternatives via web-research-master or escalate to user.')
@@ -131,11 +135,13 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->rule('session-recovery-action')->high()
             ->text('Crashed session: -y = check agent results, continue remaining, no -y = ask "Crashed session. Check agent results/Restart all?" Stale: reset to pending.');
 
-        // SUBTASKS HANDLING (async-specific)
-        $this->rule('subtasks-parallel-assessment')->high()
-            ->text('Parent task with subtasks: use parallel flag from subtask data BUT verify isolation before concurrent execution. Apply parallel-isolation-checklist: list files per subtask, cross-reference for overlap. Override parallel: true → false if isolation violated. -y = auto-decide, no -y = show plan.');
+        // SUBTASKS HANDLING (async-specific, one-task-per-cycle compliant)
+        $this->rule('subtasks-first-batch-only')->high()
+            ->text('Parent task with subtasks: assess FIRST BATCH (first group of adjacent parallel=true OR single next sequential by order). Verify isolation for parallel groups. Delegate ONLY first batch — remaining children require separate execution cycles per one-task-per-cycle. After batch completes → STOP and report remaining.')
+            ->why('Inline-executing ALL children bloats context unpredictably. First-batch-only gives orchestrator control between batches.')
+            ->onViolation('STOP after first batch. Return RESULT with batch progress and NEXT with remaining subtask info.');
         $this->rule('subtasks-agent-assignment')->medium()
-            ->text('Each subtask gets dedicated agent delegation. Track: {subtask_id, agent, status, files_touched}. Update parent progress.');
+            ->text('Each subtask in first batch gets dedicated agent delegation. Track: {subtask_id, agent, status, files_touched}.');
 
         // BREAKING CHANGES (via agents)
         $this->rule('breaking-change-detection')->high()
@@ -184,6 +190,15 @@ class TaskAsyncInclude extends IncludeArchetype
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
+            // 1.21 CIRCUIT BREAKER: prevent infinite retry loops (check BEFORE delegating)
+            ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [exec]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))
+            ->phase(Operator::if(Store::get('TASK') . '.tags contains "' . self::TAG_STUCK . '"', Operator::abort('Task is STUCK. Remove "' . self::TAG_STUCK . '" tag to retry.')))
+            ->phase(Operator::if(Store::get('ATTEMPT_COUNT') . ' >= 3', [
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, add_tag: "' . self::TAG_STUCK . '", comment: "CIRCUIT BREAKER: 3 exec attempts exhausted. Needs human investigation.", append_comment: true}'),
+                VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{id} failed 3x exec. See task comments.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                Operator::abort('Circuit breaker → tagged "' . self::TAG_STUCK . '".'),
+            ]))
+
             // 1.25 Parallel execution awareness (if parallel: true → identify siblings, interpret statuses, read scopes from comments)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
                 VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
@@ -195,15 +210,20 @@ class TaskAsyncInclude extends IncludeArchetype
             ]))
 
             // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started work", append_comment: true}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "ATTEMPT [exec]: {$ATTEMPT_COUNT + 1}/3. Started work.", append_comment: true}'))
 
-            // 1.5 Subtasks check
+            // 1.5 Subtasks check (one-task-per-cycle: first batch only, then STOP)
             ->phase(Operator::if(Store::get('SUBTASKS') . ' has pending items', [
-                'Analyze subtask dependencies for parallel/sequential execution',
-                Store::as('INDEPENDENT_SUBTASKS', 'subtasks with no blockedBy'),
-                Store::as('DEPENDENT_SUBTASKS', 'subtasks with blockedBy'),
-                Operator::if('$HAS_AUTO_APPROVE', 'Auto-execute: parallel for independent, sequential for dependent'),
-                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N subtasks. Execute parallel where possible?"'),
+                'Sort pending subtasks by order field. Identify FIRST BATCH: first group of adjacent parallel=true (verify isolation) OR single next sequential (parallel=false)',
+                Store::as('FIRST_BATCH', 'first parallel group or single next sequential subtask'),
+                Store::as('REMAINING_SUBTASKS', 'pending subtasks NOT in first batch'),
+                Operator::if('$HAS_AUTO_APPROVE', [
+                    'Delegate ONLY $FIRST_BATCH to agents (parallel if group, single if sequential)',
+                    'After $FIRST_BATCH completes → STOP.',
+                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}.", append_comment: true}'),
+                    'RESULT: PARTIAL — batch completed. NEXT: /task:async {$VECTOR_TASK_ID} [-y] (remaining children)',
+                ]),
+                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N subtasks. Execute first batch ({FIRST_BATCH})?"'),
             ]))
 
             // 2. Fast-path check (simple tasks skip research)

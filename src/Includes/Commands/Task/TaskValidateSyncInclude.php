@@ -38,6 +38,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->rule('validation-only')->critical()
             ->text('VALIDATION reads and audits. NEVER implement or fix functional code. Functional issues → create fix-task.');
 
+        // ONE TASK PER CYCLE (from trait - validate ONLY assigned task, never siblings)
+        $this->defineOneTaskPerCycleRule();
+
         // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
         $this->defineAutoApprovalRules();
 
@@ -57,6 +60,12 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
         $this->defineFailurePolicyRules();
+
+        // RETRY CIRCUIT BREAKER (from trait - prevents infinite validate retry loops in auto-approve)
+        $this->defineRetryCircuitBreakerRule('validate');
+
+        // COLLATERAL FAILURE DETECTION (from trait - create global tasks for unrelated test failures)
+        $this->defineCollateralFailureDetectionRule();
 
         // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
         $this->defineCodebasePatternReuseRule();
@@ -129,6 +138,15 @@ class TaskValidateSyncInclude extends IncludeArchetype
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
 
+            // 1.21 CIRCUIT BREAKER: prevent infinite validation retry loops (check BEFORE validating)
+            ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [validate]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))
+            ->phase(Operator::if(Store::get('TASK') . '.tags contains "' . self::TAG_STUCK . '"', Operator::abort('Task is STUCK. Remove "' . self::TAG_STUCK . '" tag to retry.')))
+            ->phase(Operator::if(Store::get('ATTEMPT_COUNT') . ' >= 3', [
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, add_tag: "' . self::TAG_STUCK . '", comment: "CIRCUIT BREAKER: 3 validate attempts exhausted. Needs human investigation.", append_comment: true}'),
+                VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{id} failed 3x validation. See task comments.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                Operator::abort('Circuit breaker → tagged "' . self::TAG_STUCK . '".'),
+            ]))
+
             // 1.25 Parallel execution awareness (validator: check if siblings are active before inline fixes)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
                 VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
@@ -191,7 +209,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ))
 
             // 1.5 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "Started validation", append_comment: true}'))
+            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "ATTEMPT [validate]: {$ATTEMPT_COUNT + 1}/3. Started validation.", append_comment: true}'))
 
             // 2. Approve
             ->phase('Show: Task #{id}, title, status, subtasks count')
@@ -260,8 +278,26 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('KNOWN_FAILURES') . ' not empty', 'Before creating fix-task: verify proposed fix is NOT in known failures. Match → research alternative.'))
 
             // 5. Aggregate
-            ->phase(Store::as('ISSUES', '{critical, major, minor, missing_requirements}'))
-            ->phase(Store::as('FUNCTIONAL_COUNT', 'critical + major + minor + missing'))
+            ->phase(Store::as('ISSUES', '{critical, major, minor, missing_requirements — IN-SCOPE only}'))
+            ->phase(Store::as('COLLATERAL_FAILURES', '{test failures classified as OUTSIDE task scope — different module/domain/component}'))
+            ->phase(Store::as('FUNCTIONAL_COUNT', 'critical + major + minor + missing (in-scope only)'))
+
+            // 5.5 COLLATERAL FAILURE DETECTION: create global tasks for unrelated test failures
+            ->phase(Operator::if(
+                Store::get('COLLATERAL_FAILURES') . ' not empty AND FUNCTIONAL_COUNT = 0',
+                [
+                    'COLLATERAL FAILURES: tests failing outside task scope.',
+                    'Group by area (max 2 groups)',
+                    Operator::forEach('group (max 2)', [
+                        VectorTaskMcp::call('task_create', '{title: "Fix regression: {area}", content: "Test failure(s) outside task #{$TASK.id} scope.\n\nFailing: {test_names}\nError: {summary}\n\nDiscovered during sync validation of #{$TASK.id}, NOT caused by it.", priority: "high", estimate: 2, tags: ["' . self::TAG_REGRESSION . '", "' . self::TAG_BUGFIX . '"]}') . ' ← NO parent_id (global, exempt from parent-id-mandatory)',
+                    ]),
+                    'Current task NOT affected by collateral failures.',
+                ]
+            ))
+            ->phase(Operator::if(
+                Store::get('COLLATERAL_FAILURES') . ' not empty AND FUNCTIONAL_COUNT > 0',
+                'Collateral failures noted but NOT creating tasks — fix own issues first.'
+            ))
 
             // 6. Create fix-tasks (consolidated 5-8h)
             ->phase(Operator::if('FUNCTIONAL_COUNT = 0', 'Skip to completion'))

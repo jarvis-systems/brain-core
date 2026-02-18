@@ -42,6 +42,9 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->rule('docs-coverage')->high()
             ->text('Every requirement in .docs/ MUST have test coverage. Missing = agent writes test.');
 
+        // ONE TASK PER CYCLE (from trait - validate ONLY assigned task, never siblings)
+        $this->defineOneTaskPerCycleRule();
+
         // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
         $this->defineMachineReadableProgressRule();
         $this->defineNextStepFlowRule();

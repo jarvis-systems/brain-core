@@ -34,10 +34,12 @@ trait TaskCommandCommonTrait
     protected const TAG_DECOMPOSED = 'decomposed';
     protected const TAG_VALIDATION_FIX = 'validation-fix';
     protected const TAG_BLOCKED = 'blocked';
+    protected const TAG_STUCK = 'stuck';
     protected const TAG_NEEDS_RESEARCH = 'needs-research';
     protected const TAG_LIGHT_VALIDATION = 'light-validation';
     protected const TAG_PARALLEL_SAFE = 'parallel-safe';
     protected const TAG_ATOMIC = 'atomic';
+    protected const TAG_REGRESSION = 'regression';
 
     // --- Task Tags: Type (work kind) ---
     protected const TAG_FEATURE = 'feature';
@@ -96,10 +98,12 @@ trait TaskCommandCommonTrait
         self::TAG_DECOMPOSED,
         self::TAG_VALIDATION_FIX,
         self::TAG_BLOCKED,
+        self::TAG_STUCK,
         self::TAG_NEEDS_RESEARCH,
         self::TAG_LIGHT_VALIDATION,
         self::TAG_PARALLEL_SAFE,
         self::TAG_ATOMIC,
+        self::TAG_REGRESSION,
     ];
 
     /** @var string[] Task type tags (what kind of work) */
@@ -360,6 +364,25 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // ONE TASK PER CYCLE (EXECUTION BOUNDARY)
+    // =========================================================================
+
+    /**
+     * Define one-task-per-cycle execution boundary rule.
+     * Prevents executing multiple tasks in a single session — ensures predictability
+     * and gives orchestrator control points between tasks.
+     * Parent with children: handle first batch only (parallel group or single sequential).
+     * Used by: TaskAsyncInclude, TaskSyncInclude.
+     */
+    protected function defineOneTaskPerCycleRule(): void
+    {
+        $this->rule('one-task-per-cycle')->critical()
+            ->text('ONE assigned task = ONE execution cycle. After completing task → STOP and return result. NEVER: 1) search for and execute sibling tasks after completion, 2) inline-execute ALL children of parent task in one session. Parent with pending children: handle FIRST BATCH only (first parallel group or single next sequential child), then STOP — orchestrator dispatches remaining children in separate cycles. This applies regardless of how small children appear.')
+            ->why('Multi-task sessions are unpredictable: context budget unknown upfront, estimates may be wrong in either direction. Starting task N+1 may exhaust context mid-work = partial results harder to recover than clean start. Orchestrator loses control points between tasks (cannot reprioritize, redirect, stop). Accumulated tool call results from prior tasks bloat context for current task. One task per cycle = one predictable unit = reliable orchestration.')
+            ->onViolation('STOP after completing current task/batch. Return RESULT + NEXT. Let orchestrator dispatch next cycle.');
+    }
+
+    // =========================================================================
     // MACHINE-READABLE PROGRESS (STATUS/RESULT/NEXT OUTPUT CONTRACT)
     // =========================================================================
 
@@ -472,6 +495,42 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // RETRY CIRCUIT BREAKER (PREVENT INFINITE LOOPS)
+    // =========================================================================
+
+    /**
+     * Define retry circuit breaker rule and guideline.
+     * Prevents infinite retry loops in auto-approve mode by tracking attempt count.
+     * After MAX_ATTEMPTS (3), adds "stuck" tag and aborts — task needs human investigation.
+     * Counter is phase-specific (exec vs validate) to avoid false positives.
+     * Counter auto-resets after CIRCUIT BREAKER entry (human removes tag → fresh start).
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude, TaskValidateSyncInclude.
+     *
+     * @param string $phase 'exec' for executors, 'validate' for validators
+     */
+    protected function defineRetryCircuitBreakerRule(string $phase = 'exec'): void
+    {
+        $marker = "ATTEMPT [{$phase}]";
+
+        $this->rule('retry-circuit-breaker')->critical()
+            ->text('MAX 3 '.$phase.' attempts per task. Parse task.comment for "'.$marker.':" markers at workflow start (count only markers AFTER last "CIRCUIT BREAKER:" entry — counter auto-resets when human removes "'.self::TAG_STUCK.'" tag and retries). If task has tag "'.self::TAG_STUCK.'" → ABORT immediately (needs human). If '.$phase.' attempt count >= 3 → add tag "'.self::TAG_STUCK.'", store failure summary to memory, ABORT. If count < 3 → proceed, include "'.$marker.': {N+1}/3" in task.comment when setting in_progress.')
+            ->why('Without retry limit, auto-approve creates infinite loops: fail → pending → retry → fail. "stopped" = permanently cancelled (wrong semantics). Tag "'.self::TAG_STUCK.'" = circuit breaker: visible via task:list, removable by human to retry. Counter per phase (exec/validate) prevents false positives from normal lifecycle.')
+            ->onViolation('Check '.$phase.' attempt counter BEFORE setting in_progress. Tag "'.self::TAG_STUCK.'" = HARD STOP.');
+
+        $this->guideline('retry-circuit-breaker')
+            ->goal('Break infinite retry loops by tracking '.$phase.' attempts and tagging stuck tasks')
+            ->example()
+            ->phase('1. Parse ' . Store::get('TASK') . '.comment: find last "CIRCUIT BREAKER:" entry. Count "'.$marker.':" markers AFTER it (or from start if none). → ' . Store::as('ATTEMPT_COUNT', '{count, default 0}'))
+            ->phase('2. ' . Operator::if(Store::get('TASK') . '.tags contains "' . self::TAG_STUCK . '"', Operator::abort('Task is STUCK. Remove "' . self::TAG_STUCK . '" tag to retry.')))
+            ->phase('3. ' . Operator::if(Store::get('ATTEMPT_COUNT') . ' >= 3', [
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, add_tag: "' . self::TAG_STUCK . '", comment: "CIRCUIT BREAKER: 3 '.$phase.' attempts exhausted. Needs human investigation. See failure history above.", append_comment: true}'),
+                VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{id} \'{title}\' failed after 3 '.$phase.' attempts. Review task comments for failure details.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                Operator::abort('Circuit breaker → tagged "' . self::TAG_STUCK . '".'),
+            ]))
+            ->phase('4. ' . Operator::if(Store::get('ATTEMPT_COUNT') . ' < 3', 'Proceed. Include "'.$marker.': {N+1}/3" when setting in_progress.'));
+    }
+
+    // =========================================================================
     // SECRETS & PII PROTECTION (NO EXFILTRATION)
     // =========================================================================
 
@@ -570,6 +629,48 @@ trait TaskCommandCommonTrait
             ->text('Intermediate parent (has parent_id) with ALL decomposition subtasks validated and NO fix-subtasks → aggregation fast-path. Cross-reference parent requirements vs subtask results. If all covered → "validated" without full re-run. If gaps → scope validation to uncovered requirements only. Root tasks ALWAYS get full validation (cross-subtask integration).')
             ->why('Decomposition subtasks already validated their scope. Re-running full validation duplicates work. Root tasks need cross-subtask integration check that subtask validators never performed.')
             ->onViolation('Check: has parent_id? No fix-subtasks? All subtasks validated? → aggregation. Root task → ALWAYS full validation.');
+    }
+
+    // =========================================================================
+    // COLLATERAL FAILURE DETECTION (UNRELATED TEST FAILURES)
+    // =========================================================================
+
+    /**
+     * Define collateral failure detection rule and guideline.
+     * Detects test failures OUTSIDE current task scope during validation.
+     * Creates max 2 global remediation tasks (no parent_id) to prevent ignoring regressions.
+     * Current task validation is NOT affected by collateral failures.
+     * Global tasks avoid cascade re-validations (no parent-status propagation).
+     * Collateral tasks are explicitly EXEMPT from parent-id-mandatory rule.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude.
+     */
+    protected function defineCollateralFailureDetectionRule(): void
+    {
+        $this->rule('collateral-failure-detection')->high()
+            ->text('After test execution: separate failing tests into SCOPE (tests for files/modules in task.content or changed by this task) and COLLATERAL (tests for code clearly unrelated to task). Ambiguous = treat as SCOPE (conservative). If COLLATERAL failures exist AND task has ZERO in-scope failures → create max 2 GLOBAL remediation tasks with tag "'.self::TAG_REGRESSION.'" and NO parent_id (EXEMPT from parent-id-mandatory — intentional to prevent cascade re-validations). Current task PASSES quality gates. If task has in-scope failures → fail normally, mention collateral in report but do NOT create remediation tasks (fix own issues first). NOTE: practically triggers only on ROOT task validation (full test suite). Subtasks run scoped tests → no collateral possible.')
+            ->why('Ignoring unrelated test failures = hidden regressions accumulate silently. Blocking current task on others\' failures = wrong task punished. Global tasks (no parent) enter normal queue without parent-status propagation → zero cascade re-validations. Max 2 per validation prevents spam. If task turns out unnecessary (already fixed), agent executes it, tests pass, done in one cycle — cheaper than missed regression.')
+            ->onViolation('Classify test failures by scope. In-scope = current task problem. Out-of-scope = collateral → global task. Never block validation on collateral failures.');
+
+        $this->guideline('collateral-failure-detection')
+            ->goal('Detect unrelated test failures and create global remediation tasks without blocking current validation')
+            ->example()
+            ->phase('1. After test execution: classify each failing test')
+            ->phase('   SCOPE: test file directly tests classes/modules changed by or mentioned in $TASK')
+            ->phase('   COLLATERAL: test file tests code clearly unrelated (different module, domain, component)')
+            ->phase('   AMBIGUOUS: cannot determine origin → treat as SCOPE (conservative, safe)')
+            ->phase('2. '.Operator::if(Store::get('COLLATERAL_FAILURES').' not empty AND '.Store::get('ISSUES').' = 0 (no in-scope failures)', [
+                'Group collateral failures by module/area (max 2 groups)',
+                Operator::forEach('group in collateral_groups (max 2)', [
+                    VectorTaskMcp::call('task_create', '{title: "Fix regression: {module/area}", content: "Test failure(s) detected during validation of task #{$TASK.id} (\'{$TASK.title}\').\n\nThese failures are OUTSIDE that task\'s scope — collateral/regression.\n\nFailing tests:\n- {test_names_with_errors}\n\nError summary:\n{error_details}\n\nDiscovered by: validator during task #{$TASK.id} validation.\nNOT caused by task #{$TASK.id}.", priority: "high", estimate: 2, tags: ["'.self::TAG_REGRESSION.'", "'.self::TAG_BUGFIX.'"]}').' ← NO parent_id (global task, exempt from parent-id-mandatory)',
+                ]),
+                'Current task: PASSES quality gates (collateral failures are NOT blockers)',
+            ]))
+            ->phase('3. '.Operator::if(Store::get('COLLATERAL_FAILURES').' not empty AND '.Store::get('ISSUES').' > 0', [
+                'Current task FAILS normally (in-scope issues take priority)',
+                'Mention collateral failures in validation report for awareness',
+                'Do NOT create remediation tasks — fix own issues first, collateral caught on re-validation',
+            ]))
+            ->phase('4. '.Operator::if('no COLLATERAL failures', 'Normal validation flow — no additional action'));
     }
 
     // =========================================================================
