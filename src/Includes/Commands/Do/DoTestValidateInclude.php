@@ -12,8 +12,9 @@ use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainNode\Mcp\VectorMemoryMcp;
+use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Text-based test validation with parallel agent orchestration. Accepts text description (example: "test-validate user authentication"). Validates test coverage against documentation requirements, test quality (no bloat, real workflows), test consistency, and completeness. Creates memory entries for gaps. Idempotent. For vector task test validation use /task:test-validate.')]
+#[Purpose('Text-based test validation with parallel agent orchestration. Accepts text description (example: "test-validate user authentication"). Validates test coverage against documentation requirements, test quality (no bloat, real workflows), test consistency, and completeness. Creates vector tasks for gaps. Idempotent. For vector task test validation use /task:test-validate.')]
 class DoTestValidateInclude extends IncludeArchetype
 {
     use DoCommandCommonTrait;
@@ -45,15 +46,19 @@ class DoTestValidateInclude extends IncludeArchetype
             ->onViolation('Flag bloated tests for refactoring. Create memory entry to simplify.');
 
         $this->rule('documentation-requirements-coverage')->critical()
-            ->text('EVERY requirement in .docs/ MUST have corresponding test coverage. Missing coverage = immediate memory entry creation.')
+            ->text('EVERY requirement in .docs/ MUST have corresponding test coverage. Missing coverage = vector task creation for uncovered requirements.')
             ->why('Documentation defines expected behavior. Untested requirements are unverified.')
-            ->onViolation('Create memory entry for each uncovered requirement.');
+            ->onViolation('Create vector task for uncovered requirements.');
 
         $this->defineParallelAgentOrchestrationRule();
 
         $this->defineIdempotentValidationRule('entries');
 
         $this->defineVectorMemoryMandatoryRule('ALL test validation results');
+
+        // Task workflow integration
+        $this->defineDoMachineReadableProgressRule();
+        $this->defineDoFailureAwarenessRule();
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->defineInputCaptureWithAutoApproveGuideline();
@@ -250,24 +255,84 @@ class DoTestValidateInclude extends IncludeArchetype
                 '- Failing/flaky tests: {$FAILING_TESTS.count} tests',
             ]));
 
-        // Phase 7: Memory Storage for Test Gaps
-        $this->guideline('phase7-memory-storage')
-            ->goal('Store test gap findings to vector memory for future reference')
+        // Phase 7: Vector Task Creation for Test Gaps
+        $this->guideline('phase7-fix-task-creation')
+            ->goal('Create root-level vector tasks for test gaps (consolidated 5-8h batches)')
             ->example()
             ->phase(Operator::output([
                 '',
-                '=== PHASE 7: MEMORY STORAGE ===',
+                '=== PHASE 7: FIX TASK CREATION ===',
             ]))
-            ->phase('Check existing memory entries to avoid duplicates')
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "test gaps $TASK_DESCRIPTION", limit: 10}'))
-            ->phase(Store::as('EXISTING_TEST_MEMORIES', 'Existing test gap memories'))
-            ->phase(Operator::if('$ALL_TEST_ISSUES.count > 0', [
-                VectorMemoryMcp::call('store_memory', '{content: "Test validation gaps for {$TASK_DESCRIPTION}:\\n\\n## Missing Coverage ({$MISSING_COVERAGE.count})\\n{FOR each req: - {req.description} | Type: {req.expected_test_type} | Scenarios: {req.testable_scenarios}}\\n\\n## Failing Tests ({$FAILING_TESTS.count})\\n{FOR each test: - {test.test_file}:{test.test_method} | Error: {test.error_message}}\\n\\n## Bloated Tests ({$BLOATED_TESTS.count})\\n{FOR each test: - {test.test_file}:{test.test_method} | Bloat: {test.bloat_type} | Suggestion: {test.suggestion}}\\n\\n## Missing Workflows ({$MISSING_WORKFLOWS.count})\\n{FOR each wf: - {wf.workflow} | Missing: {wf.missing_scenarios}}\\n\\n## Isolation Issues ({$ISOLATION_ISSUES.count})\\n{FOR each test: - {test.test_file} | Issue: {test.isolation_issue}}\\n\\n## Context\\n- Memory IDs: {$TEST_MEMORY_CONTEXT.memory_ids}\\n- Documentation: {$DOCS_INDEX.paths}", category: "code-solution", tags: ["test-validation", "test-gaps", "do:test-validate"]}'),
-                Store::as('STORED_MEMORY_ID', '{memory_id}'),
-                Operator::output(['Stored test gaps to memory #{$STORED_MEMORY_ID}']),
+            ->phase('Check existing pending tasks to avoid duplicates')
+            ->phase(VectorTaskMcp::call('task_list', '{query: "test fix $TASK_DESCRIPTION", status: "pending", limit: 20}'))
+            ->phase(Store::as('EXISTING_FIX_TASKS', 'Existing pending test fix tasks'))
+            ->phase('Calculate total estimate for ALL test issues:')
+            ->phase(Operator::do([
+                '- Missing coverage: ~3h per requirement (write tests + verify)',
+                '- Failing tests: ~1h per test (debug + fix)',
+                '- Bloated tests: ~1h per test (refactor)',
+                '- Missing workflows: ~4h per workflow (design + write e2e test)',
+                '- Isolation issues: ~0.5h per test (fix isolation)',
+                Store::as('TOTAL_ESTIMATE', '{sum of all issue estimates in hours}'),
+            ]))
+            ->phase(Operator::if('$ALL_TEST_ISSUES.count > 0 AND $TOTAL_ESTIMATE <= 8', [
+                'ALL issues fit into ONE consolidated task',
+                Operator::if('NOT duplicate in $EXISTING_FIX_TASKS', [
+                    VectorTaskMcp::call('task_create',
+                        '{title: "Test fix: $TASK_DESCRIPTION (test-validation)"'
+                        .', content: "## Test Validation Fix Task'
+                        .'\n\nTotal estimate: {$TOTAL_ESTIMATE}h'
+                        .'\n\n## Missing Coverage ({$MISSING_COVERAGE.count})'
+                        .'\n{FOR each req: - {req.description} | Type: {req.expected_test_type} | Scenarios: {req.testable_scenarios}}'
+                        .'\n\n## Failing Tests ({$FAILING_TESTS.count})'
+                        .'\n{FOR each test: - {test.test_file}:{test.test_method} | Error: {test.error_message}}'
+                        .'\n\n## Bloated Tests ({$BLOATED_TESTS.count})'
+                        .'\n{FOR each test: - {test.test_file}:{test.test_method} | Bloat: {test.bloat_type} | Suggestion: {test.suggestion}}'
+                        .'\n\n## Missing Workflows ({$MISSING_WORKFLOWS.count})'
+                        .'\n{FOR each wf: - {wf.workflow} | Missing: {wf.missing_scenarios}}'
+                        .'\n\n## Isolation Issues ({$ISOLATION_ISSUES.count})'
+                        .'\n{FOR each test: - {test.test_file} | Issue: {test.isolation_issue}}'
+                        .'\n\n## Context'
+                        .'\n- Memory IDs: {$TEST_MEMORY_CONTEXT.memory_ids}'
+                        .'\n- Documentation: {$DOCS_INDEX.paths}"'
+                        .', priority: "high"'
+                        .', estimate: {$TOTAL_ESTIMATE}'
+                        .', tags: ["'.self::TAG_VALIDATION_FIX.'", "'.self::TAG_TEST.'", "'.self::TAG_MANUAL_ONLY.'"]}'
+                    ),
+                    Store::as('CREATED_TASKS[]', '{created task_id}'),
+                    Operator::output(['Created consolidated test fix task #{task_id} ({$TOTAL_ESTIMATE}h)']),
+                ]),
+            ]))
+            ->phase(Operator::if('$ALL_TEST_ISSUES.count > 0 AND $TOTAL_ESTIMATE > 8', [
+                'Split into multiple 5-8h task batches',
+                Store::as('NUM_BATCHES', '{ceil($TOTAL_ESTIMATE / 6)}'),
+                'Group issues by priority into batches of ~6h each',
+                Operator::forEach('batch_index in range(1, $NUM_BATCHES)', [
+                    Store::as('BATCH_ISSUES', '{slice of issues for this batch, ~6h worth}'),
+                    Store::as('BATCH_ESTIMATE', '{sum of batch issue estimates}'),
+                    Operator::if('NOT duplicate in $EXISTING_FIX_TASKS', [
+                        VectorTaskMcp::call('task_create',
+                            '{title: "Test fix batch {batch_index}/$NUM_BATCHES: $TASK_DESCRIPTION"'
+                            .', content: "## Test Fix Batch {batch_index}'
+                            .'\n\nBatch estimate: {$BATCH_ESTIMATE}h'
+                            .'\n\n## Issues'
+                            .'\n{FOR each issue: - [{issue.type}] {issue.description}'
+                            .'\n  File: {issue.file}'
+                            .'\n  Suggestion: {issue.suggestion}}'
+                            .'\n\n## Context'
+                            .'\n- Total batches: $NUM_BATCHES ($TOTAL_ESTIMATE h total)"'
+                            .', priority: "high"'
+                            .', estimate: {$BATCH_ESTIMATE}'
+                            .', order: {batch_index}'
+                            .', tags: ["'.self::TAG_VALIDATION_FIX.'", "'.self::TAG_TEST.'", "'.self::TAG_MANUAL_ONLY.'"]}'
+                        ),
+                        Store::as('CREATED_TASKS[]', '{created task_id}'),
+                        Operator::output(['Created batch {batch_index}/$NUM_BATCHES: {$BATCH_ESTIMATE}h']),
+                    ]),
+                ]),
             ]))
             ->phase(Operator::output([
-                'Memory entries created: {$ALL_TEST_ISSUES.count > 0 ? 1 : 0}',
+                'Fix tasks created: {$CREATED_TASKS.count} (total estimate: {$TOTAL_ESTIMATE}h)',
             ]));
 
         // Phase 8: Test Validation Completion
@@ -281,7 +346,19 @@ class DoTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('COVERAGE_RATE', '{covered_requirements / total_requirements * 100}%'))
             ->phase(Store::as('TEST_HEALTH_SCORE', '{100 - (bloat_count + isolation_count + failing_count) / total_tests * 100}%'))
             ->phase(Store::as('VALIDATION_STATUS', Operator::if('$MISSING_COVERAGE.count === 0 AND $FAILING_TESTS.count === 0', 'PASSED', 'NEEDS_WORK')))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Test validation of {$TASK_DESCRIPTION}\\n\\nStatus: {$VALIDATION_STATUS}\\nCoverage rate: {$COVERAGE_RATE}\\nTest health: {$TEST_HEALTH_SCORE}\\n\\nMissing coverage: {$MISSING_COVERAGE.count}\\nFailing tests: {$FAILING_TESTS.count}\\nBloated tests: {$BLOATED_TESTS.count}\\n\\nKey findings: {summary}", category: "code-solution", tags: ["test-validation", "audit", "do:test-validate"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory',
+                '{content: "Test validation of {$TASK_DESCRIPTION}'
+                .'\n\nStatus: {$VALIDATION_STATUS}'
+                .'\nCoverage rate: {$COVERAGE_RATE}'
+                .'\nTest health: {$TEST_HEALTH_SCORE}'
+                .'\n\nMissing coverage: {$MISSING_COVERAGE.count}'
+                .'\nFailing tests: {$FAILING_TESTS.count}'
+                .'\nBloated tests: {$BLOATED_TESTS.count}'
+                .'\nTasks created: {$CREATED_TASKS.count}'
+                .'\n\nKey findings: {summary}"'
+                .', category: "'.self::CAT_CODE_SOLUTION.'"'
+                .', tags: ["'.self::MTAG_DECISION.'", "'.self::MTAG_REUSABLE.'"]}'
+            ))
             ->phase(Operator::output([
                 '',
                 '=== TEST VALIDATION REPORT ===',
@@ -304,11 +381,10 @@ class DoTestValidateInclude extends IncludeArchetype
                 '| Missing workflows | {$MISSING_WORKFLOWS.count} |',
                 '| Isolation issues | {$ISOLATION_ISSUES.count} |',
                 '',
-                'Test validation stored to vector memory.',
+                '{IF $CREATED_TASKS.count > 0: "Created task IDs: {$CREATED_TASKS}"}',
                 '',
-                'Next steps:',
-                '- Use /do:async to implement missing tests',
-                '- Or create vector tasks with /task:create for systematic tracking',
+                'RESULT: {$VALIDATION_STATUS} — coverage={$COVERAGE_RATE}, health={$TEST_HEALTH_SCORE}, tasks_created={$CREATED_TASKS.count}',
+                'NEXT: {IF $CREATED_TASKS.count > 0: "/task:async #{first_task_id} [-y]" ELSE: "No test issues found."}',
             ]));
 
         // Error Recovery

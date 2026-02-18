@@ -83,6 +83,55 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // GUARANTEED FINALIZATION (SAFETY NET)
+    // =========================================================================
+
+    /**
+     * Define guaranteed finalization rule and guideline.
+     * Ensures task NEVER remains in_progress after workflow completes.
+     * Safety net: if all workflow paths somehow miss explicit status update,
+     * this catches it before final output and returns task to pending.
+     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
+     *          TaskValidateSyncInclude, TaskTestValidateInclude.
+     */
+    protected function defineGuaranteedFinalizationRule(): void
+    {
+        $this->rule('guaranteed-finalization')->critical()
+            ->text('Task MUST NOT remain in_progress after workflow completes. BEFORE emitting RESULT/NEXT output → verify current task status is NOT in_progress. If still in_progress after all workflow phases: set status to "pending" with comment "SAFETY NET: Workflow completed without explicit status update. Returned to pending for retry." This is the ABSOLUTE LAST safety net — every workflow path MUST set explicit status (completed/validated/tested/pending), but if a path is missed, this catches it.')
+            ->why('A task stuck in in_progress blocks the entire pipeline. No orchestrator will pick it up, no human will see it as actionable. This safety net ensures workflow bugs are self-healing — worst case pending (retryable), never silent in_progress (invisible).')
+            ->onViolation('IMMEDIATELY call task_update(status: pending) with explanation. Then emit RESULT: FAILED.');
+
+        $this->guideline('guaranteed-finalization-check')
+            ->goal('Safety net before final output')
+            ->example()
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → check current status')
+            ->phase(Operator::if('status = "in_progress"', [
+                'SAFETY NET TRIGGERED: workflow completed but status still in_progress.',
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "SAFETY NET: Workflow ended without explicit status update. Returned to pending for retry.", append_comment: true}'),
+                Operator::output(['RESULT: FAILED — safety_net_triggered, reason=status_stuck_in_progress']),
+            ]))
+            ->phase('Proceed to RESULT/NEXT output');
+    }
+
+    // =========================================================================
+    // AGENT DELEGATION INTEGRITY
+    // =========================================================================
+
+    /**
+     * Define no-manual-agent-fallback rule.
+     * When workflow delegates to validation/execution agents via Task(),
+     * Brain MUST NOT perform agent work directly if agents fail.
+     * Used by: TaskValidateInclude, TaskTestValidateInclude.
+     */
+    protected function defineNoManualAgentFallbackRule(): void
+    {
+        $this->rule('no-manual-agent-fallback')->critical()
+            ->text('When workflow delegates to validation/execution agents via Task(), Brain MUST NOT perform agent work directly if agents fail. Brain role = orchestrate + aggregate. Agent role = execute + analyze. If ALL agents fail → set status to "pending", add failure comment with error details, abort. If >=2 of 4 agents succeed → proceed with partial results. NEVER: read files to validate manually, run tests directly, check code quality inline. The ONLY acceptable fallback is retry (max 1) or abort.')
+            ->why('Manual fallback violates separation of concerns, produces lower quality validation (single pass vs multi-agent coverage), and masks tool errors that should be investigated. An abort with clear error is better than silent manual degradation.')
+            ->onViolation('ABORT. Set status to pending. Report agent failure details. Suggest retry: /task:validate {id} [-y].');
+    }
+
+    // =========================================================================
     // ONE TASK PER CYCLE (EXECUTION BOUNDARY)
     // =========================================================================
 
@@ -488,51 +537,6 @@ trait TaskCommandCommonTrait
     }
 
 
-
-    // =========================================================================
-    // COMPLETION STATUS UPDATE
-    // =========================================================================
-
-    /**
-     * Define completion status update guideline.
-     * Used by: TaskAsyncInclude, TaskSyncInclude, TaskValidateInclude,
-     *          TaskTestValidateInclude, TaskValidateSyncInclude
-     *
-     * @param string $successStatus Status to set on success (e.g., 'completed', 'validated', 'tested')
-     * @param string $processName Name of the process for messages (e.g., 'Execution', 'Validation', 'Test validation')
-     */
-    protected function defineCompletionStatusUpdateGuideline(string $successStatus, string $processName): void
-    {
-        $this->guideline('completion-status-update')
-            ->goal('Update vector task status based on execution outcome')
-            ->example()
-            ->phase(Store::as('COMPLETION_SUMMARY', '{completed_steps, files_modified, outcomes, learnings}'))
-            ->phase(VectorMemoryMcp::call('store_memory',
-                '{content: "Completed task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}\\n\\nApproach: {summary}\\n\\nSteps: {outcomes}\\n\\nLearnings: {insights}\\n\\nFiles: {list}", category: "' . self::CAT_CODE_SOLUTION . '", tags: ["' . self::MTAG_SOLUTION . '", "' . self::MTAG_REUSABLE . '"]}'))
-            ->phase(Operator::if('status === SUCCESS', [
-                VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "'.$successStatus.'", comment: "'.$processName.' completed successfully. Files: {list}. Memory: #{memory_id}", append_comment: true}'),
-                Operator::output(['Vector task #{$VECTOR_TASK_ID} '.$successStatus]),
-            ]))
-            ->phase(Operator::if('status === PARTIAL', [
-                VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, comment: "Partial completion: {completed}/{total} steps. Remaining: {list}", append_comment: true}'),
-                Operator::output(['Vector task #{$VECTOR_TASK_ID} progress saved (partial)']),
-            ]))
-            ->phase(Operator::if('status === FAILED', [
-                VectorTaskMcp::call('task_update',
-                    '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "'.$processName.' failed: {reason}. Completed: {completed}/{total}. Returned to queue for retry.", append_comment: true}'),
-                Operator::output(['Vector task #{$VECTOR_TASK_ID} returned to pending (failed, needs retry)']),
-            ]))
-            ->phase(Operator::output([
-                '',
-                '=== '.strtoupper($processName).' COMPLETE ===',
-                'Task #{$VECTOR_TASK_ID}: {$VECTOR_TASK.title}',
-                'Status: {SUCCESS/PARTIAL/FAILED}',
-                'Steps: {completed}/{total} | Files: {count} | Learnings stored',
-                '{step_outcomes}',
-            ]));
-    }
 
     // =========================================================================
     // TASK CONSOLIDATION (5-8h BATCHES)

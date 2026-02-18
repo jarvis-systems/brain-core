@@ -27,6 +27,7 @@ class TaskValidateInclude extends IncludeArchetype
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze what to validate.');
         $this->defineIronExecutionRules();
         $this->defineOneTaskPerCycleRule();
+        $this->defineGuaranteedFinalizationRule();
         $this->defineMachineReadableProgressRule();
         $this->defineNextStepFlowRule();
         // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
@@ -36,6 +37,8 @@ class TaskValidateInclude extends IncludeArchetype
             ->text('Brain NEVER runs tests or quality gates directly via Bash during validation. ALL test execution MUST go through validation agents ONLY. Brain role = orchestrate agents + aggregate results. ZERO exceptions.')
             ->why('Brain running tests directly duplicates agent work, wastes tokens and time, risks timeouts, and bypasses structured validation. Agents already ran these tests.')
             ->onViolation('ABORT direct Bash test call. If tests needed — delegate to Testing agent. If subtasks already validated — trust their results.');
+
+        $this->defineNoManualAgentFallbackRule();
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
         $this->defineDocumentationIsLawRules();
@@ -516,6 +519,23 @@ PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → verify file own
 Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: [], dead_code: [], debug_statements: [], cosmetic_deferred: []}'),
             ]))
 
+            // 4.5 AGENT RESULTS GATE — verify sufficient agent coverage before proceeding
+            ->phase(Store::as('AGENT_SUCCESS_COUNT', '{count of agents that returned valid JSON results}'))
+            ->phase(Operator::if(Store::get('AGENT_SUCCESS_COUNT') . ' = 0', [
+                'ALL AGENTS FAILED. Cannot validate without agent results.',
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation ABORTED: all 4 agents failed (tool errors). No manual fallback. Retry needed.", append_comment: true}'),
+                Operator::output(['RESULT: FAILED — agents=0/4, reason=all_agents_failed']),
+                Operator::output(['NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (retry after tool issue resolves)']),
+                Operator::abort('Zero agent results — cannot validate'),
+            ]))
+            ->phase(Operator::if(Store::get('AGENT_SUCCESS_COUNT') . ' < 2', [
+                'INSUFFICIENT AGENT COVERAGE (' . Store::get('AGENT_SUCCESS_COUNT') . '/4). Minimum 2 required for meaningful validation.',
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation ABORTED: only ' . Store::get('AGENT_SUCCESS_COUNT') . '/4 agents succeeded. Insufficient coverage for reliable validation.", append_comment: true}'),
+                Operator::output(['RESULT: FAILED — agents=' . Store::get('AGENT_SUCCESS_COUNT') . '/4, reason=insufficient_coverage']),
+                Operator::output(['NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (retry)']),
+                Operator::abort('Insufficient agent coverage'),
+            ]))
+
             // 5. Finalize (IRON LAW: fix-task created = "pending" ALWAYS. MCP will reset status anyway when child starts. NO "validated" with children.)
             ->phase('MERGE RESULTS: Collect all agent JSON outputs. DEDUPLICATE: same file + same issue type = merge into one. CLASSIFY severity:')
             ->phase('  CRITICAL: security issues (injection, XSS, secrets, auth), data loss risk, crashes')
@@ -590,6 +610,13 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                 VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_pattern_summary}. Root causes and fix approaches for future reference.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}') . ' ← ONLY issue patterns, not operational status'
             ))
 
+            // SAFETY NET: guaranteed finalization — verify status changed from in_progress
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → verify status is NOT in_progress')
+            ->phase(Operator::if('task.status = "in_progress"', [
+                'SAFETY NET TRIGGERED: workflow completed but status still in_progress.',
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "SAFETY NET: Validation workflow ended without explicit status update. Returned to pending.", append_comment: true}'),
+            ]))
+
             // NEXT (lifecycle reinforcement — at workflow end for recency)
             ->phase('NEXT STEP — determine from lifecycle position:')
             ->phase(Operator::if('status = "validated"', [
@@ -608,9 +635,16 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
             ->phase(Operator::if('agent fails', [
                 'RETRY once with same prompt',
                 Operator::if('still fails', [
-                    'Mark agent as FAILED in report',
-                    'Continue with remaining agents (partial validation > no validation)',
-                    'Add warning: "{agent_name} validation incomplete - manual review recommended for {coverage_area}"',
+                    'Mark agent as FAILED. Track: ' . Store::as('FAILED_AGENTS[]', '{agent_name}'),
+                    Operator::if(Store::get('AGENT_SUCCESS_COUNT') . ' >= 2', [
+                        'Continue with partial results (' . Store::get('AGENT_SUCCESS_COUNT') . '/4 agents)',
+                        'Add warning: "{agent_name} validation incomplete - manual review recommended for {coverage_area}"',
+                    ]),
+                    Operator::if(Store::get('AGENT_SUCCESS_COUNT') . ' < 2', [
+                        'ABORT: insufficient agent coverage. DO NOT validate manually.',
+                        VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Validation aborted: agents failed. Errors: {error_details}. Needs retry.", append_comment: true}'),
+                        Operator::abort('Insufficient agent coverage for validation'),
+                    ]),
                 ]),
             ]))
             ->phase(Operator::if('agent timeout (>60s)', 'Treat as failure, apply retry logic above'))

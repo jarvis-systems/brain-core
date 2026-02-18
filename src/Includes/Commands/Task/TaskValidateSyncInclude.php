@@ -40,6 +40,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // ONE TASK PER CYCLE (from trait - validate ONLY assigned task, never siblings)
         $this->defineOneTaskPerCycleRule();
+        $this->defineGuaranteedFinalizationRule();
 
         // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
         $this->defineAutoApprovalRules();
@@ -326,6 +327,13 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ]))
             ->phase(Operator::if('FUNCTIONAL_COUNT > 0', VectorMemoryMcp::call('store_memory', '{content: "Validation #{TASK.id}: {issue_patterns}. Root causes and fix approaches for future reference.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}') . ' ← ONLY issue patterns, not operational status'))
             ->phase('Report: task, status, issues counts, cosmetic fixes, fix-tasks created')
+
+            // SAFETY NET: guaranteed finalization — verify status changed from in_progress
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → verify status is NOT in_progress')
+            ->phase(Operator::if('task.status = "in_progress"', [
+                'SAFETY NET TRIGGERED: workflow completed but status still in_progress.',
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "SAFETY NET: Sync validation workflow ended without explicit status update. Returned to pending.", append_comment: true}'),
+            ]))
 
             // NEXT (lifecycle reinforcement — at workflow end for recency)
             ->phase('NEXT STEP — determine from lifecycle position:')

@@ -11,6 +11,7 @@ use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\TaskTool;
 use BrainCore\Includes\Commands\SharedCommandTrait;
 use BrainNode\Mcp\VectorMemoryMcp;
+use BrainNode\Mcp\VectorTaskMcp;
 
 /**
  * Common patterns extracted from Do command includes.
@@ -100,6 +101,130 @@ trait DoCommandCommonTrait
     }
 
     // =========================================================================
+    // SCOPE ESCALATION (DO → TASK WORKFLOW)
+    // =========================================================================
+
+    /**
+     * Define scope escalation rule for Do commands.
+     * When task exceeds Do-command capacity (>8h, >5 files, multi-session),
+     * creates a vector task with TAG_MANUAL_ONLY and suggests switching to Task workflow.
+     * Used by: DoAsyncInclude, DoSyncInclude.
+     *
+     * @param string $commandType 'async' or 'sync'
+     */
+    protected function defineScopeEscalationRule(string $commandType): void
+    {
+        $this->rule('scope-escalation')->critical()
+            ->text('If task analysis reveals: estimated effort >8h OR >5 files affected OR requires multi-session execution OR >4 distinct sub-steps → ESCALATE to Task workflow. Create vector task via VectorTaskMcp with tag "'.self::TAG_MANUAL_ONLY.'" (prevents auto-execution). Suggest user switch to /task:async or /task:sync with created task ID. ABORT do command — task is too large for single-shot execution.')
+            ->why('Do commands are lightweight single-shot executors. Complex tasks need vector task tracking for state persistence, parallel execution, validation pipeline, and circuit breaker protection. Escalation prevents half-done work in a single context window.')
+            ->onViolation('Create vector task with TAG_MANUAL_ONLY. Report task ID. Suggest /task:async or /task:sync. ABORT.');
+
+        $this->guideline('scope-escalation')
+            ->goal('Detect oversized tasks and escalate to Task workflow with vector task tracking')
+            ->example()
+            ->phase('Escalation triggers (ANY = escalate):')
+            ->phase('  1. Estimated effort >8 hours')
+            ->phase('  2. >5 files need modification')
+            ->phase('  3. Task requires multiple sessions (cannot complete in one context window)')
+            ->phase('  4. >4 distinct sub-steps that each require their own analysis')
+            ->phase(Operator::if('any trigger matched', [
+                VectorTaskMcp::call('task_create', '{title: "$TASK_DESCRIPTION", content: "Escalated from /do:'.$commandType.'. Original task too large for single-shot execution. Triggers: {matched_triggers}.", priority: "medium", estimate: {estimated_hours}, tags: ["'.self::TAG_MANUAL_ONLY.'"]}'),
+                Store::as('ESCALATED_TASK_ID', '{created task ID}'),
+                Operator::output([
+                    '',
+                    '=== SCOPE ESCALATION ===',
+                    'Task exceeds do:'.$commandType.' capacity: {matched_triggers}.',
+                    'Created vector task #{$ESCALATED_TASK_ID} (tagged '.self::TAG_MANUAL_ONLY.').',
+                    'NEXT: /task:async #{$ESCALATED_TASK_ID} [-y] or /task:sync #{$ESCALATED_TASK_ID} [-y]',
+                ]),
+                'ABORT do command',
+            ]));
+    }
+
+    // =========================================================================
+    // CIRCUIT BREAKER (PREVENT INFINITE RETRIES)
+    // =========================================================================
+
+    /**
+     * Define circuit breaker rule for Do commands.
+     * Limits retry attempts per step within a single session.
+     * After 3 failures on the same step, stores failure and skips/aborts.
+     * Simpler than Task's circuit breaker (no cross-session tracking via task comments).
+     * Used by: DoAsyncInclude, DoSyncInclude.
+     *
+     * @param string $commandType 'async' or 'sync'
+     */
+    protected function defineDoCircuitBreakerRule(string $commandType): void
+    {
+        $this->rule('do-circuit-breaker')->critical()
+            ->text('MAX 3 retry attempts per step within single do:'.$commandType.' session. Track via $RETRY_COUNTS[step_id]. Step fails 3x → store failure to memory (category: "'.self::CAT_DEBUGGING.'", tags: ["'.self::MTAG_FAILURE.'"]), then: -y mode = skip step and continue, interactive mode = ask user "Skip / Abort?". NEVER retry same step more than 3 times.')
+            ->why('Without retry limit, failed steps create infinite loops especially in auto-approve mode. Do commands have no cross-session state (no vector task comments), so circuit breaker is session-scoped.')
+            ->onViolation('Check $RETRY_COUNTS before retry. 3x reached → store failure, skip or abort.');
+
+        $this->guideline('do-circuit-breaker')
+            ->goal('Break retry loops within do:'.$commandType.' session')
+            ->example()
+            ->phase('1. ' . Store::as('RETRY_COUNTS', '{} (empty map, keyed by step_id)'))
+            ->phase('2. On step failure: increment $RETRY_COUNTS[step_id]')
+            ->phase('3. ' . Operator::if('$RETRY_COUNTS[step_id] >= 3', [
+                VectorMemoryMcp::call('store_memory', '{content: "FAILED: Step {step_id} in do:'.$commandType.' failed 3x. Task: {$TASK_DESCRIPTION}. Error: {last_error}. Context: {step_context}.", category: "'.self::CAT_DEBUGGING.'", tags: ["'.self::MTAG_FAILURE.'"]}'),
+                Operator::if('$HAS_AUTO_APPROVE === true', 'SKIP step, continue to next'),
+                Operator::if('$HAS_AUTO_APPROVE === false', 'Ask user: "Step failed 3x. Skip / Abort?"'),
+            ]))
+            ->phase('4. ' . Operator::if('$RETRY_COUNTS[step_id] < 3', 'Retry step with adjusted approach'));
+    }
+
+    // =========================================================================
+    // FAILURE AWARENESS (PREVENT REPEATING MISTAKES)
+    // =========================================================================
+
+    /**
+     * Define failure awareness rule for Do commands.
+     * Simpler than Task's defineFailureAwarenessRules() — no sibling-task-check
+     * (Do commands have no vector tasks to check siblings).
+     * Searches memory for known failures before starting work.
+     * Used by: DoAsyncInclude, DoSyncInclude.
+     */
+    protected function defineDoFailureAwarenessRule(): void
+    {
+        $this->rule('do-failure-awareness')->critical()
+            ->text('BEFORE starting work: search memory category "'.self::CAT_DEBUGGING.'" for KNOWN FAILURES related to $TASK_DESCRIPTION. Found → extract failed approaches and BLOCK them. Pass blocked approaches to agents (async) or exclude from plan (sync). Do NOT attempt solutions that already failed.')
+            ->why('Repeating failed solutions wastes time and context. Memory contains "this does NOT work" knowledge from previous sessions.')
+            ->onViolation('Search debugging memories FIRST. Block known-failed approaches in plan/delegation.');
+
+        $this->guideline('do-failure-awareness')
+            ->goal('Mine failure history before execution to avoid repeating mistakes')
+            ->example()
+            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK_DESCRIPTION failure", limit: 5, category: "'.self::CAT_DEBUGGING.'"}'))
+            ->phase(Store::as('KNOWN_FAILURES', '{failed approaches, errors, blocked patterns}'))
+            ->phase(Operator::if('$KNOWN_FAILURES not empty', [
+                Store::as('BLOCKED_APPROACHES', '{extracted approaches that MUST NOT be attempted}'),
+                Operator::output(['Known failures found: {$KNOWN_FAILURES.count}. Blocked approaches: {$BLOCKED_APPROACHES}']),
+            ]))
+            ->phase(Operator::if('$KNOWN_FAILURES empty', [
+                Store::as('BLOCKED_APPROACHES', '[]'),
+                'No known failures — proceed freely.',
+            ]));
+    }
+
+    // =========================================================================
+    // MACHINE-READABLE PROGRESS (STATUS/RESULT/NEXT)
+    // =========================================================================
+
+    /**
+     * Define machine-readable progress rule for Do commands.
+     * Matches Task commands' STATUS/RESULT/NEXT output contract.
+     * Used by: DoAsyncInclude, DoSyncInclude, DoValidateInclude, DoTestValidateInclude.
+     */
+    protected function defineDoMachineReadableProgressRule(): void
+    {
+        $this->rule('do-machine-readable-progress')->high()
+            ->text('ALL progress output MUST follow structured format. DURING EXECUTION: emit "STATUS: [phase_name] description" at each major workflow phase. AT COMPLETION: emit "RESULT: SUCCESS|PARTIAL|FAILED|PASSED|NEEDS_WORK — key=value, key=value" followed by "NEXT: recommended_command". No free-form progress — only STATUS/RESULT/NEXT lines. Examples: "STATUS: [context] Analyzing task scope" | "STATUS: [execution] Step 3/5 complete" | "RESULT: SUCCESS — steps=5/5, files=3" | "NEXT: /do:validate {description}".')
+            ->why('Structured format enables UI rendering, orchestrator parsing, and consistent user experience. Matches Task command output contract for uniform tooling.')
+            ->onViolation('Reformat to STATUS/RESULT/NEXT structure. Replace free-form text with structured lines.');
+    }
+
+    // =========================================================================
     // VALIDATION-SPECIFIC RULES
     // =========================================================================
 
@@ -175,9 +300,9 @@ trait DoCommandCommonTrait
     protected function defineTestValidationOnlyRule(): void
     {
         $this->rule('test-validation-only')->critical()
-            ->text('TEST VALIDATION command validates EXISTING tests. NEVER write tests directly. Only validate and CREATE MEMORY ENTRIES for missing/broken tests.')
+            ->text('TEST VALIDATION command validates EXISTING tests. NEVER write tests directly. Only validate and CREATE VECTOR TASKS for missing/broken tests.')
             ->why('Validation is read-only audit. Test writing belongs to do:async.')
-            ->onViolation('Abort any test writing. Create memory entry instead.');
+            ->onViolation('Abort any test writing. Create vector task instead.');
     }
 
     // =========================================================================

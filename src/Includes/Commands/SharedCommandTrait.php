@@ -42,6 +42,7 @@ trait SharedCommandTrait
     protected const TAG_LIGHT_VALIDATION = 'light-validation';
     protected const TAG_PARALLEL_SAFE = 'parallel-safe';
     protected const TAG_ATOMIC = 'atomic';
+    protected const TAG_MANUAL_ONLY = 'manual-only';
     protected const TAG_REGRESSION = 'regression';
 
     // --- Task Tags: Type (work kind) ---
@@ -106,6 +107,7 @@ trait SharedCommandTrait
         self::TAG_LIGHT_VALIDATION,
         self::TAG_PARALLEL_SAFE,
         self::TAG_ATOMIC,
+        self::TAG_MANUAL_ONLY,
         self::TAG_REGRESSION,
     ];
 

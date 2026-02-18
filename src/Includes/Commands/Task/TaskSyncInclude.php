@@ -33,6 +33,7 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('task-get-first')->critical()->text('FIRST TOOL CALL = mcp__vector-task__task_get. No text before. Load task, THEN analyze and validate.');
         $this->defineIronExecutionRules();
         $this->defineOneTaskPerCycleRule();
+        $this->defineGuaranteedFinalizationRule();
         $this->defineMachineReadableProgressRule();
         $this->defineNextStepFlowRule();
 

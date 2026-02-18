@@ -38,6 +38,12 @@ class DoAsyncInclude extends IncludeArchetype
         // Iron Rules - Zero Tolerance
         $this->defineZeroDistractionsRule();
 
+        // Task workflow integration
+        $this->defineScopeEscalationRule('async');
+        $this->defineDoCircuitBreakerRule('async');
+        $this->defineDoFailureAwarenessRule();
+        $this->defineDoMachineReadableProgressRule();
+
         $this->rule('approval-gates-mandatory')->critical()
             ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates (skip waiting for user confirmation).')
             ->why('Maintains user control and prevents unauthorized execution. The -y flag enables unattended/scripted execution.')
@@ -177,7 +183,7 @@ class DoAsyncInclude extends IncludeArchetype
                 Store::as('WEB_RESEARCH_FINDINGS', 'External knowledge'),
             ]))
             ->phase(Store::as('CONTEXT_PACKAGES', '{agent_name: {context, materials, task_domain}, ...}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for {$TASK_DESCRIPTION}\\n\\nMaterials: {summary}", category: "tool-usage", tags: ["do-command", "context-gathering"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for {$TASK_DESCRIPTION}\n\nMaterials: {summary}", category: "'.self::CAT_CODE_SOLUTION.'", tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'))
             ->phase(Operator::output([
                 '=== PHASE 3: MATERIALS GATHERED ===',
                 'Materials: {count} | Docs: {status} | Web: {status}',
@@ -270,40 +276,47 @@ class DoAsyncInclude extends IncludeArchetype
             ->goal('Report results and store comprehensive learnings to vector memory')
             ->example()
             ->phase(Store::as('COMPLETION_SUMMARY', '{completed_steps, files_modified, outcomes, learnings}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Completed: {$TASK_DESCRIPTION}\n\nApproach: {summary}\n\nSteps: {outcomes}\n\nLearnings: {insights}\n\nFiles: {list}", category: "code-solution", tags: ["do-command", "completed"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory',
+                '{content: "Completed: {$TASK_DESCRIPTION}'
+                .'\n\nApproach: {summary}'
+                .'\n\nSteps: {outcomes}'
+                .'\n\nLearnings: {insights}'
+                .'\n\nFiles: {list}"'
+                .', category: "'.self::CAT_CODE_SOLUTION.'"'
+                .', tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'
+            ))
             ->phase(Operator::output([
                 '',
                 '=== EXECUTION COMPLETE ===',
                 'Task: {$TASK_DESCRIPTION} | Status: {SUCCESS/PARTIAL/FAILED}',
                 '✓ Steps: {completed}/{total} | 📁 Files: {count} | 💾 Learnings stored to memory',
                 '{step_outcomes}',
+                '',
+                'RESULT: {SUCCESS|PARTIAL|FAILED} — steps={completed}/{total}, files={count}',
+                'NEXT: /do:validate {$TASK_DESCRIPTION}',
             ]))
             ->phase(Operator::if('partial', [
                 'Store partial state → List remaining → Suggest resumption',
             ]));
 
-        // Agent Vector Memory Instructions Template
-        $this->guideline('agent-memory-instructions')
-            ->text('MANDATORY vector memory pattern for ALL agents')
-            ->example()
-            ->phase('BEFORE TASK:')
-            ->do([
-                'Execute: mcp__vector-memory__search_memories(query: "{relevant}", limit: 5)',
-                'Review: Analyze results for patterns, solutions, learnings',
-                'Apply: Incorporate insights into approach',
-            ])
-            ->phase('DURING TASK:')
-            ->do([
-                'Focus: Execute ONLY assigned task within file scope',
-                'Atomic: Respect 1-2 file limit strictly',
-            ])
-            ->phase('AFTER TASK:')
-            ->do([
-                'Document: Summarize what was done, how it worked, key insights',
-                'Execute: mcp__vector-memory__store_memory(content: "{what+how+insights}", category: "{appropriate}", tags: [...])',
-                'Verify: Confirm storage successful',
-            ])
-            ->phase('CRITICAL: Vector memory is the communication channel between agents. Your learnings enable the next agent!');
+        // Agent instruction template (15 sections — matches Task workflow depth)
+        $this->guideline('agent-instruction-template')
+            ->text('Every Task() delegation MUST include these sections:')
+            ->text('1. TASK: Clear description of what to do')
+            ->text('2. FILES: Specific file scope (1-2 files, max 3-5 for feature)')
+            ->text('3. DOCUMENTATION: "If docs exist: {$DOCS_SCAN_FINDINGS}. Documentation = COMPLETE spec. Follow DOCS."')
+            ->text('4. BLOCKED APPROACHES: "KNOWN FAILURES (DO NOT USE): {$BLOCKED_APPROACHES}. If your solution matches — find alternative."')
+            ->text('5. MEMORY BEFORE: "Search memory for: {terms}. Check debugging category for failures."')
+            ->text('6. MEMORY AFTER: "Store learnings: what worked, approach used, key insights. Category: '.self::CAT_CODE_SOLUTION.', tags: ['.self::MTAG_SOLUTION.', '.self::MTAG_REUSABLE.']."')
+            ->text('7. SECURITY: "No hardcoded secrets. Validate input. Escape output. Parameterized queries."')
+            ->text('8. VALIDATION: "Verify syntax. Run linter if configured. Check logic: null, empty, boundary, off-by-one, error paths. Check performance: N+1, nested loops, unbounded data. Run ONLY related tests (scoped, never full suite). Fix before completion."')
+            ->text('9. GIT: "FORBIDDEN: git checkout, git restore, git stash, git reset, git clean. These destroy parallel agents work and memory/ databases. Rollback = Read original content + Write back. Git is READ-ONLY (status, diff, log)."')
+            ->text('10. PATTERNS: "BEFORE coding: search codebase for similar implementations. Grep analogous class names, method patterns. Found → follow same approach, reuse helpers. NEVER reinvent existing patterns."')
+            ->text('11. IMPACT: "BEFORE editing: Grep who imports/uses/extends target file. Dependents found → ensure changes are compatible. Changing public API → update all callers."')
+            ->text('12. HALLUCINATION: "Verify EVERY method/class/function call exists with correct signature. Read source to confirm. NEVER assume API from naming convention."')
+            ->text('13. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."')
+            ->text('14. TESTS: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework, follow existing test patterns. Run written tests to verify passing."')
+            ->text('15. DOCS: "After implementation: IF task adds NEW feature/module/API → run brain docs \"{keywords}\" to check existing docs. NOT found → CREATE .docs/{feature}.md with YAML front matter + markdown body. Documentation = description for humans, text-first, minimize code. IF task CHANGES existing behavior and docs exist → UPDATE relevant docs. Bugfix/refactor → SKIP docs."');
 
         // Error Recovery
         $this->guideline('error-recovery')

@@ -274,7 +274,7 @@ class DoBrainstormInclude extends IncludeArchetype
                 'WAIT for user to select agent',
                 Store::as('INVITED_SPECIALIST', '{selected agent id}'),
                 Operator::output(['Consulting @{$INVITED_SPECIALIST} for their perspective...']),
-                TaskTool::describe('Task(@{$INVITED_SPECIALIST}, You are invited as specialist to brainstorm session.\\n\\nTopic: {$BRAINSTORM_TOPIC}\\n\\nCurrent approaches discussed:\\n{approaches_summary}\\n\\nProvide your perspective: alternative approaches, potential issues with discussed approaches, additional considerations, recommendations. Be specific and actionable.)'),
+                TaskTool::describe('Task(@{$INVITED_SPECIALIST}, You are invited as specialist to brainstorm session.\n\nTopic: {$BRAINSTORM_TOPIC}\n\nCurrent approaches discussed:\n{approaches_summary}\n\nProvide your perspective: alternative approaches, potential issues with discussed approaches, additional considerations, recommendations. Be specific and actionable.)'),
                 Store::as('SPECIALIST_INPUT', '{agent perspective}'),
                 Operator::output([
                     '',
@@ -324,7 +324,7 @@ class DoBrainstormInclude extends IncludeArchetype
                 'WAIT for user choice',
                 Operator::if('user chooses standalone', [
                     Operator::forEach('item in $ACTIONABLE_ITEMS', [
-                        VectorTaskMcp::call('task_create', '{title: "{item.title}", content: "{item.description}", priority: "{item.priority}", estimate: {item.estimate}, order: {item.order}, parallel: {item.parallel}, tags: ["brainstorm"]}'),
+                        VectorTaskMcp::call('task_create', '{title: "{item.title}", content: "{item.description}", priority: "{item.priority}", estimate: {item.estimate}, order: {item.order}, parallel: {item.parallel}, tags: ["'.self::TAG_SPIKE.'"]}'),
                     ]),
                     Store::as('CREATED_TASK_IDS', '[ids...]'),
                     Operator::output(['Created {count} standalone tasks: {ids}']),
@@ -332,7 +332,7 @@ class DoBrainstormInclude extends IncludeArchetype
                 Operator::if('user provides parent task ID', [
                     Store::as('PARENT_TASK_ID', '{user-provided ID}'),
                     Operator::forEach('item in $ACTIONABLE_ITEMS', [
-                        VectorTaskMcp::call('task_create', '{title: "{item.title}", content: "{item.description}", parent_id: $PARENT_TASK_ID, priority: "{item.priority}", estimate: {item.estimate}, order: {item.order}, parallel: {item.parallel}, tags: ["brainstorm"]}'),
+                        VectorTaskMcp::call('task_create', '{title: "{item.title}", content: "{item.description}", parent_id: $PARENT_TASK_ID, priority: "{item.priority}", estimate: {item.estimate}, order: {item.order}, parallel: {item.parallel}, tags: ["'.self::TAG_SPIKE.'"]}'),
                     ]),
                     Store::as('CREATED_TASK_IDS', '[ids...]'),
                     Operator::output(['Created {count} subtasks under #{$PARENT_TASK_ID}: {ids}']),
@@ -344,7 +344,17 @@ class DoBrainstormInclude extends IncludeArchetype
             ->goal('Summarize session and store insights to vector memory')
             ->example()
             ->phase(Store::as('SESSION_SUMMARY', '{key decisions, insights, approaches discussed, next steps}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Brainstorm Session: {$BRAINSTORM_TOPIC}\\n\\nContext:\\n{context_summary}\\n\\nApproaches Discussed:\\n{approaches}\\n\\nKey Insights:\\n{insights}\\n\\nDecisions Made:\\n{decisions}\\n\\nNext Steps:\\n{next_steps}\\n\\nTasks Created: {task_ids or none}", category: "architecture", tags: ["brainstorm", "{topic_tag}"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory',
+                '{content: "Brainstorm Session: {$BRAINSTORM_TOPIC}'
+                .'\n\nContext:\n{context_summary}'
+                .'\n\nApproaches Discussed:\n{approaches}'
+                .'\n\nKey Insights:\n{insights}'
+                .'\n\nDecisions Made:\n{decisions}'
+                .'\n\nNext Steps:\n{next_steps}'
+                .'\n\nTasks Created: {task_ids or none}"'
+                .', category: "'.self::CAT_ARCHITECTURE.'"'
+                .', tags: ["'.self::MTAG_DECISION.'", "'.self::MTAG_REUSABLE.'"]}'
+            ))
             ->phase(Operator::output([
                 '',
                 '=== BRAINSTORM COMPLETE ===',

@@ -44,6 +44,8 @@ class TaskTestValidateInclude extends IncludeArchetype
 
         // ONE TASK PER CYCLE (from trait - validate ONLY assigned task, never siblings)
         $this->defineOneTaskPerCycleRule();
+        $this->defineGuaranteedFinalizationRule();
+        $this->defineNoManualAgentFallbackRule();
 
         // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
         $this->defineMachineReadableProgressRule();
@@ -193,6 +195,13 @@ class TaskTestValidateInclude extends IncludeArchetype
                 'Report: created={N}, fixed={N}, cosmetic={N}.',
             ]))
 
+            // SAFETY NET: guaranteed finalization — verify status changed from in_progress
+            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → verify status is NOT in_progress')
+            ->phase(Operator::if('task.status = "in_progress"', [
+                'SAFETY NET TRIGGERED: workflow completed but status still in_progress.',
+                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "SAFETY NET: Test validation workflow ended without explicit status update. Returned to pending.", append_comment: true}'),
+            ]))
+
             // NEXT (lifecycle reinforcement — at workflow end for recency)
             ->phase(Operator::if(Store::get('IS_TDD'), 'NEXT: /task:sync {$VECTOR_TASK_ID} [-y] (or /task:async). TDD tests written — now implement.'))
             ->phase(Operator::if('NOT ' . Store::get('IS_TDD'), 'NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). Tests validated — now full validation.'));
@@ -205,7 +214,21 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Operator::if('no docs (validation)', 'Validate existing tests only'))
             ->phase(Operator::if('no tests (TDD)', 'Expected - create them'))
             ->phase(Operator::if('no tests (validation)', 'Agent MUST write initial tests'))
-            ->phase(Operator::if('agent fails', 'Continue with others, report partial'));
+            ->phase(Operator::if('agent fails', [
+                'RETRY once with same prompt',
+                Operator::if('still fails', [
+                    'Mark agent as FAILED. Track failure.',
+                    Operator::if('remaining agents >= 1', [
+                        'Continue with partial results.',
+                        'Add warning: "{agent_name} test validation incomplete - manual review recommended."',
+                    ]),
+                    Operator::if('ALL agents failed', [
+                        'ABORT: no agent results. DO NOT validate manually.',
+                        VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Test validation aborted: all agents failed. Errors: {error_details}. Needs retry.", append_comment: true}'),
+                        Operator::abort('All agents failed — cannot test-validate'),
+                    ]),
+                ]),
+            ]));
 
         // TEST QUALITY (inline, not separate guideline)
         $this->rule('bloat-detection')->high()

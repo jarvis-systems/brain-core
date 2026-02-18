@@ -30,6 +30,9 @@ class DoSyncInclude extends IncludeArchetype
      */
     protected function handle(): void
     {
+        // ABSOLUTE FIRST - BLOCKING ENTRY RULE
+        $this->defineEntryPointBlockingRule('SYNC');
+
         // Universal safety rules
         $this->defineSecretsPiiProtectionRules();
         $this->defineNoDestructiveGitRules();
@@ -50,6 +53,12 @@ class DoSyncInclude extends IncludeArchetype
 
         // Iron Rules - Zero Tolerance
         $this->defineZeroDistractionsRule();
+
+        // Task workflow integration
+        $this->defineScopeEscalationRule('sync');
+        $this->defineDoCircuitBreakerRule('sync');
+        $this->defineDoFailureAwarenessRule();
+        $this->defineDoMachineReadableProgressRule();
 
         $this->rule('no-delegation')->critical()
             ->text('Brain executes ALL steps directly. NO Task() delegation to agents. Use ONLY direct tools: Read, Edit, Write, Glob, Grep, Bash.')
@@ -114,7 +123,7 @@ class DoSyncInclude extends IncludeArchetype
                 WebSearchTool::describe('Research best practices for {$TASK}'),
                 Store::as('WEB_RESEARCH_FINDINGS', 'External knowledge'),
             ]))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for {$TASK}\n\nMaterials: {summary}", category: "tool-usage", tags: ["do-command", "context-gathering"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for {$TASK}\n\nMaterials: {summary}", category: "'.self::CAT_CODE_SOLUTION.'", tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'))
             ->phase(Operator::output([
                 '=== PHASE 1.5: MATERIALS GATHERED ===',
                 'Materials: {count} | Docs: {status} | Web: {status}',
@@ -160,8 +169,9 @@ class DoSyncInclude extends IncludeArchetype
 
         // Phase 3: Direct Execution
         $this->guideline('phase3-direct-execution')
-            ->goal('Execute plan directly using Brain tools - no delegation')
+            ->goal('Execute plan directly using Brain tools - no delegation. Track changed files.')
             ->example()
+            ->phase(Store::as('CHANGED_FILES', '[]'))
             ->phase(Operator::forEach('step in $PLAN', [
                 Operator::output(['▶️ Step {N}: {step.description}']),
                 Operator::if('step.action === "read"', [
@@ -171,9 +181,11 @@ class DoSyncInclude extends IncludeArchetype
                 Operator::if('step.action === "edit"', [
                     ReadTool::call('{step.file}'),
                     EditTool::call('{step.file}', '{old_string}', '{new_string}'),
+                    'Append {step.file} to '.Store::get('CHANGED_FILES'),
                 ]),
                 Operator::if('step.action === "write"', [
                     WriteTool::call('{step.file}', '{content}'),
+                    'Append {step.file} to '.Store::get('CHANGED_FILES'),
                 ]),
                 Store::as('STEP_RESULTS[{N}]', 'Result'),
                 Operator::output(['✅ Step {N} complete']),
@@ -184,18 +196,75 @@ class DoSyncInclude extends IncludeArchetype
                 'WAIT for user decision',
             ]));
 
+        // Phase 3.5: Post-Execution Validation (mirrors TaskSync pipeline)
+        $this->guideline('phase3.5-post-execution-validation')
+            ->goal('Validate all changes before reporting completion')
+            ->example()
+            ->phase(Operator::output([
+                '',
+                '=== PHASE 3.5: POST-EXECUTION VALIDATION ===',
+            ]))
+
+            ->phase('1. SYNTAX CHECK: Run language-specific syntax validator on '.Store::get('CHANGED_FILES'))
+            ->phase(Operator::if('syntax errors', [
+                'Attempt auto-fix (max 2 tries)',
+                Operator::if('still errors', [
+                    Operator::if('$HAS_AUTO_APPROVE', 'Log error, mark as PARTIAL'),
+                    Operator::if('NOT $HAS_AUTO_APPROVE', 'Show errors, ask for guidance'),
+                ]),
+            ]))
+
+            ->phase('2. HALLUCINATION CHECK: Verify all method/class/function calls in '.Store::get('CHANGED_FILES').' reference REAL code. Read source to confirm methods exist with correct signatures.')
+            ->phase(Operator::if('non-existent method/class found', 'Fix: replace with actual method from source. Re-read target file to find correct API.'))
+
+            ->phase('3. LINTER: Run project linter if configured')
+            ->phase(Operator::if('linter errors', [
+                'Auto-fix if possible, otherwise fix manually',
+            ]))
+
+            ->phase('4. LOGIC VERIFICATION: Review each changed function in '.Store::get('CHANGED_FILES').'. For each: what happens with null input? empty collection? boundary value (0, -1, MAX)? error path? off-by-one?')
+            ->phase(Operator::if('logic issues found', 'Fix immediately: add guards, fix boundaries, handle edge cases'))
+
+            ->phase('5. PERFORMANCE REVIEW: Check '.Store::get('CHANGED_FILES').' for: nested loops over data (O(n²)), query/I/O inside loops (N+1), loading full datasets without pagination, unnecessary serialization')
+            ->phase(Operator::if('performance anti-pattern found', 'Refactor: batch queries, optimize algorithm, add pagination'))
+
+            ->phase('6. TESTS: Detect related test files for '.Store::get('CHANGED_FILES').' (scoped, NEVER full suite)')
+            ->phase(Store::as('RELATED_TESTS', 'test files in same dir, *Test suffix, test/ mirror — ONLY for CHANGED_FILES'))
+            ->phase(Operator::if(Store::get('RELATED_TESTS').' exist', [
+                'Run ONLY related tests with --filter or specific paths',
+                Operator::if('tests fail', [
+                    'Analyze failure, attempt fix (max 2 tries)',
+                    Operator::if('still fails', 'Log as PARTIAL, report in completion'),
+                ]),
+                'Check coverage: existing tests cover >=80% of changed code? Critical paths 100%?',
+                Operator::if('coverage insufficient', [
+                    'WRITE additional tests. Follow existing test patterns. Run to verify passing.',
+                ]),
+            ]))
+            ->phase(Operator::if(Store::get('RELATED_TESTS').' empty (NO tests for changed code)', [
+                'WRITE TESTS for '.Store::get('CHANGED_FILES'),
+                'Detect test framework, follow existing patterns, meaningful assertions, edge cases',
+                'Target: >=80% coverage, critical paths 100%. Run to verify passing.',
+            ]))
+
+            ->phase('7. CLEANUP: Scan '.Store::get('CHANGED_FILES').' for: unused imports/use/require, dead code from refactoring, orphaned helpers no longer called, commented-out blocks')
+            ->phase(Operator::if('cleanup needed', 'Remove dead code. Re-run syntax check after cleanup.'));
+
         // Phase 4: Completion
         $this->guideline('phase4-completion')
             ->goal('Report results and store learnings to vector memory')
             ->example()
             ->phase(Store::as('SUMMARY', '{completed_steps, files_modified, outcome}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Completed: {$TASK}\n\nApproach: {steps}\n\nFiles: {list}\n\nLearnings: {insights}", category: "code-solution", tags: ["do:sync", "completed"]}'))
+            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Completed: {$TASK}\n\nApproach: {steps}\n\nFiles: {list}\n\nLearnings: {insights}", category: "'.self::CAT_CODE_SOLUTION.'", tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'))
             ->phase(Operator::output([
                 '',
                 '=== COMPLETE ===',
                 'Task: {$TASK} | Status: {SUCCESS/PARTIAL/FAILED}',
                 '✓ Steps: {completed}/{total} | 📁 Files: {count}',
                 '{outcomes}',
+                '',
+                'RESULT: {SUCCESS|PARTIAL|FAILED} — steps={completed}/{total}, files={count}',
+                'NEXT: /do:validate {$TASK}',
             ]));
 
         // Error Recovery
