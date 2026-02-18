@@ -15,7 +15,7 @@ use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Validate completed vector task. 4 parallel agents: Completion, Code Quality, Testing, Security & Performance. Creates fix-tasks for functional issues. Cosmetic fixed inline by agents.')]
+#[Purpose('Validate completed vector task. 4 parallel agents: Completion, Code Quality, Testing, Security & Performance. Conditional 5th research agent for stuck patterns. Creates fix-tasks for functional issues. Cosmetic fixed inline by agents.')]
 class TaskValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -86,6 +86,9 @@ class TaskValidateInclude extends IncludeArchetype
 
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
+
+        // STUCK PATTERN ESCALATION (from trait - detect circular failures, research alternatives)
+        $this->defineStuckPatternEscalationRule();
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
         $this->defineFailurePolicyRules();
@@ -583,6 +586,58 @@ Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issu
                 ]
             ))
             ->phase(Store::as('FILTERED_ISSUES', 'issues with known-failed fixes removed, alternatives added where found'))
+
+            // 5.6 STUCK PATTERN ANALYSIS — detect circular failure patterns before creating fix-tasks
+            ->phase(Operator::if(Store::get('FILTERED_ISSUES') . ' not empty', [
+                'For EACH issue in FILTERED_ISSUES: count appearances of same {file_path + issue_category} in ' . Store::get('FAILURE_PATTERNS') . ' + ' . Store::get('SIBLING_MEMORIES') . ' + ' . Store::get('KNOWN_FAILURES') . '. If count >= 2 → mark as STUCK.',
+                Store::as('STUCK_ISSUES', '{issues with circular failure pattern, count >= 2}'),
+                Operator::if(Store::get('STUCK_ISSUES') . ' not empty', [
+                    'STUCK PATTERN DETECTED: {count} issue(s) in circular failure zones.',
+                    Store::as('STUCK_FAILED_APPROACHES', 'For each STUCK issue: collect ALL previously tried approaches from FAILURE_PATTERNS + sibling comments + debugging memories'),
+
+                    // 5.7 CONDITIONAL RESEARCH ESCALATION — sequential agent, runs ONLY when stuck pattern detected
+                    TaskTool::agent('web-research-master', '
+MISSION: Research ALTERNATIVE SOLUTIONS for stuck validation issues.
+
+Validation of task #{TASK_ID} ("{TASK_TITLE}") found issues matching CIRCULAR FAILURE PATTERNS — same problems were found and "fixed" before, but fixes failed or regressed.
+
+STUCK ISSUES (need alternative approaches):
+{STUCK_ISSUES — for each: file, issue category, description, times_failed}
+
+PREVIOUSLY FAILED APPROACHES (DO NOT SUGGEST THESE):
+{STUCK_FAILED_APPROACHES — for each: approach description, why it failed, when}
+
+TASK CONTEXT:
+- Task content: {TASK_CONTENT}
+- Tech stack: extract from project files (composer.json, package.json, etc.)
+
+STEPS:
+1. For EACH stuck issue: identify the CORE problem (not symptom)
+2. ' . Context7Mcp::call('query-docs', '{query: "{relevant library/framework} {problem pattern}"}') . ' → official docs patterns
+3. WebSearch("{problem} {framework} best practice alternative solution") → community solutions
+4. Cross-reference results against FAILED APPROACHES — eliminate already-tried
+5. For each issue: rank remaining alternatives by confidence (high/medium/low)
+6. If AUTO-APPROVE: select highest-confidence untried approach automatically
+
+Return JSON: {stuck_issues: [{file, issue, times_failed, failed_approaches: [], research_findings: [{source, approach, confidence, rationale}], recommended: {approach, confidence, rationale}, escalate_to_human: bool}]}'),
+                    Store::as('RESEARCH_RESULT', '{research agent output}'),
+
+                    // Inject research into FILTERED_ISSUES for fix-task content enrichment
+                    'For EACH stuck issue in RESEARCH_RESULT: enrich matching FILTERED_ISSUES entry:',
+                    '  → "STUCK ZONE ({times_failed}x failed): {file}:{issue}"',
+                    '  → "Failed approaches: {list}"',
+                    '  → "Research findings: {alternatives with sources}"',
+                    '  → "RECOMMENDED: {best_untried} (confidence: {level})"',
+
+                    // Escalate issues with no alternative found
+                    Operator::if('any stuck issue has escalate_to_human = true', [
+                        'ESCALATION: {N} issue(s) have no alternative after research.',
+                        VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "STUCK ESCALATION: Issues without alternative after research: {list}. Previously failed: {details}. Needs human decision.", append_comment: true}'),
+                        VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{TASK.id} — issues without alternative: {list}. All known approaches failed. Needs new strategy.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                        'Remove escalated issues from FILTERED_ISSUES (do NOT create doomed fix-tasks)',
+                    ]),
+                ]),
+            ]))
 
             ->phase(Operator::if(
                 Store::get('FILTERED_ISSUES') . '=0 AND no fix-task needed',

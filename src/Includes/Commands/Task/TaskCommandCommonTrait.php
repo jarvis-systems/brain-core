@@ -132,6 +132,30 @@ trait TaskCommandCommonTrait
     }
 
     // =========================================================================
+    // STUCK PATTERN ESCALATION (CIRCULAR FAILURE DETECTION)
+    // =========================================================================
+
+    /**
+     * Define stuck pattern escalation rule.
+     * Detects circular failure patterns where the same problem zone (file + issue type)
+     * fails repeatedly across validation cycles. When detected, triggers conditional
+     * research escalation to find alternative approaches before creating fix-tasks.
+     * Used by: TaskValidateInclude, TaskValidateSyncInclude.
+     */
+    protected function defineStuckPatternEscalationRule(): void
+    {
+        $this->rule('stuck-pattern-detection')->high()
+            ->text('Before creating fix-tasks: analyze FAILURE_PATTERNS + SIBLING_MEMORIES + KNOWN_FAILURES for circular patterns. STUCK PATTERN = same problem zone (file path + issue category) failed 2+ times across validation cycles or sibling task attempts. Indicators: same file in multiple sibling failures, same error category repeated, same fix approach suggested and failed. When stuck pattern detected → ESCALATION REQUIRED before creating fix-task.')
+            ->why('Without pattern detection, validator creates the same fix-task with the same approach that already failed. Agent executes, fails, validator creates again → infinite loop. Circuit breaker catches after 3 wasted cycles. Early detection + research saves 2 cycles.')
+            ->onViolation('Analyze failure history BEFORE task_create. Stuck pattern found → research escalation. Never create fix-task with known-failed approach.');
+
+        $this->rule('stuck-research-escalation')->high()
+            ->text('When stuck pattern detected: 1) Collect all failed approaches for the stuck zone from memory + sibling comments. 2) Research alternative solutions — async validator: launch research agent; sync validator: inline context7 + web search. 3) Inject findings into fix-task content: "STUCK ZONE: {file}:{issue}. Failed approaches: {list}. Research: {alternatives}. Recommended: {best_untried}." 4) Auto-approve mode: auto-select highest-confidence untried approach. 5) NO alternative found → ESCALATE to human via task comment, do NOT create doomed fix-task.')
+            ->why('Research costs ~30s but prevents 2+ wasted cycles (each = agent execution + validation = minutes + tokens). Research once > fail three times.')
+            ->onViolation('Stuck pattern without research = BLOCK fix-task creation. Research first, create with alternative.');
+    }
+
+    // =========================================================================
     // ONE TASK PER CYCLE (EXECUTION BOUNDARY)
     // =========================================================================
 

@@ -13,6 +13,7 @@ use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\GlobTool;
 use BrainCore\Compilation\Tools\GrepTool;
 use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Compilation\Tools\WebSearchTool;
 use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
@@ -58,6 +59,9 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
+
+        // STUCK PATTERN ESCALATION (from trait - detect circular failures, research alternatives)
+        $this->defineStuckPatternEscalationRule();
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
         $this->defineFailurePolicyRules();
@@ -299,6 +303,38 @@ class TaskValidateSyncInclude extends IncludeArchetype
                 Store::get('COLLATERAL_FAILURES') . ' not empty AND FUNCTIONAL_COUNT > 0',
                 'Collateral failures noted but NOT creating tasks — fix own issues first.'
             ))
+
+            // 5.6 STUCK PATTERN ANALYSIS — detect circular failure patterns before creating fix-tasks
+            ->phase(Operator::if('FUNCTIONAL_COUNT > 0', [
+                'For EACH issue in ISSUES: count appearances of same {file_path + issue_category} in ' . Store::get('FAILURE_PATTERNS') . ' + ' . Store::get('KNOWN_FAILURES') . '. If count >= 2 → mark as STUCK.',
+                Store::as('STUCK_ISSUES', '{issues with circular failure pattern, count >= 2}'),
+                Operator::if(Store::get('STUCK_ISSUES') . ' not empty', [
+                    'STUCK PATTERN DETECTED: {count} issue(s) in circular failure zones.',
+                    Store::as('STUCK_FAILED_APPROACHES', 'For each STUCK issue: collect ALL previously tried approaches from FAILURE_PATTERNS + sibling comments + debugging memories'),
+
+                    // 5.7 INLINE RESEARCH ESCALATION — direct tool calls (sync = no agent delegation)
+                    'For EACH stuck issue:',
+                    '  1. ' . Context7Mcp::call('query-docs', '{query: "{library/framework} {problem pattern} recommended approach"}') . ' → official docs',
+                    '  2. ' . WebSearchTool::describe('{problem} {framework} best practice alternative solution') . ' → community solutions',
+                    '  3. ' . VectorMemoryMcp::call('search_memories', '{query: "{problem} solution workaround alternative", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' → solutions from other contexts',
+                    '  4. Cross-reference research against STUCK_FAILED_APPROACHES — eliminate already-tried',
+                    '  5. Rank remaining alternatives by confidence',
+                    Store::as('RESEARCH_RESULT', '{research findings per stuck issue}'),
+
+                    // Inject research into fix-task content
+                    'Enrich each stuck issue for fix-task content:',
+                    '  → "STUCK ZONE ({times_failed}x failed): {file}:{issue}"',
+                    '  → "Failed: {approaches}. Research: {alternatives}. Recommended: {best_untried}."',
+
+                    // Escalate if no alternative found
+                    Operator::if('any stuck issue has NO viable alternative', [
+                        VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "STUCK ESCALATION: {N} issue(s) without alternative after research. Needs human decision.", append_comment: true}'),
+                        VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{TASK.id} — issues without alternative: {list}. Needs new strategy.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                        'Remove escalated issues from ISSUES (do NOT create doomed fix-tasks)',
+                        Store::as('FUNCTIONAL_COUNT', 'recalculate after removing escalated issues'),
+                    ]),
+                ]),
+            ]))
 
             // 6. Create fix-tasks (consolidated 5-8h)
             ->phase(Operator::if('FUNCTIONAL_COUNT = 0', 'Skip to completion'))
