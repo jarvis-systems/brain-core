@@ -371,8 +371,10 @@ MISSION: COMPLETION CHECK
 8. Fix cosmetic issues inline (whitespace, formatting) — BUT IN PARALLEL CONTEXT: check SIBLING_SCOPES first. File in active sibling scope → DO NOT fix, record as "DEFERRED COSMETIC: {file}:{line} — {issue}"
 9. FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
 10. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → before ANY Edit, verify file is NOT in their scope. Deferred cosmetics are NOT failures.
+11. DOCUMENTATION CHECK: IF task adds NEW feature/module/API → run brain docs "{keywords}" to verify .docs/ documentation exists. No docs for new feature = cosmetic issue (executor should have created). Create basic .docs/{feature}.md inline with YAML front matter (name, description, type, date, version) + brief markdown description. If parallel context and doc file could conflict → defer to comment.
 
-Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: [], cosmetic_deferred: []}'),
+Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: [], cosmetic_deferred: [], docs_coverage: {new_features: [], has_docs: bool, docs_created: []}}')
+,
                 TaskTool::agent('explore', '
 CONTEXT (provided by validator):
 - Task ID: {TASK_ID}

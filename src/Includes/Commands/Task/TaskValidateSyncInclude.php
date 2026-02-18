@@ -254,6 +254,8 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
             ->phase('4.5 CLEANUP: Scan for unused imports, dead code, orphaned helpers, debug statements')
 
+            ->phase('4.6 DOCS COVERAGE: IF task adds NEW feature/module/API → ' . BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → check if .docs/ entry exists. No docs for new feature = minor cosmetic issue. Create basic .docs/{feature}.md inline (YAML front matter + brief description). Bugfix/refactor = SKIP.')
+
             ->phase('During validation: cosmetic found → check SIBLING_SCOPES (if parallel) → file in active sibling scope? → DEFER to comment. File safe? → Edit → fix → COSMETIC_FIXES++ → continue')
             ->phase(Operator::if(Store::get('KNOWN_FAILURES') . ' not empty', 'Before creating fix-task: verify proposed fix is NOT in known failures. Match → research alternative.'))
 

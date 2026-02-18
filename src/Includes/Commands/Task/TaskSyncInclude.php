@@ -59,6 +59,9 @@ class TaskSyncInclude extends IncludeArchetype
         // TEST COVERAGE (from trait - write tests alongside implementation to pass validator on first try)
         $this->defineTestCoverageDuringExecutionRule();
 
+        // DOCUMENTATION DURING EXECUTION (from trait - create/update .docs/ alongside implementation)
+        $this->defineDocumentationDuringExecutionRule();
+
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
@@ -435,6 +438,19 @@ class TaskSyncInclude extends IncludeArchetype
             // 7.4 CLEANUP: Remove artifacts from changes
             ->phase('7.4 CLEANUP: Scan ' . Store::get('CHANGED_FILES') . ' for: unused imports/use/require, dead code from refactoring, orphaned helpers no longer called, commented-out blocks')
             ->phase(Operator::if('cleanup needed', 'Remove dead code, re-run syntax check on cleaned files'))
+
+            // 7.5 DOCUMENTATION: Create/update .docs/ if new feature/module
+            ->phase(Operator::if('task adds NEW feature/module/API (not bugfix/refactor/trivial)', [
+                BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → check if docs exist',
+                Operator::if('no docs found for this feature', [
+                    'CREATE .docs/{feature-name}.md with YAML front matter (name, description, type, date, version) + markdown (purpose, usage, key concepts, API/interface)',
+                    'Append doc file to ' . Store::get('CHANGED_FILES'),
+                ]),
+                Operator::if('docs exist AND behavior changed', [
+                    'UPDATE relevant .docs/ files to reflect behavior changes',
+                    'Append updated doc files to ' . Store::get('CHANGED_FILES'),
+                ]),
+            ]))
 
             // 8. Complete
             ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Files: {changed_files}. Tests: {pass/skip/none}.", append_comment: true}'))

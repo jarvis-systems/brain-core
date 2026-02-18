@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace BrainCore\Includes\Commands\Task;
 
+use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
+use BrainCore\Compilation\Tools\BashTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
@@ -1131,6 +1133,46 @@ trait TaskCommandCommonTrait
             ->text('After implementation: check if changed code has test coverage. If NO tests exist for changed files → WRITE tests. If tests exist but coverage insufficient → ADD missing tests. Target thresholds (MUST match validator expectations): >=80% coverage, critical paths 100%, meaningful assertions (not just "no exception"), edge cases (null, empty, boundary). Follow existing test patterns in the project (detect framework, mirror directory structure, reuse base test classes). NEVER skip — missing tests = guaranteed fix-task from validator = wasted round-trip.')
             ->why('Validator expects >=80% coverage with edge cases. Missing tests = validator creates fix-task = another execution cycle. The executor understands context best and writes better tests than a cold-read agent later.')
             ->onViolation('BEFORE marking task complete: verify test coverage for ALL changed files. No tests = write them NOW. Insufficient coverage = add tests NOW.');
+    }
+
+    // =========================================================================
+    // DOCUMENTATION DURING EXECUTION
+    // =========================================================================
+
+    /**
+     * Define documentation during execution rule.
+     * Ensures executors create/update .docs/ documentation inline during implementation.
+     * Analog to defineTestCoverageDuringExecutionRule() — documentation as side effect of execution.
+     * Prevents "documentation is law" from becoming empty rule when no docs exist.
+     * Used by: TaskSyncInclude, TaskAsyncInclude.
+     */
+    protected function defineDocumentationDuringExecutionRule(): void
+    {
+        $this->rule('docs-during-execution')->high()
+            ->text('After implementation: evaluate if documentation update needed. NEW feature/module/API without .docs/ entry → CREATE doc. Changed behavior with existing docs → UPDATE doc. Bugfix/refactor (same behavior) OR trivial (config, formatting, PHPDoc) → SKIP. Use brain docs to check existing. Write docs in .docs/ with YAML front matter (name, description, type, date, version) + clear markdown. Documentation = DESCRIPTION for humans, not code dump. Minimize code examples — text-first.')
+            ->why('Documentation is declared "law" but executors never create it. Over time "docs are law" becomes empty rule because no docs exist. Executor understands the code best — creating docs during execution costs near zero (context already loaded). Separate doc-tasks are banned as micro-tasks.')
+            ->onViolation('Before completing: run brain docs for feature keywords. New feature without docs → create .docs/{feature}.md.');
+
+        $this->guideline('docs-during-execution')
+            ->goal('Decide whether to create/update documentation after implementation')
+            ->example()
+            ->phase('Decision tree:')
+            ->phase('  1. Task adds NEW feature, module, or public API? → CHECK docs')
+            ->phase('  2. Task CHANGES BEHAVIOR of existing feature? → CHECK docs')
+            ->phase('  3. Task is bugfix, refactor, or trivial change (no behavior change)? → SKIP docs')
+            ->phase('CHECK: ' . BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → docs found?')
+            ->phase('  YES (docs exist) + behavior changed → READ doc, UPDATE relevant sections')
+            ->phase('  NO (no docs) + new feature/module → CREATE .docs/{feature-name}.md')
+            ->phase('  NO (no docs) + minor behavior change → SKIP (not every change needs docs)')
+            ->phase('CREATE format (YAML front matter + markdown body):')
+            ->phase('  ---')
+            ->phase('  name: "Feature Name"')
+            ->phase('  description: "Brief description of what this feature does"')
+            ->phase('  type: "guide"  # guide | api | concept | architecture | reference')
+            ->phase('  date: "' . date('Y-m-d') . '"')
+            ->phase('  version: "1.0.0"')
+            ->phase('  ---')
+            ->phase('  Body: purpose, key concepts, usage, API/interface. Text-first, code only when cheaper than text.');
     }
 
     // =========================================================================

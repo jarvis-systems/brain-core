@@ -52,6 +52,9 @@ class TaskAsyncInclude extends IncludeArchetype
         // TEST COVERAGE (from trait - agents must write tests alongside implementation)
         $this->defineTestCoverageDuringExecutionRule();
 
+        // DOCUMENTATION DURING EXECUTION (from trait - agents create/update .docs/ alongside implementation)
+        $this->defineDocumentationDuringExecutionRule();
+
         // COMMENT CONTEXT (from trait - read accumulated context from task.comment)
         $this->defineCommentContextRules();
 
@@ -433,6 +436,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('15. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."')
             ->text('16. TEST COVERAGE: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework from project, follow existing test patterns/structure. Run written tests to verify passing. NEVER skip — validator will reject without tests."')
             ->text('17. COMMENT CONTEXT: "Task comment contains accumulated inter-session context: {$COMMENT_CONTEXT}. Use memory IDs to fetch prior findings. Use file_paths as starting points. Respect decisions already made. Avoid repeating failures. DO NOT ignore comment history."')
-            ->text('18. PARALLEL CONTEXT: "IF $ACTIVE_SIBLINGS not empty: Other agents MAY be executing sibling tasks concurrently. Your file scope: {MY_FILE_SCOPE}. Sibling scopes (from their task comments): {SIBLING_SCOPES}. SHARED/FORBIDDEN files: {SHARED_FILES}. Modify ONLY files in YOUR scope. Out-of-scope file needed → DO NOT edit, record in task comment as SCOPE EXTENSION NEEDED. Shared files (config, .env, migrations, routes) → NEVER edit in parallel context. Sibling without scope in comment = still planning, NOT a red flag."');
+            ->text('18. PARALLEL CONTEXT: "IF $ACTIVE_SIBLINGS not empty: Other agents MAY be executing sibling tasks concurrently. Your file scope: {MY_FILE_SCOPE}. Sibling scopes (from their task comments): {SIBLING_SCOPES}. SHARED/FORBIDDEN files: {SHARED_FILES}. Modify ONLY files in YOUR scope. Out-of-scope file needed → DO NOT edit, record in task comment as SCOPE EXTENSION NEEDED. Shared files (config, .env, migrations, routes) → NEVER edit in parallel context. Sibling without scope in comment = still planning, NOT a red flag."')
+            ->text('19. DOCUMENTATION: "After implementation: IF task adds NEW feature/module/API → run brain docs \"{keywords}\" to check existing docs. NOT found → CREATE .docs/{feature}.md with YAML front matter (name, description, type, date, version) + markdown body (purpose, usage, key concepts, API/interface). Documentation = description for humans, text-first, minimize code. IF task CHANGES existing behavior and docs exist → UPDATE relevant docs. Bugfix/refactor without behavior change OR trivial → SKIP docs."');
     }
 }
