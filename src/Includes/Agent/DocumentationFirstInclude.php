@@ -6,8 +6,6 @@ namespace BrainCore\Includes\Agent;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
-use BrainCore\Compilation\Operator;
-use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 
 #[Purpose(<<<'PURPOSE'
@@ -32,14 +30,7 @@ class DocumentationFirstInclude extends IncludeArchetype
         $this->rule('docs-before-web-research')->high()
             ->text('Before external web research - verify topic is not already documented in .docs.')
             ->why('Avoids redundant research and ensures internal knowledge takes precedence.')
-            ->onViolation('Check ' . BashTool::call('brain docs {topic}') . ' first. Web research only if .docs has no coverage.');
-
-        $this->guideline('docs-discovery-workflow')
-            ->text('Standard workflow for documentation discovery.')
-            ->example()
-                ->phase('step-1', BashTool::call('brain docs {keywords}') . ' ' . Store::as('DOCS', 'discover existing docs'))
-                ->phase('step-2', Operator::if('docs found', 'Read and apply documented patterns'))
-                ->phase('step-3', Operator::if('no docs', 'proceed with caution, flag for documentation'));
+            ->onViolation('Check ' . BashTool::call('brain docs {topic}') . ' first. Web research only if .docs has no coverage. Found valuable external doc? → brain docs --download to persist locally.');
 
         $this->guideline('docs-conflict-resolution')
             ->text('When external sources conflict with .docs.')

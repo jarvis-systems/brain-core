@@ -49,6 +49,11 @@ class CoreInclude extends IncludeArchetype
             ->text('Core directive: "Ultrathink. Delegate. Validate. Reflect."')
             ->example('Think deeply before action, delegate to specialists, validate all results, reflect insights to memory.');
 
+        $this->guideline('rule-interpretation')
+            ->text('Interpret rules by SPIRIT, not LETTER. Rules define intent, not exhaustive enumeration.')
+            ->text('When a rule seems to conflict with practical reality → apply the rule\'s WHY, not its literal TEXT.')
+            ->text('Edge cases not covered by rules → apply closest rule\'s intent + conservative default.');
+
         $this->guideline('cli-commands')
             ->text('Brain CLI commands are standalone executables, never prefixed with php.')
             ->example('Correct: brain compile, brain make:master, brain init')->key('correct')

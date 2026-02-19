@@ -51,6 +51,12 @@ class CoreInclude extends IncludeArchetype
         $this->style()
             ->brevity($this->var('VERBOSITY', 'medium'));
 
+        // === RULE INTERPRETATION ===
+        $this->guideline('rule-interpretation')
+            ->text('Interpret rules by SPIRIT, not LETTER. Rules define intent, not exhaustive enumeration.')
+            ->text('When a rule seems to conflict with practical reality → apply the rule\'s WHY, not its literal TEXT.')
+            ->text('Edge cases not covered by rules → apply closest rule\'s intent + conservative default.');
+
         // === RESPONSE QUALITY ===
         $this->rule('concise-agent-responses')->high()
             ->text('Agent responses must be concise, factual, and focused on task outcomes without verbosity.')

@@ -83,6 +83,27 @@ trait SharedCommandTrait
     // --- Task Tags: Batch ---
     protected const TAG_BATCH_TRIVIAL = 'batch:trivial';
 
+    // --- Tag Alias Map (synonym → canonical, for NOT-format compilation) ---
+    /** @var array<string, string> Known synonyms mapped to canonical tags */
+    private const TAG_ALIASES = [
+        // Domain aliases
+        'authentication' => self::TAG_AUTH, 'authorization' => self::TAG_AUTH,
+        'login' => self::TAG_AUTH, 'authn' => self::TAG_AUTH, 'authz' => self::TAG_AUTH,
+        'db' => self::TAG_DATABASE, 'mysql' => self::TAG_DATABASE,
+        'postgres' => self::TAG_DATABASE, 'sqlite' => self::TAG_DATABASE,
+        'rest' => self::TAG_API, 'graphql' => self::TAG_API, 'endpoint' => self::TAG_API,
+        'docker' => self::TAG_INFRA, 'deploy' => self::TAG_INFRA, 'server' => self::TAG_INFRA,
+        'github-actions' => self::TAG_CI_CD, 'pipeline' => self::TAG_CI_CD,
+        'schema' => self::TAG_MIGRATION, 'migrate' => self::TAG_MIGRATION,
+        // Type aliases
+        'fix' => self::TAG_BUGFIX, 'bug' => self::TAG_BUGFIX,
+        'feat' => self::TAG_FEATURE, 'enhancement' => self::TAG_FEATURE,
+        'refactoring' => self::TAG_REFACTOR, 'cleanup' => self::TAG_REFACTOR,
+        'documentation' => self::TAG_DOCS,
+        'testing' => self::TAG_TEST, 'tests' => self::TAG_TEST,
+        'maintenance' => self::TAG_CHORE,
+    ];
+
     // --- Memory Tags: Content (kind) ---
     protected const MTAG_PATTERN = 'pattern';
     protected const MTAG_SOLUTION = 'solution';
@@ -246,17 +267,66 @@ trait SharedCommandTrait
     }
 
     // =========================================================================
+    // TAG TAXONOMY HELPERS
+    // =========================================================================
+
+    /**
+     * Format tags with NOT-aliases inline.
+     * Produces: "auth (NOT: authentication, login, authn), database (NOT: db, mysql)" format.
+     *
+     * @param  string[]  $tags  Canonical tag list
+     * @return string Formatted string with alias warnings
+     */
+    private function formatTagsWithAliases(array $tags): string
+    {
+        $aliasesByCanonical = [];
+        foreach (self::TAG_ALIASES as $alias => $canonical) {
+            $aliasesByCanonical[$canonical][] = $alias;
+        }
+
+        $parts = [];
+        foreach ($tags as $tag) {
+            if (isset($aliasesByCanonical[$tag])) {
+                $parts[] = $tag.' (NOT: '.implode(', ', $aliasesByCanonical[$tag]).')';
+            } else {
+                $parts[] = $tag;
+            }
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Parse comma-separated custom tags from .env value.
+     *
+     * @param  string  $value  Comma-separated tag string
+     * @return string[] Parsed and cleaned tag array
+     */
+    private function parseCustomTags(string $value): array
+    {
+        if (empty($value)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', strtolower($value)))));
+    }
+
+    // =========================================================================
     // TAG TAXONOMY RULES (COMPILE-TIME ENFORCEMENT)
     // =========================================================================
 
     /**
      * Define tag taxonomy rules and guidelines.
      * Ensures all task tags, memory tags, and memory categories
-     * use ONLY predefined values from constants above.
+     * use ONLY predefined or project-custom values from constants and .env.
      * Used by: ALL task and do commands that create tasks or store memories.
      */
     protected function defineTagTaxonomyRules(): void
     {
+        // Custom project tags from .env
+        $customTaskTags = $this->parseCustomTags((string) $this->var('CUSTOM_TASK_TAGS', ''));
+        $customMemoryTags = $this->parseCustomTags((string) $this->var('CUSTOM_MEMORY_TAGS', ''));
+
         $taskTagsAll = implode(', ', array_merge(
             self::TASK_TAGS_WORKFLOW,
             self::TASK_TAGS_TYPE,
@@ -264,43 +334,59 @@ trait SharedCommandTrait
             self::TASK_TAGS_STRICT,
             self::TASK_TAGS_COGNITIVE,
             self::TASK_TAGS_BATCH,
+            $customTaskTags,
         ));
 
         $memoryTagsAll = implode(', ', array_merge(
             self::MEMORY_TAGS_CONTENT,
             self::MEMORY_TAGS_SCOPE,
+            $customMemoryTags,
         ));
 
         $this->rule('task-tags-predefined-only')->critical()
-            ->text('Task tags MUST use ONLY predefined values. FORBIDDEN: inventing new tags, synonyms, variations. Allowed: '.$taskTagsAll.'.')
-            ->why('Ad-hoc tags cause explosion ("user-auth", "authentication", "auth" = same thing, search finds none). Predefined list = consistent search.')
-            ->onViolation('Replace with closest predefined match. No match = skip tag, put context in content.');
+            ->text('Task tags MUST use ONLY predefined'.($customTaskTags ? ' or project-custom' : '').' values. FORBIDDEN: inventing new tags, synonyms, variations. Allowed: '.$taskTagsAll.'.')
+            ->text(Operator::scenario('Project with 30 modules needs per-module filtering → use CUSTOM_TASK_TAGS in .env for project-specific tags, not 30 new constants in core.'))
+            ->text(Operator::scenario('Task about "user login flow" → tag: auth (NOT: login, authentication, user-auth). MCP normalizes at storage, but use canonical form at reasoning time.'))
+            ->why('Ad-hoc tags cause tag explosion ("user-auth", "authentication", "auth" = same concept, search finds none). Predefined'.($customTaskTags ? ' + project-custom' : '').' list = consistent search. MCP normalizes aliases at storage layer, but reasoning-time canonical usage prevents drift.')
+            ->onViolation('Normalize via NOT-list (e.g. authentication→auth, db→database). No canonical match → skip tag, put context in task content. Silent fix, no memory storage.');
 
         $this->rule('memory-tags-predefined-only')->critical()
-            ->text('Memory tags MUST use ONLY predefined values. Allowed: '.$memoryTagsAll.'.')
-            ->why('Unknown tags = unsearchable memories. Predefined = discoverable.')
-            ->onViolation('Replace with closest predefined match.');
+            ->text('Memory tags MUST use ONLY predefined'.($customMemoryTags ? ' or project-custom' : '').' values. Allowed: '.$memoryTagsAll.'.')
+            ->why('Unknown tags = unsearchable memories. Predefined'.($customMemoryTags ? ' + project-custom' : '').' = discoverable. MCP normalizes at storage, but use canonical form at reasoning time.')
+            ->onViolation('Normalize to closest canonical tag. No match → skip tag.');
 
         $this->rule('memory-categories-predefined-only')->critical()
             ->text('Memory category MUST be one of: '.implode(', ', self::MEMORY_CATEGORIES).'. FORBIDDEN: "other", "general", "misc", or unlisted.')
             ->why('"other" is garbage nobody searches. Every memory needs meaningful category.')
             ->onViolation('Choose most relevant from predefined list.');
 
-        $this->guideline('task-tag-selection')
+        // Tag selection with NOT-format aliases
+        $tagSelection = $this->guideline('task-tag-selection')
             ->goal('Select tags per task. Combine dimensions for precision.')
             ->text('WORKFLOW (pipeline stage): '.implode(', ', self::TASK_TAGS_WORKFLOW))
-            ->text('TYPE (work kind): '.implode(', ', self::TASK_TAGS_TYPE))
-            ->text('DOMAIN (area): '.implode(', ', self::TASK_TAGS_DOMAIN))
+            ->text('TYPE (work kind): '.$this->formatTagsWithAliases(self::TASK_TAGS_TYPE))
+            ->text('DOMAIN (area): '.$this->formatTagsWithAliases(self::TASK_TAGS_DOMAIN))
             ->text('STRICT LEVEL: '.implode(', ', self::TASK_TAGS_STRICT))
             ->text('COGNITIVE LEVEL: '.implode(', ', self::TASK_TAGS_COGNITIVE))
-            ->text('BATCH: '.implode(', ', self::TASK_TAGS_BATCH))
-            ->text('Formula: 1 TYPE + 1 DOMAIN + 0-2 WORKFLOW + 1 STRICT + 1 COGNITIVE. Example: ["feature", "api", "strict:standard", "cognitive:standard"] or ["bugfix", "auth", "validation-fix", "strict:strict", "cognitive:deep"].');
+            ->text('BATCH: '.implode(', ', self::TASK_TAGS_BATCH));
 
-        $this->guideline('memory-tag-selection')
+        if ($customTaskTags) {
+            $tagSelection->text('PROJECT (custom): '.implode(', ', $customTaskTags));
+        }
+
+        $tagSelection->text('Formula: 1 TYPE + 1 DOMAIN + 0-2 WORKFLOW + 1 STRICT + 1 COGNITIVE'.($customTaskTags ? ' + 0-2 PROJECT' : '').'. Example: ["feature", "api", "strict:standard", "cognitive:standard"] or ["bugfix", "auth", "validation-fix", "strict:strict", "cognitive:deep"].');
+
+        // Memory tag selection
+        $memorySelection = $this->guideline('memory-tag-selection')
             ->goal('Select 1-3 tags per memory. Combine dimensions.')
             ->text('CONTENT (kind): '.implode(', ', self::MEMORY_TAGS_CONTENT))
-            ->text('SCOPE (breadth): '.implode(', ', self::MEMORY_TAGS_SCOPE))
-            ->text('Formula: 1 CONTENT + 0-1 SCOPE. Example: ["solution", "reusable"] or ["failure", "module-specific"]. Max 3 tags.');
+            ->text('SCOPE (breadth): '.implode(', ', self::MEMORY_TAGS_SCOPE));
+
+        if ($customMemoryTags) {
+            $memorySelection->text('PROJECT (custom): '.implode(', ', $customMemoryTags));
+        }
+
+        $memorySelection->text('Formula: 1 CONTENT + 0-1 SCOPE'.($customMemoryTags ? ' + 0-1 PROJECT' : '').'. Example: ["solution", "reusable"] or ["failure", "module-specific"]. Max 3 tags.');
 
         // --- Mandatory level tags (CONSTITUTIONAL — always compiled) ---
         $this->rule('mandatory-level-tags')->critical()
@@ -311,6 +397,8 @@ trait SharedCommandTrait
         // --- Safety escalation (CONSTITUTIONAL — always compiled) ---
         $this->rule('safety-escalation-non-overridable')->critical()
             ->text('After loading task, check file paths in task.content/comment. If files match safety patterns → effective level MUST be >= pattern minimum, regardless of task tags or .env default. Agent tags are suggestions UPWARD only — can raise above safety floor, never lower below it.')
+            ->text(Operator::scenario('Task tagged strict:relaxed touches auth/guards/LoginController.php → escalate to strict:strict minimum regardless of tag.'))
+            ->text(Operator::scenario('Simple rename across 12 files → cognitive escalates to standard (>10 files rule), strict stays as tagged.'))
             ->why('Safety patterns guarantee minimum protection for critical code areas. Agent cannot "cheat" by under-tagging a task touching auth/ or payments/.')
             ->onViolation('Raise effective level to safety floor. Log escalation in task comment.');
 
@@ -370,6 +458,8 @@ trait SharedCommandTrait
 
         $this->rule('batch-trivial-grouping')->high()
             ->text('When ALL items are: identical operation (rename, format, move) + trivial (<5 min each, no logic change) + independent (no cross-file dependencies) → create 1 task with checklist, tags: ['.self::TAG_BATCH_TRIVIAL.', '.self::TAG_STRICT_RELAXED.', '.self::TAG_COGNITIVE_MINIMAL.']. Do NOT decompose into separate subtasks.')
+            ->text(Operator::scenario('Rename 5 CSS classes across 5 files → single task with checklist (identical, trivial, independent).'))
+            ->text(Operator::scenario('Update 5 service classes with different logic each → NOT batch (different logic = not identical operation). Decompose into separate tasks.'))
             ->why('Trivial batch operations gain nothing from parallelism. 5 identical tasks waste 5x planning overhead.')
             ->onViolation('Evaluate if items are truly independent and trivial. If yes → single task with checklist.');
     }
@@ -391,6 +481,8 @@ trait SharedCommandTrait
 
         $this->rule('docs-are-law')->critical()
             ->text('Documentation is the SINGLE SOURCE OF TRUTH. If docs exist for task - FOLLOW THEM EXACTLY. No deviations, no "alternatives", no "options" that docs don\'t mention.')
+            ->text(Operator::scenario('Docs say "use Repository pattern". Existing code uses Service pattern. → Follow docs (Repository), not existing code.'))
+            ->text(Operator::scenario('Docs describe feature but skip error handling details. → Follow docs for main flow, use conservative approach for undocumented edge cases.'))
             ->why('User wrote docs for a reason. Asking about non-existent alternatives wastes time and shows you didn\'t read the docs.')
             ->onViolation('Re-read documentation. Execute ONLY what docs specify.');
 
@@ -430,17 +522,11 @@ trait SharedCommandTrait
         $this->guideline('aggressive-docs-search')
             ->goal('Find documentation even if named differently than task/code')
             ->example()
-            ->phase('Generate keyword variations from task title/content:')
-            ->phase('  1. Original: "FocusModeTest" → search "FocusModeTest"')
-            ->phase('  2. Split CamelCase: "FocusModeTest" → search "FocusMode", "Focus Mode"')
-            ->phase('  3. Remove suffix: "FocusModeTest" → search "Focus" (remove Mode, Test)')
-            ->phase('  4. Domain words: extract meaningful nouns → search each')
-            ->phase('  5. Parent context: if task has parent → include parent title keywords')
-            ->phase('Common suffixes to STRIP: Test, Tests, Controller, Service, Repository, Command, Handler, Provider, Factory, Manager, Helper, Validator, Processor')
-            ->phase('Search ORDER: most specific → most general. STOP when found.')
-            ->phase('Minimum 3 search attempts before concluding "no documentation".')
-            ->phase('WRONG: brain docs "UserAuthenticationServiceTest" → not found → done')
-            ->phase('RIGHT: brain docs "UserAuthenticationServiceTest" → not found → brain docs "UserAuthentication" → not found → brain docs "Authentication" → FOUND!');
+            ->phase('Generate 3-5 keyword variations: split CamelCase, strip suffixes (Test, Controller, Service, Repository, Handler), extract domain words, try parent context keywords')
+            ->phase('Search ORDER: most specific → most general. Minimum 3 attempts before concluding "no docs"')
+            ->phase('WRONG: brain docs "UserAuthServiceTest" → not found → done')
+            ->phase('RIGHT: brain docs "UserAuthServiceTest" → brain docs "UserAuth" → brain docs "Authentication" → FOUND!')
+            ->phase('STILL not found after 3+ attempts? → brain docs --undocumented → check if class exists but lacks documentation');
     }
 
     // =========================================================================
@@ -517,6 +603,7 @@ trait SharedCommandTrait
 
         $this->rule('failure-policy-ambiguous-spec')->high()
             ->text('AMBIGUOUS SPEC: 1) Identify SPECIFIC ambiguity (not "task is unclear" but "field X: type A or B?"). 2) -y mode: choose conservative/safe interpretation, log decision in task comment: "DECISION: interpreted {X} as {Y} because {reason}", append_comment: true. 3) Interactive: ask ONE targeted question about the SPECIFIC gap. 4) After 1 clarification → proceed. NEVER ask open-ended "what did you mean?" or multiple follow-ups.')
+            ->text(Operator::scenario('Task says "add validation". Client-side, server-side, or both? → In -y mode: choose server-side (conservative, safer). In interactive: ask ONE question about this specific gap.'))
             ->why('Ambiguity paralysis wastes more time than conservative interpretation. One precise question is enough — if user wanted detailed spec, they would have written docs.')
             ->onViolation('Identify specific gap. One question or auto-decide. Proceed.');
     }
@@ -800,29 +887,20 @@ trait SharedCommandTrait
         }
 
         $this->rule('docs-during-execution')->high()
-            ->text('After implementation: evaluate if documentation update needed. NEW feature/module/API without .docs/ entry → CREATE doc. Changed behavior with existing docs → UPDATE doc. Bugfix/refactor (same behavior) OR trivial (config, formatting, PHPDoc) → SKIP. Use brain docs to check existing. Write docs in .docs/ with YAML front matter (name, description, type, date, version) + clear markdown. Documentation = DESCRIPTION for humans, not code dump. Minimize code examples — text-first.')
-            ->why('Documentation is declared "law" but executors never create it. Over time "docs are law" becomes empty rule because no docs exist. Executor understands the code best — creating docs during execution costs near zero (context already loaded). Separate doc-tasks are banned as micro-tasks.')
+            ->text('After implementation: NEW feature/module/API without .docs/ → CREATE doc. Changed behavior with existing docs → UPDATE. Bugfix/refactor/trivial → SKIP. Use brain docs to check existing. YAML format: brain docs --help -v.')
+            ->why('Documentation is declared "law" but executors never create it. Executor understands the code best — creating docs during execution costs near zero.')
             ->onViolation('Before completing: run brain docs for feature keywords. New feature without docs → create .docs/{feature}.md.');
 
         $this->guideline('docs-during-execution')
             ->goal('Decide whether to create/update documentation after implementation')
             ->example()
-            ->phase('Decision tree:')
-            ->phase('  1. Task adds NEW feature, module, or public API? → CHECK docs')
-            ->phase('  2. Task CHANGES BEHAVIOR of existing feature? → CHECK docs')
-            ->phase('  3. Task is bugfix, refactor, or trivial change (no behavior change)? → SKIP docs')
+            ->phase('1. Task adds NEW feature/module/API? → CHECK docs')
+            ->phase('2. Task CHANGES BEHAVIOR? → CHECK docs')
+            ->phase('3. Bugfix/refactor/trivial (no behavior change)? → SKIP')
             ->phase('CHECK: ' . BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → docs found?')
-            ->phase('  YES (docs exist) + behavior changed → READ doc, UPDATE relevant sections')
-            ->phase('  NO (no docs) + new feature/module → CREATE .docs/{feature-name}.md')
-            ->phase('  NO (no docs) + minor behavior change → SKIP (not every change needs docs)')
-            ->phase('CREATE format (YAML front matter + markdown body):')
-            ->phase('  ---')
-            ->phase('  name: "Feature Name"')
-            ->phase('  description: "Brief description of what this feature does"')
-            ->phase('  type: "guide"  # guide | api | concept | architecture | reference')
-            ->phase('  date: "' . date('Y-m-d') . '"')
-            ->phase('  version: "1.0.0"')
-            ->phase('  ---')
-            ->phase('  Body: purpose, key concepts, usage, API/interface. Text-first, code only when cheaper than text.');
+            ->phase('  YES + behavior changed → READ doc, UPDATE relevant sections')
+            ->phase('  NO + new feature → CREATE .docs/{feature-name}.md (YAML format: brain docs --help -v)')
+            ->phase('  NO + minor change → SKIP')
+            ->phase('POST-IMPLEMENTATION: ' . BashTool::call(BrainCLI::DOCS('--undocumented')) . ' → new undocumented classes? → flag in task comment');
     }
 }

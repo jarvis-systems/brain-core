@@ -6,62 +6,14 @@ namespace BrainCore\Includes\Universal;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
-use BrainCore\Compilation\Operator;
-use BrainCore\Compilation\Store;
-use BrainCore\Compilation\Tools\BashTool;
-use BrainCore\Compilation\Tools\ReadTool;
-use BrainNode\Mcp\VectorMemoryMcp;
 
-#[Purpose(<<<'PURPOSE'
-Defines brain docs command protocol for real-time .docs/ indexing with YAML front matter parsing.
-Compact workflow integration patterns for documentation discovery and validation.
-PURPOSE
-)]
+#[Purpose('brain docs CLI protocol — self-documenting tool for .docs/ indexing and search. Iron rules for documentation quality.')]
 class BrainDocsInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
-        $this->guideline('brain-docs-command')
-            ->text('Real-time documentation indexing and search via YAML front matter parsing.')
-            ->example('brain docs - List all documentation files')->key('list-all')
-            ->example('brain docs "keyword1,keyword2" - Search by keywords')->key('search')
-            ->example('Returns: file path, name, description, part, type, date, version')->key('output')
-            ->example('Keywords: comma-separated, case-insensitive, search in name/description/content')->key('format')
-            ->example('Returns INDEX only (metadata), use Read tool to get file content')->key('index-only');
-
-        $this->guideline('yaml-front-matter')
-            ->text('Required structure for brain docs indexing.')
-            ->example('---
-name: "Document Title"
-description: "Brief description"
-part: 1
-type: "guide"
-date: "2025-11-12"
-version: "1.0.0"
----')->key('structure')
-            ->example('name, description: REQUIRED')->key('required')
-            ->example('part, type, date, version: optional')->key('optional')
-            ->example('type: tor (Terms of Service), guide, api, concept, architecture, reference')->key('types')
-            ->example('part: split large docs (>500 lines) into numbered parts for readability')->key('part-usage')
-            ->example('No YAML: returns path only. Malformed YAML: error + exit.')->key('behavior');
-
-        $this->guideline('workflow-discovery')
-            ->goal('Discover existing documentation before creating new')
-            ->example()
-            ->phase(BashTool::describe('brain docs "{keywords}"', Store::as('DOCS_INDEX')))
-            ->phase(Operator::if(Store::get('DOCS_INDEX') . ' not empty', [
-                ReadTool::call('{paths_from_index}'),
-                'Update existing docs'
-            ]));
-
-        $this->guideline('workflow-multi-source')
-            ->goal('Combine brain docs + vector memory for complete knowledge')
-            ->example()
-            ->phase(BashTool::describe('brain docs "{keywords}"', Store::as('STRUCTURED')))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{keywords}", limit: 5}'))
-            ->phase(Store::as('MEMORY', 'Vector search results'))
-            ->phase('Merge: structured docs (primary) + vector memory (secondary)')
-            ->phase('Fallback: if no structured docs, use vector memory + Explore agent');
+        $this->guideline('brain-docs-tool')
+            ->text('brain docs — PRIMARY tool for .docs/ project documentation discovery and search. Self-documenting: brain docs --help for usage, -v for examples, -vv for best practices. Key capabilities: --download=<url> persists external docs locally (lossless, zero tokens vs vector memory summaries), --undocumented finds code without docs. Always use brain docs BEFORE creating documentation, web research, or making assumptions about project.');
 
         $this->rule('no-manual-indexing')->critical()
             ->text('NEVER create index.md or README.md for documentation indexing. brain docs handles all indexing automatically.')

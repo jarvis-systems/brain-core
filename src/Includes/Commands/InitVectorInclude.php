@@ -251,12 +251,9 @@ class InitVectorInclude extends IncludeArchetype
 
         // brain docs + DocumentationMaster Integration
         $this->guideline('brain-docs-usage')
-            ->text('brain docs for INDEX, DocumentationMaster for CONTENT analysis')
+            ->text('brain docs for INDEX (metadata), then DocumentationMaster agents for CONTENT analysis')
             ->example(BashTool::call(BrainCLI::DOCS))->key('list-all')
-            ->example(BashTool::call(BrainCLI::DOCS('keyword1,keyword2')))->key('search')
-            ->example('Index returns: path, name, description, type, date, version')->key('fields')
-            ->example('Then: DocumentationMaster reads & analyzes actual content')->key('analyze')
-            ->example('Each doc → Read → Extract key concepts → store_memory')->key('flow');
+            ->example(BashTool::call(BrainCLI::DOCS('keyword1,keyword2')))->key('search');
 
         // Error Handling (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')

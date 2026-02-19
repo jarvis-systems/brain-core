@@ -106,7 +106,7 @@ class DoSyncInclude extends IncludeArchetype
 
         // Phase 1.5: Material Gathering with Vector Storage
         $this->guideline('phase1.5-material-gathering')
-            ->goal('Collect materials per plan and store to vector memory. NOTE: command `brain docs` returns file index (Path, Name, Description, etc.), then Read relevant files')
+            ->goal('Collect materials per plan and store to vector memory')
             ->example()
             ->phase(Operator::forEach('scan_target in $REQUIREMENTS_PLAN.scan_targets', [
                 Operator::do('Context extraction from {scan_target}'),

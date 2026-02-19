@@ -122,7 +122,7 @@ class XmlBuilder
             // Format rule with bold labels and auto-coded status values
             // Research shows bold increases model focus on key terms
             // Backticks for status values prevent semantic confusion
-            $ruleText = collect($children)->where('element', 'text')->first()['text'] ?? null;
+            $ruleText = collect($children)->where('element', 'text')->pluck('text')->filter()->implode("\n") ?: null;
             $ruleChildren = collect($children)->where('element', '!=', 'text')->mapWithKeys(function ($child) {
                 $key = $child['element'] ?? 'item';
                 $value = $child['text'] ?? null;

@@ -51,8 +51,8 @@ class DocWorkInclude extends IncludeArchetype
             ->onViolation('Split content. Add part field to YAML. Add cross-references between parts.');
 
         $this->rule('yaml-front-matter-mandatory')->critical()
-            ->text('EVERY .docs/ file MUST start with YAML front matter. Required: name, description. Optional: part, type, date, version. brain docs CLI indexes ONLY files with valid YAML front matter — no front matter = invisible to search and discovery.')
-            ->why('brain docs CLI parses YAML for index and search. Docs without front matter are undiscoverable by other commands and agents.')
+            ->text('EVERY .docs/ file MUST start with valid YAML front matter. brain docs indexes ONLY files with valid YAML. Format: brain docs --help -v.')
+            ->why('brain docs CLI parses YAML for index and search. Docs without front matter are undiscoverable.')
             ->onViolation('Add YAML front matter before any markdown content. Verify with brain docs after writing.');
 
         $this->rule('text-first-code-last')->critical()
@@ -123,13 +123,6 @@ class DocWorkInclude extends IncludeArchetype
         // =========================================================================
         // YAML FRONT MATTER STRUCTURE
         // =========================================================================
-        $this->guideline('yaml-structure')
-            ->goal('Consistent YAML front matter for brain docs indexing')
-            ->text('Required: name (string), description (string). Optional: part (int), type (string), date (YYYY-MM-DD), version (semver).')
-            ->text('Type values: guide | api | concept | architecture | reference | tor')
-            ->example("---\nname: \"Feature Name\"\ndescription: \"Brief description\"\ntype: \"guide\"\ndate: \"".date('Y-m-d')."\"\nversion: \"1.0.0\"\n---")->key('single-file')
-            ->example("---\nname: \"Feature Name (Part 1: Overview)\"\ndescription: \"Architecture and key concepts\"\npart: 1\ntype: \"guide\"\ndate: \"".date('Y-m-d')."\"\nversion: \"1.0.0\"\n---")->key('multi-part');
-
         // =========================================================================
         // WORKFLOW
         // =========================================================================

@@ -47,7 +47,7 @@ class InitDocsInclude extends IncludeArchetype
             ->onViolation('Continue to next doc. Show summary at end.');
 
         $this->rule('yaml-front-matter-mandatory')->critical()
-            ->text('EVERY generated .md file MUST start with valid YAML front matter: name (required), description (required), type (required), date (auto), version (1.0.0). brain docs indexes ONLY files with valid YAML.')
+            ->text('EVERY generated .md file MUST start with valid YAML front matter. brain docs indexes ONLY files with valid YAML. Format: brain docs --help -v.')
             ->why('Files without YAML front matter are invisible to brain docs CLI and all commands that use it.')
             ->onViolation('Add YAML front matter. Verify with brain docs after writing.');
 
@@ -319,12 +319,6 @@ class InitDocsInclude extends IncludeArchetype
             ->example('guide: Prerequisites → Steps → Verification → Troubleshooting')->key('guide')
             ->example('concept: Definition → Why → How → When → Gotchas')->key('concept')
             ->example('reference: Format → Options → Defaults → Examples')->key('reference');
-
-        // YAML front matter template
-        $this->guideline('yaml-template')
-            ->text('Standard YAML front matter for generated docs')
-            ->example("---\nname: \"{Document Title}\"\ndescription: \"{Brief description}\"\ntype: \"{architecture|module|api|guide|concept|reference}\"\ndate: \"{YYYY-MM-DD}\"\nversion: \"1.0.0\"\n---")->key('standard')
-            ->example("---\nname: \"{Title} (Part 1: Overview)\"\ndescription: \"{Brief description}\"\npart: 1\ntype: \"{type}\"\ndate: \"{YYYY-MM-DD}\"\nversion: \"1.0.0\"\n---")->key('multi-part');
 
         // Error Recovery (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')
