@@ -47,6 +47,10 @@ class CoreInclude extends IncludeArchetype
             ->why('Ensures recommendations reflect current state.')
             ->onViolation('Initialize temporal context first.');
 
+        // === STYLE ===
+        $this->style()
+            ->brevity($this->var('VERBOSITY', 'medium'));
+
         // === RESPONSE QUALITY ===
         $this->rule('concise-agent-responses')->high()
             ->text('Agent responses must be concise, factual, and focused on task outcomes without verbosity.')

@@ -99,9 +99,11 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // FIX-TASK GATING (from trait - canonical re-validation cycle after fix-tasks)
         $this->defineFixTaskGatingRules();
 
-        // VALIDATION RULES (validate-sync-specific)
-        $this->rule('idempotent')->high()
-            ->text('Re-run produces same result. Check existing tasks before creating. Skip duplicates.');
+        // VALIDATION RULES (validate-sync-specific) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('idempotent')->high()
+                ->text('Re-run produces same result. Check existing tasks before creating. Skip duplicates.');
+        }
 
         // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
         $this->defineParallelIsolationRules();

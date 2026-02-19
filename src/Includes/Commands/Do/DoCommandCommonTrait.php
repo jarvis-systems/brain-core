@@ -94,6 +94,10 @@ trait DoCommandCommonTrait
      */
     protected function defineVectorMemoryMandatoryRule(string $subjectType = 'ALL agents'): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('vector-memory-mandatory')->high()
             ->text($subjectType.' MUST search vector memory BEFORE task execution AND store learnings AFTER completion. Vector memory is the primary communication channel between sequential agents.')
             ->why('Enables knowledge sharing between agents, prevents duplicate work, maintains execution continuity across steps')
@@ -114,6 +118,10 @@ trait DoCommandCommonTrait
      */
     protected function defineScopeEscalationRule(string $commandType): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('scope-escalation')->critical()
             ->text('If task analysis reveals: estimated effort >8h OR >5 files affected OR requires multi-session execution OR >4 distinct sub-steps → ESCALATE to Task workflow. Create vector task via VectorTaskMcp with tag "'.self::TAG_MANUAL_ONLY.'" (prevents auto-execution). Suggest user switch to /task:async or /task:sync with created task ID. ABORT do command — task is too large for single-shot execution.')
             ->why('Do commands are lightweight single-shot executors. Complex tasks need vector task tracking for state persistence, parallel execution, validation pipeline, and circuit breaker protection. Escalation prevents half-done work in a single context window.')
@@ -187,6 +195,10 @@ trait DoCommandCommonTrait
      */
     protected function defineDoFailureAwarenessRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('do-failure-awareness')->critical()
             ->text('BEFORE starting work: search memory category "'.self::CAT_DEBUGGING.'" for KNOWN FAILURES related to $TASK_DESCRIPTION. Found → extract failed approaches and BLOCK them. Pass blocked approaches to agents (async) or exclude from plan (sync). Do NOT attempt solutions that already failed.')
             ->why('Repeating failed solutions wastes time and context. Memory contains "this does NOT work" knowledge from previous sessions.')
@@ -249,6 +261,10 @@ trait DoCommandCommonTrait
      */
     protected function defineParallelAgentOrchestrationRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('parallel-agent-orchestration')->high()
             ->text('Validation phases MUST use parallel agent orchestration (5-6 agents simultaneously) for efficiency. Each agent validates one aspect.')
             ->why('Parallel validation reduces time and maximizes coverage.')
@@ -263,6 +279,10 @@ trait DoCommandCommonTrait
      */
     protected function defineIdempotentValidationRule(string $duplicateType = 'tasks'): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('idempotent-validation')->high()
             ->text('Validation is IDEMPOTENT. Running multiple times produces same result (no duplicate '.$duplicateType.', no repeated fixes).')
             ->why('Allows safe re-runs without side effects.')
@@ -460,6 +480,10 @@ trait DoCommandCommonTrait
      */
     protected function definePhase2DeepContextGatheringGuideline(string $researchType, string $returnStructure): void
     {
+        if (! $this->cognitiveAtLeast('standard')) {
+            return;
+        }
+
         $this->guideline('phase2-context-gathering')
             ->goal('Delegate deep memory research to VectorMaster agent')
             ->example()
@@ -494,6 +518,10 @@ trait DoCommandCommonTrait
      */
     protected function definePhase3DocumentationExtractionGuideline(string $requirementsType, string $extractionDetails): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->guideline('phase3-documentation-extraction')
             ->goal('Extract '.$requirementsType.' from .docs/ via DocumentationMaster')
             ->example()

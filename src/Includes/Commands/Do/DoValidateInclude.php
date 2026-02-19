@@ -98,26 +98,33 @@ class DoValidateInclude extends IncludeArchetype
                 Operator::if('rejected', 'Accept modifications → Re-present → WAIT'),
             ]));
 
-        // Phase 2: Deep Context Gathering via VectorMaster Agent
-        $this->guideline('phase2-context-gathering')
-            ->goal('Delegate deep memory research to VectorMaster agent')
-            ->example()
-            ->phase(Operator::output([
-                '',
-                '=== PHASE 2: DEEP CONTEXT GATHERING ===',
-                'Delegating to VectorMaster for deep memory research...',
-            ]))
-            ->phase('SELECT vector-master from ' . Store::var('AVAILABLE_AGENTS'))
-            ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
-            ->phase(TaskTool::agent('{' . Store::var('CONTEXT_AGENT') . '}', 'DEEP MEMORY RESEARCH for validation of "' . Store::var('TASK_DESCRIPTION') . '": 1) Multi-probe search: implementation patterns, requirements, architecture decisions, past validations, bug fixes 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return: {implementations: [...], requirements: [...], patterns: [...], past_validations: [...], key_insights: [...]}. Store consolidated context.'))
-            ->phase(Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "' . Store::var('TASK_DESCRIPTION') . '", limit: 10, category: "code-solution"}'))
-            ->phase(Store::as('RELATED_SOLUTIONS', 'Related solutions from memory'))
-            ->phase(Operator::output([
-                'Context gathered via {' . Store::var('CONTEXT_AGENT') . '}:',
-                '- Memory insights: {' . Store::var('MEMORY_CONTEXT.key_insights.count') . '}',
-                '- Related solutions: {' . Store::var('RELATED_SOLUTIONS.count') . '}',
-            ]));
+        // Phase 2: Deep Context Gathering via VectorMaster Agent (cognitive:standard+)
+        if (! $this->cognitiveAtLeast('standard')) {
+            $this->guideline('phase2-context-gathering')
+                ->goal('Skip deep context — minimal cognitive mode. Use task description directly.');
+        }
+
+        if ($this->cognitiveAtLeast('standard')) {
+            $this->guideline('phase2-context-gathering')
+                ->goal('Delegate deep memory research to VectorMaster agent')
+                ->example()
+                ->phase(Operator::output([
+                    '',
+                    '=== PHASE 2: DEEP CONTEXT GATHERING ===',
+                    'Delegating to VectorMaster for deep memory research...',
+                ]))
+                ->phase('SELECT vector-master from ' . Store::var('AVAILABLE_AGENTS'))
+                ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
+                ->phase(TaskTool::agent('{' . Store::var('CONTEXT_AGENT') . '}', 'DEEP MEMORY RESEARCH for validation of "' . Store::var('TASK_DESCRIPTION') . '": 1) Multi-probe search: implementation patterns, requirements, architecture decisions, past validations, bug fixes 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return: {implementations: [...], requirements: [...], patterns: [...], past_validations: [...], key_insights: [...]}. Store consolidated context.'))
+                ->phase(Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'))
+                ->phase(VectorMemoryMcp::call('search_memories', '{query: "' . Store::var('TASK_DESCRIPTION') . '", limit: 10, category: "code-solution"}'))
+                ->phase(Store::as('RELATED_SOLUTIONS', 'Related solutions from memory'))
+                ->phase(Operator::output([
+                    'Context gathered via {' . Store::var('CONTEXT_AGENT') . '}:',
+                    '- Memory insights: {' . Store::var('MEMORY_CONTEXT.key_insights.count') . '}',
+                    '- Related solutions: {' . Store::var('RELATED_SOLUTIONS.count') . '}',
+                ]));
+        }
 
         // Phase 3: Documentation Requirements Extraction
         $this->guideline('phase3-documentation-extraction')
@@ -294,15 +301,17 @@ class DoValidateInclude extends IncludeArchetype
             ]));
 
         // Task Consolidation Rules
-        $this->rule('task-size-5-8h')->high()
-            ->text('Each created task MUST have estimate between 5-8 hours. Never create tasks < 5h (consolidate) or > 8h (split).')
-            ->why('Optimal task size for focused work sessions. Too small = context switching overhead. Too large = hard to track progress.')
-            ->onViolation('Merge small issues into consolidated task OR split large task into 5-8h batches.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('task-size-5-8h')->high()
+                ->text('Each created task MUST have estimate between 5-8 hours. Never create tasks < 5h (consolidate) or > 8h (split).')
+                ->why('Optimal task size for focused work sessions. Too small = context switching overhead. Too large = hard to track progress.')
+                ->onViolation('Merge small issues into consolidated task OR split large task into 5-8h batches.');
 
-        $this->rule('task-comprehensive-context')->critical()
-            ->text('Each task MUST include: all file:line references, memory IDs, documentation paths, detailed issue descriptions with suggestions, evidence from validation.')
-            ->why('Enables full context restoration without re-exploration. Saves agent time on task pickup.')
-            ->onViolation('Add missing context references before creating task.');
+            $this->rule('task-comprehensive-context')->critical()
+                ->text('Each task MUST include: all file:line references, memory IDs, documentation paths, detailed issue descriptions with suggestions, evidence from validation.')
+                ->why('Enables full context restoration without re-exploration. Saves agent time on task pickup.')
+                ->onViolation('Add missing context references before creating task.');
+        }
 
         // Phase 7: Validation Completion
         $this->guideline('phase7-completion')

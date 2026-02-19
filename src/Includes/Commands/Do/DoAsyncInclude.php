@@ -34,6 +34,7 @@ class DoAsyncInclude extends IncludeArchetype
         $this->defineTagTaxonomyRules();
         $this->defineFailurePolicyRules();
         $this->defineAggressiveDocsSearchGuideline();
+        $this->defineDocumentationIsLawRules();
 
         // Iron Rules - Zero Tolerance
         $this->defineZeroDistractionsRule();
@@ -44,10 +45,12 @@ class DoAsyncInclude extends IncludeArchetype
         $this->defineDoFailureAwarenessRule();
         $this->defineDoMachineReadableProgressRule();
 
-        $this->rule('approval-gates-mandatory')->critical()
-            ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates (skip waiting for user confirmation).')
-            ->why('Maintains user control and prevents unauthorized execution. The -y flag enables unattended/scripted execution.')
-            ->onViolation('STOP. Wait for user approval before continuing (unless $HAS_AUTO_APPROVE is true).');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('approval-gates-mandatory')->critical()
+                ->text('User approval REQUIRED at Requirements Analysis gate and Execution Planning gate. NEVER proceed without explicit confirmation. EXCEPTION: If $HAS_AUTO_APPROVE is true, auto-approve all gates (skip waiting for user confirmation).')
+                ->why('Maintains user control and prevents unauthorized execution. The -y flag enables unattended/scripted execution.')
+                ->onViolation('STOP. Wait for user approval before continuing (unless $HAS_AUTO_APPROVE is true).');
+        }
 
         $this->rule('atomic-tasks-only')->critical()
             ->text('Each agent task MUST be small and focused: maximum 1-2 files per agent invocation. NO large multi-file changes.')
@@ -59,17 +62,21 @@ class DoAsyncInclude extends IncludeArchetype
             ->why('Maintains plan integrity and predictability')
             ->onViolation('Revert to last approved checkpoint. Resume approved steps only.');
 
-        $this->rule('execution-mode-flexible')->high()
-            ->text('Execute agents sequentially BY DEFAULT. Allow parallel execution when: 1) tasks are independent (no file/context conflicts), 2) user explicitly requests parallel mode, 3) optimization benefits outweigh tracking complexity.')
-            ->why('Balances safety with performance optimization')
-            ->onViolation('Validate task independence before parallel execution. Fallback to sequential if conflicts detected.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('execution-mode-flexible')->high()
+                ->text('Execute agents sequentially BY DEFAULT. Allow parallel execution when: 1) tasks are independent (no file/context conflicts), 2) user explicitly requests parallel mode, 3) optimization benefits outweigh tracking complexity.')
+                ->why('Balances safety with performance optimization')
+                ->onViolation('Validate task independence before parallel execution. Fallback to sequential if conflicts detected.');
+        }
 
         $this->defineVectorMemoryMandatoryRule();
 
-        $this->rule('conversation-context-awareness')->high()
-            ->text('ALWAYS analyze conversation context BEFORE planning. User may have discussed requirements, constraints, preferences, or decisions in previous messages.')
-            ->why('Prevents ignoring critical information already provided by user in conversation')
-            ->onViolation('Review conversation history before proceeding with task analysis.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('conversation-context-awareness')->high()
+                ->text('ALWAYS analyze conversation context BEFORE planning. User may have discussed requirements, constraints, preferences, or decisions in previous messages.')
+                ->why('Prevents ignoring critical information already provided by user in conversation')
+                ->onViolation('Review conversation history before proceeding with task analysis.');
+        }
 
         $this->rule('full-workflow-mandatory')->critical()
             ->text('ALL requests MUST follow complete workflow: Phase 0 (Context) → Phase 1 (Discovery) → Phase 2 (Requirements + APPROVAL) → Phase 3 (Gathering) → Phase 4 (Planning + APPROVAL) → Phase 5 (Execution via agents) → Phase 6 (Completion). NEVER skip phases. NEVER execute directly without agent delegation.')
@@ -92,10 +99,12 @@ class DoAsyncInclude extends IncludeArchetype
             ->why('Brain is conductor, not musician. Agents execute, Brain coordinates.')
             ->onViolation('Identify task type → Select agent → Delegate via Task().');
 
-        $this->rule('one-agent-one-file')->critical()
-            ->text('Each programming subtask = separate agent invocation. One agent, one file change. NO multi-file edits in single delegation.')
-            ->why('Atomic changes enable precise tracking, easier rollback, clear accountability.')
-            ->onViolation('Split into multiple Task() calls. One agent per file modification.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('one-agent-one-file')->critical()
+                ->text('Each programming subtask = separate agent invocation. One agent, one file change. NO multi-file edits in single delegation.')
+                ->why('Atomic changes enable precise tracking, easier rollback, clear accountability.')
+                ->onViolation('Split into multiple Task() calls. One agent per file modification.');
+        }
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->defineInputCaptureWithDescriptionGuideline();

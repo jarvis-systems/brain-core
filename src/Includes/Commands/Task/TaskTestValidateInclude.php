@@ -36,16 +36,19 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->rule('inline-cosmetic-fix')->critical()
             ->text('Cosmetic issues (whitespace, formatting, typos) = agent fixes IMMEDIATELY inline. No separate phase.');
 
-        $this->rule('real-workflow-tests')->high()
-            ->text('Tests MUST cover real workflows. Reject bloated tests that test implementation details.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('real-workflow-tests')->high()
+                ->text('Tests MUST cover real workflows. Reject bloated tests that test implementation details.');
 
-        $this->rule('docs-coverage')->high()
-            ->text('Every requirement in .docs/ MUST have test coverage. Missing = agent writes test.');
+            $this->rule('docs-coverage')->high()
+                ->text('Every requirement in .docs/ MUST have test coverage. Missing = agent writes test.');
+        }
 
         // ONE TASK PER CYCLE (from trait - validate ONLY assigned task, never siblings)
         $this->defineOneTaskPerCycleRule();
         $this->defineGuaranteedFinalizationRule();
         $this->defineNoManualAgentFallbackRule();
+        $this->defineRetryCircuitBreakerRule();
 
         // MACHINE-READABLE PROGRESS (from trait - STATUS/RESULT/NEXT output contract)
         $this->defineMachineReadableProgressRule();
@@ -89,11 +92,13 @@ class TaskTestValidateInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
         $this->defineTagTaxonomyRules();
 
-        $this->rule('scale-agents')->high()
-            ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('scale-agents')->high()
+                ->text('Scale agents to complexity. Simple (estimate ≤4h, non-critical): 2 agents. Complex: 3-4 agents max.');
 
-        $this->rule('idempotent')->high()
-            ->text('Re-running produces same result. No duplicates, no repeated fixes.');
+            $this->rule('idempotent')->high()
+                ->text('Re-running produces same result. No duplicates, no repeated fixes.');
+        }
 
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();
@@ -230,8 +235,10 @@ class TaskTestValidateInclude extends IncludeArchetype
                 ]),
             ]));
 
-        // TEST QUALITY (inline, not separate guideline)
-        $this->rule('bloat-detection')->high()
-            ->text('Bloat indicators: >3 mocks, testing private methods, copy-paste >80%, >50 lines, testing getters/setters. Good: behavior not implementation, given_when_then names, <100ms execution.');
+        // TEST QUALITY (inline, not separate guideline) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('bloat-detection')->high()
+                ->text('Bloat indicators: >3 mocks, testing private methods, copy-paste >80%, >50 lines, testing getters/setters. Good: behavior not implementation, given_when_then names, <100ms execution.');
+        }
     }
 }

@@ -58,7 +58,7 @@ class CoreInclude extends IncludeArchetype
         $this->style()
             ->language($this->var('LANGUAGE', 'en-US'))
             ->tone('Analytical, methodical, clear, and direct')
-            ->brevity('Medium')
+            ->brevity($this->var('VERBOSITY', 'medium'))
             ->formatting('Strict XML formatting without markdown')
             ->forbiddenPhrases()
                 ->phrase('sorry')

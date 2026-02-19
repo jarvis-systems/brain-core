@@ -41,9 +41,11 @@ class TaskAsyncInclude extends IncludeArchetype
 
         // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
         $this->defineCodebasePatternReuseRule();
+        $this->defineCodebasePatternReuseGuideline();
 
         // IMPACT RADIUS (from trait - agents must check reverse dependencies)
         $this->defineImpactRadiusAnalysisRule();
+        $this->defineImpactRadiusAnalysisGuideline();
 
         // CODE QUALITY (from trait - prevent common AI code issues in agents)
         $this->defineLogicEdgeCaseVerificationRule();
@@ -63,10 +65,12 @@ class TaskAsyncInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
         $this->defineTagTaxonomyRules();
 
-        // CRITICAL THINKING FOR DELEGATION
-        $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
-        $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
-        $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns. -y flag: auto-select best approach for delegation. No -y: present options to user.');
+        // CRITICAL THINKING FOR DELEGATION — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('smart-delegation')->critical()->text('Brain must understand task INTENT before delegating. Agents execute, but Brain decides WHAT to delegate and HOW to split work.');
+            $this->rule('research-triggers')->critical()->text('Research BEFORE delegation when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
+            $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns. -y flag: auto-select best approach for delegation. No -y: present options to user.');
+        }
 
         // FAILURE-AWARE DELEGATION (CRITICAL - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
@@ -77,9 +81,11 @@ class TaskAsyncInclude extends IncludeArchetype
         // RETRY CIRCUIT BREAKER (from trait - prevents infinite retry loops in auto-approve)
         $this->defineRetryCircuitBreakerRule('exec');
 
-        $this->rule('escalate-stuck-problems')->high()
-            ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT delegate same approach. Research alternatives via web-research-master or escalate to user.')
-            ->why('Definition of insanity: doing same thing expecting different results.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('escalate-stuck-problems')->high()
+                ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT delegate same approach. Research alternatives via web-research-master or escalate to user.')
+                ->why('Definition of insanity: doing same thing expecting different results.');
+        }
 
         // ASYNC EXECUTION RULES
         $this->rule('never-execute-directly')->critical()->text('Brain NEVER calls Edit/Write/Glob/Grep/Read for implementation. ALL work via Task() to agents.');
@@ -94,71 +100,89 @@ class TaskAsyncInclude extends IncludeArchetype
         // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
         $this->defineAutoApprovalRules();
 
-        // AGENT INSTRUCTION REQUIREMENTS
-        $this->rule('agent-dependency-instruction')->high()
-            ->text('Include in agent prompt: "If dependencies needed: detect package manager, install (composer/npm/pip/cargo/go mod). Run audit after install."')
-            ->why('Agents handle their own dependency installation autonomously.');
-        // agent git prohibition from trait via defineNoDestructiveGitRules()
-        $this->rule('agent-security-instruction')->critical()
-            ->text('Include in agent prompt: "NEVER hardcode secrets. Validate external input. Escape output. Use parameterized queries."')
-            ->why('Security rules must propagate to all agents.');
-        $this->rule('agent-validation-instruction')->high()
-            ->text('Include in agent prompt: "After changes: verify syntax, run linter if configured, run related tests. Fix issues before reporting completion."')
-            ->why('Agents must validate their own work.');
+        // AGENT INSTRUCTION REQUIREMENTS — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('agent-dependency-instruction')->high()
+                ->text('Include in agent prompt: "If dependencies needed: detect package manager, install (composer/npm/pip/cargo/go mod). Run audit after install."')
+                ->why('Agents handle their own dependency installation autonomously.');
+            // agent git prohibition from trait via defineNoDestructiveGitRules()
+            $this->rule('agent-security-instruction')->critical()
+                ->text('Include in agent prompt: "NEVER hardcode secrets. Validate external input. Escape output. Use parameterized queries."')
+                ->why('Security rules must propagate to all agents.');
+            $this->rule('agent-validation-instruction')->high()
+                ->text('Include in agent prompt: "After changes: verify syntax, run linter if configured, run related tests. Fix issues before reporting completion."')
+                ->why('Agents must validate their own work.');
+        }
 
-        // BRAIN-LEVEL ORCHESTRATION SAFETY
-        $this->rule('pre-delegation-git-check')->high()
-            ->text('Before ANY delegation: check git status for awareness. Uncommitted changes: LOG and proceed. NEVER modify git state.')
-            ->why('Read-only git awareness only. Modification prohibition from trait.');
-        $this->rule('delegation-context-include')->critical()
-            ->text('Every Task() MUST include: 1) clear task description, 2) file scope, 3) memory search hints, 4) security + validation instructions.')
-            ->why('Agents need full context to work autonomously.');
+        // BRAIN-LEVEL ORCHESTRATION SAFETY — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('pre-delegation-git-check')->high()
+                ->text('Before ANY delegation: check git status for awareness. Uncommitted changes: LOG and proceed. NEVER modify git state.')
+                ->why('Read-only git awareness only. Modification prohibition from trait.');
+            $this->rule('delegation-context-include')->critical()
+                ->text('Every Task() MUST include: 1) clear task description, 2) file scope, 3) memory search hints, 4) security + validation instructions.')
+                ->why('Agents need full context to work autonomously.');
+        }
 
-        // PARTIAL FAILURE HANDLING (multi-agent)
-        $this->rule('agent-failure-isolation')->high()
-            ->text('Agent fails: other parallel agents continue. Failed agent work: -y = mark task pending with failure details, no -y = ask "Agent X failed. Retry/Skip/Mark pending?"')
-            ->why('Rollback via git is forbidden. Failed agent files stay as-is. Next execution attempt will handle them.');
-        $this->rule('critical-agent-failure')->high()
-            ->text('Critical agent (blocker for others) fails: -y = abort remaining + mark all pending with failure details, no -y = ask "Critical task failed. Abort all/Retry/Manual intervention?"')
-            ->why('Never rollback via git. Mark pending and let next attempt handle recovery.');
-        $this->rule('partial-success-handling')->medium()
-            ->text('N of M agents succeeded: -y = complete with warning listing failed parts, no -y = ask "N/M succeeded. Complete partial/Rollback all/Retry failed?"');
+        // PARTIAL FAILURE HANDLING (multi-agent) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('agent-failure-isolation')->high()
+                ->text('Agent fails: other parallel agents continue. Failed agent work: -y = mark task pending with failure details, no -y = ask "Agent X failed. Retry/Skip/Mark pending?"')
+                ->why('Rollback via git is forbidden. Failed agent files stay as-is. Next execution attempt will handle them.');
+            $this->rule('critical-agent-failure')->high()
+                ->text('Critical agent (blocker for others) fails: -y = abort remaining + mark all pending with failure details, no -y = ask "Critical task failed. Abort all/Retry/Manual intervention?"')
+                ->why('Never rollback via git. Mark pending and let next attempt handle recovery.');
+            $this->rule('partial-success-handling')->medium()
+                ->text('N of M agents succeeded: -y = complete with warning listing failed parts, no -y = ask "N/M succeeded. Complete partial/Rollback all/Retry failed?"');
+        }
 
-        // RETRY & TIMEOUT FOR AGENTS
-        $this->rule('agent-retry-limit')->high()
-            ->text('Agent timeout or failure: max 2 retries with same agent. Still fails: try alternative agent if applicable. After all retries: mark subtask failed.');
-        $this->rule('agent-timeout')->medium()
-            ->text('Agent execution timeout: 300s for implementation, 120s for research, 60s for validation. Timeout exceeded: cancel, retry or skip.');
+        // RETRY & TIMEOUT FOR AGENTS — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('agent-retry-limit')->high()
+                ->text('Agent timeout or failure: max 2 retries with same agent. Still fails: try alternative agent if applicable. After all retries: mark subtask failed.');
+            $this->rule('agent-timeout')->medium()
+                ->text('Agent execution timeout: 300s for implementation, 120s for research, 60s for validation. Timeout exceeded: cancel, retry or skip.');
+        }
 
-        // SESSION RECOVERY (async-specific)
-        $this->rule('session-recovery-detection')->high()
-            ->text('Task status=in_progress: check task.comment for delegation state. Has agent_tasks with pending/running: crashed session. No state OR >1h old: stale session.');
-        $this->rule('session-recovery-action')->high()
-            ->text('Crashed session: -y = check agent results, continue remaining, no -y = ask "Crashed session. Check agent results/Restart all?" Stale: reset to pending.');
+        // SESSION RECOVERY (async-specific) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('session-recovery-detection')->high()
+                ->text('Task status=in_progress: check task.comment for delegation state. Has agent_tasks with pending/running: crashed session. No state OR >1h old: stale session.');
+            $this->rule('session-recovery-action')->high()
+                ->text('Crashed session: -y = check agent results, continue remaining, no -y = ask "Crashed session. Check agent results/Restart all?" Stale: reset to pending.');
+        }
 
-        // SUBTASKS HANDLING (async-specific, one-task-per-cycle compliant)
-        $this->rule('subtasks-first-batch-only')->high()
-            ->text('Parent task with subtasks: assess FIRST BATCH (first group of adjacent parallel=true OR single next sequential by order). Verify isolation for parallel groups. Delegate ONLY first batch — remaining children require separate execution cycles per one-task-per-cycle. After batch completes → STOP and report remaining.')
-            ->why('Inline-executing ALL children bloats context unpredictably. First-batch-only gives orchestrator control between batches.')
-            ->onViolation('STOP after first batch. Return RESULT with batch progress and NEXT with remaining subtask info.');
-        $this->rule('subtasks-agent-assignment')->medium()
-            ->text('Each subtask in first batch gets dedicated agent delegation. Track: {subtask_id, agent, status, files_touched}.');
+        // SUBTASKS HANDLING (async-specific, one-task-per-cycle compliant) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('subtasks-first-batch-only')->high()
+                ->text('Parent task with subtasks: assess FIRST BATCH (first group of adjacent parallel=true OR single next sequential by order). Verify isolation for parallel groups. Delegate ONLY first batch — remaining children require separate execution cycles per one-task-per-cycle. After batch completes → STOP and report remaining.')
+                ->why('Inline-executing ALL children bloats context unpredictably. First-batch-only gives orchestrator control between batches.')
+                ->onViolation('STOP after first batch. Return RESULT with batch progress and NEXT with remaining subtask info.');
+            $this->rule('subtasks-agent-assignment')->medium()
+                ->text('Each subtask in first batch gets dedicated agent delegation. Track: {subtask_id, agent, status, files_touched}.');
+        }
 
-        // BREAKING CHANGES (via agents)
-        $this->rule('breaking-change-detection')->high()
-            ->text('Include in agent prompt for refactoring tasks: "Flag breaking changes (API signature, removed exports, changed types). Report in completion summary."');
-        $this->rule('breaking-change-action')->high()
-            ->text('Agent reports breaking change: -y = accept with deprecation notice, update callers via another agent. No -y = ask "Breaking change reported. Proceed/Modify/Abort?"');
+        // BREAKING CHANGES (via agents) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('breaking-change-detection')->high()
+                ->text('Include in agent prompt for refactoring tasks: "Flag breaking changes (API signature, removed exports, changed types). Report in completion summary."');
+            $this->rule('breaking-change-action')->high()
+                ->text('Agent reports breaking change: -y = accept with deprecation notice, update callers via another agent. No -y = ask "Breaking change reported. Proceed/Modify/Abort?"');
+        }
 
-        // FAILURE LEARNING
-        $this->rule('failure-memory')->medium()
-            ->text('On delegation failure: store to memory with category "debugging". Content: task summary, agent used, failure reason, partial results. Helps future orchestration.');
+        // FAILURE LEARNING — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('failure-memory')->medium()
+                ->text('On delegation failure: store to memory with category "debugging". Content: task summary, agent used, failure reason, partial results. Helps future orchestration.');
+        }
 
-        // RESULT AGGREGATION
-        $this->rule('aggregate-results')->high()
-            ->text('After all agents complete: aggregate results. Verify: no conflicts between agent changes, all expected files modified, no orphaned changes.');
-        $this->rule('conflict-resolution')->high()
-            ->text('Agents modified same file (conflict): -y = merge if possible, prefer later change. No -y = ask "Conflict in {file}. Show diff/Prefer agent A/Prefer agent B?"');
+        // RESULT AGGREGATION — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('aggregate-results')->high()
+                ->text('After all agents complete: aggregate results. Verify: no conflicts between agent changes, all expected files modified, no orphaned changes.');
+            $this->rule('conflict-resolution')->high()
+                ->text('Agents modified same file (conflict): -y = merge if possible, prefer later change. No -y = ask "Conflict in {file}. Show diff/Prefer agent A/Prefer agent B?"');
+        }
 
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();

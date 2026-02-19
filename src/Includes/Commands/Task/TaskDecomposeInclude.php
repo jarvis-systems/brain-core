@@ -101,6 +101,9 @@ class TaskDecomposeInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
         $this->defineTagTaxonomyRules();
 
+        // BATCH TRIVIAL (from trait - group trivial identical operations into single task)
+        $this->defineBatchTrivialRule();
+
         $this->rule('file-scope-in-content')->critical()
             ->text('When creating subtasks: task content MUST include explicit file scope: "FILES: [file1.php, file2.php, ...]" from file_manifest. For parallel: true subtasks ALSO include: "PARALLEL: this task may execute concurrently with siblings. Stay within listed file scope." Without explicit files, executors guess scope and parallel conflict detection fails.')
             ->why('Parallel execution awareness reads file scopes from task content and comments. Decompose is the ONLY place where planned file scope is known before execution. If not included in content, the entire parallel safety chain starts blind.')

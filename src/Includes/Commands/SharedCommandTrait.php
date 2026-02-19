@@ -68,6 +68,21 @@ trait SharedCommandTrait
     protected const TAG_CI_CD = 'ci-cd';
     protected const TAG_MIGRATION = 'migration';
 
+    // --- Task Tags: Strict Level ---
+    protected const TAG_STRICT_RELAXED = 'strict:relaxed';
+    protected const TAG_STRICT_STANDARD = 'strict:standard';
+    protected const TAG_STRICT_STRICT = 'strict:strict';
+    protected const TAG_STRICT_PARANOID = 'strict:paranoid';
+
+    // --- Task Tags: Cognitive Level ---
+    protected const TAG_COGNITIVE_MINIMAL = 'cognitive:minimal';
+    protected const TAG_COGNITIVE_STANDARD = 'cognitive:standard';
+    protected const TAG_COGNITIVE_DEEP = 'cognitive:deep';
+    protected const TAG_COGNITIVE_EXHAUSTIVE = 'cognitive:exhaustive';
+
+    // --- Task Tags: Batch ---
+    protected const TAG_BATCH_TRIVIAL = 'batch:trivial';
+
     // --- Memory Tags: Content (kind) ---
     protected const MTAG_PATTERN = 'pattern';
     protected const MTAG_SOLUTION = 'solution';
@@ -138,6 +153,23 @@ trait SharedCommandTrait
         self::TAG_MIGRATION,
     ];
 
+    /** @var string[] Strict level tags */
+    protected const TASK_TAGS_STRICT = [
+        self::TAG_STRICT_RELAXED, self::TAG_STRICT_STANDARD,
+        self::TAG_STRICT_STRICT, self::TAG_STRICT_PARANOID,
+    ];
+
+    /** @var string[] Cognitive level tags */
+    protected const TASK_TAGS_COGNITIVE = [
+        self::TAG_COGNITIVE_MINIMAL, self::TAG_COGNITIVE_STANDARD,
+        self::TAG_COGNITIVE_DEEP, self::TAG_COGNITIVE_EXHAUSTIVE,
+    ];
+
+    /** @var string[] Batch tags */
+    protected const TASK_TAGS_BATCH = [
+        self::TAG_BATCH_TRIVIAL,
+    ];
+
     /** @var string[] Memory content type tags */
     protected const MEMORY_TAGS_CONTENT = [
         self::MTAG_PATTERN,
@@ -170,6 +202,50 @@ trait SharedCommandTrait
     ];
 
     // =========================================================================
+    // STRICT MODE & COGNITIVE LEVEL CONSTANTS
+    // =========================================================================
+
+    /** @var array<string, int> Strict mode levels (higher = more rules) */
+    private const STRICT_LEVELS = ['relaxed' => 0, 'standard' => 1, 'strict' => 2, 'paranoid' => 3];
+
+    /** @var array<string, int> Cognitive levels (higher = deeper analysis) */
+    private const COGNITIVE_LEVELS = ['minimal' => 0, 'standard' => 1, 'deep' => 2, 'exhaustive' => 3];
+
+    // =========================================================================
+    // LEVEL RESOLUTION HELPERS (COMPILE-TIME)
+    // =========================================================================
+
+    protected function resolveStrictLevel(): string
+    {
+        $level = strtolower((string) $this->var('STRICT_MODE', 'standard'));
+
+        return isset(self::STRICT_LEVELS[$level]) ? $level : 'standard';
+    }
+
+    protected function resolveCognitiveLevel(): string
+    {
+        $level = strtolower((string) $this->var('COGNITIVE_LEVEL', 'standard'));
+
+        return isset(self::COGNITIVE_LEVELS[$level]) ? $level : 'standard';
+    }
+
+    protected function strictAtLeast(string $level): bool
+    {
+        $current = self::STRICT_LEVELS[$this->resolveStrictLevel()] ?? 1;
+        $required = self::STRICT_LEVELS[$level] ?? 1;
+
+        return $current >= $required;
+    }
+
+    protected function cognitiveAtLeast(string $level): bool
+    {
+        $current = self::COGNITIVE_LEVELS[$this->resolveCognitiveLevel()] ?? 1;
+        $required = self::COGNITIVE_LEVELS[$level] ?? 1;
+
+        return $current >= $required;
+    }
+
+    // =========================================================================
     // TAG TAXONOMY RULES (COMPILE-TIME ENFORCEMENT)
     // =========================================================================
 
@@ -185,6 +261,9 @@ trait SharedCommandTrait
             self::TASK_TAGS_WORKFLOW,
             self::TASK_TAGS_TYPE,
             self::TASK_TAGS_DOMAIN,
+            self::TASK_TAGS_STRICT,
+            self::TASK_TAGS_COGNITIVE,
+            self::TASK_TAGS_BATCH,
         ));
 
         $memoryTagsAll = implode(', ', array_merge(
@@ -208,17 +287,91 @@ trait SharedCommandTrait
             ->onViolation('Choose most relevant from predefined list.');
 
         $this->guideline('task-tag-selection')
-            ->goal('Select 1-4 tags per task. Combine dimensions for precision.')
+            ->goal('Select tags per task. Combine dimensions for precision.')
             ->text('WORKFLOW (pipeline stage): '.implode(', ', self::TASK_TAGS_WORKFLOW))
             ->text('TYPE (work kind): '.implode(', ', self::TASK_TAGS_TYPE))
             ->text('DOMAIN (area): '.implode(', ', self::TASK_TAGS_DOMAIN))
-            ->text('Formula: 1 TYPE + 1 DOMAIN + 0-2 WORKFLOW. Example: ["feature", "api"] or ["bugfix", "auth", "validation-fix"]. Max 4 tags.');
+            ->text('STRICT LEVEL: '.implode(', ', self::TASK_TAGS_STRICT))
+            ->text('COGNITIVE LEVEL: '.implode(', ', self::TASK_TAGS_COGNITIVE))
+            ->text('BATCH: '.implode(', ', self::TASK_TAGS_BATCH))
+            ->text('Formula: 1 TYPE + 1 DOMAIN + 0-2 WORKFLOW + 1 STRICT + 1 COGNITIVE. Example: ["feature", "api", "strict:standard", "cognitive:standard"] or ["bugfix", "auth", "validation-fix", "strict:strict", "cognitive:deep"].');
 
         $this->guideline('memory-tag-selection')
             ->goal('Select 1-3 tags per memory. Combine dimensions.')
             ->text('CONTENT (kind): '.implode(', ', self::MEMORY_TAGS_CONTENT))
             ->text('SCOPE (breadth): '.implode(', ', self::MEMORY_TAGS_SCOPE))
             ->text('Formula: 1 CONTENT + 0-1 SCOPE. Example: ["solution", "reusable"] or ["failure", "module-specific"]. Max 3 tags.');
+
+        // --- Mandatory level tags (CONSTITUTIONAL — always compiled) ---
+        $this->rule('mandatory-level-tags')->critical()
+            ->text('EVERY task MUST have exactly ONE strict:* tag AND ONE cognitive:* tag. Allowed strict: '.implode(', ', self::TASK_TAGS_STRICT).'. Allowed cognitive: '.implode(', ', self::TASK_TAGS_COGNITIVE).'. Missing level tags = assign based on task scope analysis.')
+            ->why('Level tags enable per-task compilation and cognitive load calibration. Without them, system defaults apply blindly regardless of task complexity.')
+            ->onViolation('Analyze task scope and assign: strict:{level} + cognitive:{level}. Simple rename = strict:relaxed + cognitive:minimal. Production auth = strict:strict + cognitive:deep.');
+
+        // --- Safety escalation (CONSTITUTIONAL — always compiled) ---
+        $this->rule('safety-escalation-non-overridable')->critical()
+            ->text('After loading task, check file paths in task.content/comment. If files match safety patterns → effective level MUST be >= pattern minimum, regardless of task tags or .env default. Agent tags are suggestions UPWARD only — can raise above safety floor, never lower below it.')
+            ->why('Safety patterns guarantee minimum protection for critical code areas. Agent cannot "cheat" by under-tagging a task touching auth/ or payments/.')
+            ->onViolation('Raise effective level to safety floor. Log escalation in task comment.');
+
+        $this->guideline('safety-escalation-patterns')
+            ->goal('Automatic level escalation based on file patterns and context')
+            ->text('File patterns → strict minimum: auth/, guards/, policies/, permissions/ → strict. payments/, billing/, stripe/, subscription/ → strict. .env, credentials, secrets, config/auth → paranoid. migrations/, schema → strict. composer.json, package.json, *.lock → standard. CI/, .github/, Dockerfile, docker-compose → strict. routes/, middleware/ → standard.')
+            ->text('Context patterns → level minimum: priority=critical → strict+deep. tag hotfix or production → strict+standard. touches >10 files → standard+standard. tag breaking-change → strict+deep. Keywords security/encryption/auth/permission → strict. Keywords migration/schema/database/drop → strict.');
+
+        // --- Cognitive level guideline (CONSTITUTIONAL — always compiled) ---
+        $this->defineCognitiveLevelGuidelines();
+    }
+
+    // =========================================================================
+    // COGNITIVE LEVEL GUIDELINES (CONSTITUTIONAL)
+    // =========================================================================
+
+    /**
+     * Define cognitive level guideline based on resolved COGNITIVE_LEVEL.
+     * Generates level-appropriate cognitive instructions for analysis depth.
+     * CONSTITUTIONAL — always compiled regardless of strict level.
+     * Used by: defineTagTaxonomyRules() (auto-called by all includes).
+     */
+    protected function defineCognitiveLevelGuidelines(): void
+    {
+        $level = $this->resolveCognitiveLevel();
+
+        $memoryProbes = ['minimal' => '1 focused', 'standard' => '2-3 targeted', 'deep' => '3-5 comprehensive', 'exhaustive' => '5+ cross-referenced'];
+        $failureHistory = ['minimal' => 'skip', 'standard' => 'recent only', 'deep' => 'full scan', 'exhaustive' => 'full + pattern analysis'];
+        $research = ['minimal' => 'skip unless blocked', 'standard' => 'on error/ambiguity', 'deep' => 'proactive for complex tasks', 'exhaustive' => 'always + cross-reference'];
+        $agentScaling = ['minimal' => 'minimum (1-2)', 'standard' => 'auto (2-3)', 'deep' => 'auto (3-4)', 'exhaustive' => 'maximum (4+)'];
+        $commentParsing = ['minimal' => 'IDs only', 'standard' => 'basic parse', 'deep' => 'full parse', 'exhaustive' => 'parse + validate'];
+
+        $this->guideline('cognitive-level')
+            ->goal('Cognitive level: '.$level.' — calibrate analysis depth accordingly')
+            ->text('Memory probes per phase: '.($memoryProbes[$level] ?? $memoryProbes['standard']))
+            ->text('Failure history: '.($failureHistory[$level] ?? $failureHistory['standard']))
+            ->text('Research (context7/web): '.($research[$level] ?? $research['standard']))
+            ->text('Agent scaling: '.($agentScaling[$level] ?? $agentScaling['standard']))
+            ->text('Comment parsing: '.($commentParsing[$level] ?? $commentParsing['standard']));
+    }
+
+    // =========================================================================
+    // BATCH TRIVIAL RULE (STANDARD+)
+    // =========================================================================
+
+    /**
+     * Define batch trivial grouping rule.
+     * When ALL items are identical, trivial, and independent → single task with checklist.
+     * Gated at standard+ (skipped at relaxed).
+     * Used by: TaskCreateInclude, TaskDecomposeInclude.
+     */
+    protected function defineBatchTrivialRule(): void
+    {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
+        $this->rule('batch-trivial-grouping')->high()
+            ->text('When ALL items are: identical operation (rename, format, move) + trivial (<5 min each, no logic change) + independent (no cross-file dependencies) → create 1 task with checklist, tags: ['.self::TAG_BATCH_TRIVIAL.', '.self::TAG_STRICT_RELAXED.', '.self::TAG_COGNITIVE_MINIMAL.']. Do NOT decompose into separate subtasks.')
+            ->why('Trivial batch operations gain nothing from parallelism. 5 identical tasks waste 5x planning overhead.')
+            ->onViolation('Evaluate if items are truly independent and trivial. If yes → single task with checklist.');
     }
 
     // =========================================================================
@@ -232,6 +385,10 @@ trait SharedCommandTrait
      */
     protected function defineDocumentationIsLawRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('docs-are-law')->critical()
             ->text('Documentation is the SINGLE SOURCE OF TRUTH. If docs exist for task - FOLLOW THEM EXACTLY. No deviations, no "alternatives", no "options" that docs don\'t mention.')
             ->why('User wrote docs for a reason. Asking about non-existent alternatives wastes time and shows you didn\'t read the docs.')
@@ -321,6 +478,10 @@ trait SharedCommandTrait
      */
     protected function defineFailureAwarenessRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('failure-history-mandatory')->critical()
             ->text('BEFORE starting work: search memory category "debugging" for KNOWN FAILURES related to this task/problem. DO NOT attempt solutions that already failed.')
             ->why('Repeating failed solutions wastes time. Memory contains "this does NOT work" knowledge.')
@@ -439,6 +600,10 @@ trait SharedCommandTrait
      */
     protected function defineCodebasePatternReuseRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('codebase-pattern-reuse')->critical()
             ->text('BEFORE implementing: search codebase for similar/analogous implementations. Grep for: similar class names, method signatures, trait usage, helper utilities. Found → REUSE approach, follow same patterns, extend existing code. Not found → proceed independently. NEVER reinvent what already exists in the project.')
             ->why('Codebase consistency > personal style. Duplicate implementations create maintenance burden, inconsistency, and confusion. Existing patterns are battle-tested.')
@@ -452,6 +617,10 @@ trait SharedCommandTrait
      */
     protected function defineCodebasePatternReuseGuideline(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->guideline('codebase-pattern-reuse')
             ->goal('Find and reuse existing patterns before implementing anything new')
             ->example()
@@ -478,6 +647,10 @@ trait SharedCommandTrait
      */
     protected function defineImpactRadiusAnalysisRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('impact-radius-analysis')->critical()
             ->text('BEFORE editing any file: check WHO DEPENDS on it. Grep for imports/use/require/extends/implements of target file. Dependents found → plan changes to not break them. Changing public method/function signature → update ALL callers or flag as breaking change.')
             ->why('Changing code without knowing its consumers causes cascade failures. Proactive impact analysis prevents breaking downstream code.')
@@ -491,6 +664,10 @@ trait SharedCommandTrait
      */
     protected function defineImpactRadiusAnalysisGuideline(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->guideline('impact-radius-analysis')
             ->goal('Understand blast radius before making changes')
             ->example()
@@ -513,6 +690,10 @@ trait SharedCommandTrait
      */
     protected function defineLogicEdgeCaseVerificationRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('logic-edge-case-verification')->high()
             ->text('After implementation: explicitly verify logic correctness for each changed function/method. Check: null/empty inputs, boundary values (0, -1, MAX, empty collection), off-by-one errors, error/exception paths, type coercion edge cases, concurrent access if applicable. Ask: "what happens if input is null? empty? maximum?"')
             ->why('AI-generated code has 75% more logic bugs than human code. Syntax and linter pass but logic fails silently. Most missed category in code reviews.')
@@ -530,6 +711,10 @@ trait SharedCommandTrait
      */
     protected function definePerformanceAwarenessRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('performance-awareness')->high()
             ->text('During implementation: avoid known performance anti-patterns. Check for: nested loops over data (O(n²)), query-per-item patterns (N+1), I/O operations inside loops, loading entire datasets when subset needed, blocking operations where async possible, missing pagination for large collections, unnecessary serialization/deserialization.')
             ->why('AI-generated code has 8x more performance issues than human code, especially I/O patterns. Catching during coding is cheaper than fixing after validation.')
@@ -547,6 +732,10 @@ trait SharedCommandTrait
      */
     protected function defineCodeHallucinationPreventionRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('code-hallucination-prevention')->critical()
             ->text('Before using any method/function/class in generated code: VERIFY it actually exists with correct signature. Read the source or use Grep to confirm. NEVER assume API exists based on naming convention. Common hallucinations: wrong method names, incorrect parameter order/count, non-existent helper functions, invented framework methods, deprecated APIs used as current.')
             ->why('AI generates plausible-looking code referencing non-existent APIs. Parses and lints OK but fails at runtime. Most dangerous because it looks correct.')
@@ -564,6 +753,10 @@ trait SharedCommandTrait
      */
     protected function defineCleanupAfterChangesRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('cleanup-after-changes')->medium()
             ->text('After all edits: scan changed files for artifacts. Remove: unused imports/use/require statements, unreachable code after refactoring, orphaned helper functions no longer called, commented-out code blocks, stale TODO/FIXME without actionable context.')
             ->why('AI refactoring often leaves dead imports, orphaned functions, commented-out code. Accumulates technical debt and confuses future readers.')
@@ -581,6 +774,10 @@ trait SharedCommandTrait
      */
     protected function defineTestCoverageDuringExecutionRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('test-coverage-during-execution')->critical()
             ->text('After implementation: check if changed code has test coverage. If NO tests exist for changed files → WRITE tests. If tests exist but coverage insufficient → ADD missing tests. Target thresholds (MUST match validator expectations): >=80% coverage, critical paths 100%, meaningful assertions (not just "no exception"), edge cases (null, empty, boundary). Follow existing test patterns in the project (detect framework, mirror directory structure, reuse base test classes). NEVER skip — missing tests = guaranteed fix-task from validator = wasted round-trip.')
             ->why('Validator expects >=80% coverage with edge cases. Missing tests = validator creates fix-task = another execution cycle. The executor understands context best and writes better tests than a cold-read agent later.')
@@ -598,6 +795,10 @@ trait SharedCommandTrait
      */
     protected function defineDocumentationDuringExecutionRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('docs-during-execution')->high()
             ->text('After implementation: evaluate if documentation update needed. NEW feature/module/API without .docs/ entry → CREATE doc. Changed behavior with existing docs → UPDATE doc. Bugfix/refactor (same behavior) OR trivial (config, formatting, PHPDoc) → SKIP. Use brain docs to check existing. Write docs in .docs/ with YAML front matter (name, description, type, date, version) + clear markdown. Documentation = DESCRIPTION for humans, not code dump. Minimize code examples — text-first.')
             ->why('Documentation is declared "law" but executors never create it. Over time "docs are law" becomes empty rule because no docs exist. Executor understands the code best — creating docs during execution costs near zero (context already loaded). Separate doc-tasks are banned as micro-tasks.')

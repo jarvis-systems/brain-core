@@ -40,21 +40,26 @@ class DoTestValidateInclude extends IncludeArchetype
 
         $this->defineTextDescriptionRequiredRule('test-validate', '/task:test-validate');
 
-        $this->rule('real-workflow-tests-only')->critical()
-            ->text('Tests MUST cover REAL workflows end-to-end. Reject bloated tests that test implementation details instead of behavior. Quality over quantity.')
-            ->why('Bloated tests are maintenance burden, break on refactoring, provide false confidence.')
-            ->onViolation('Flag bloated tests for refactoring. Create memory entry to simplify.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('real-workflow-tests-only')->critical()
+                ->text('Tests MUST cover REAL workflows end-to-end. Reject bloated tests that test implementation details instead of behavior. Quality over quantity.')
+                ->why('Bloated tests are maintenance burden, break on refactoring, provide false confidence.')
+                ->onViolation('Flag bloated tests for refactoring. Create memory entry to simplify.');
 
-        $this->rule('documentation-requirements-coverage')->critical()
-            ->text('EVERY requirement in .docs/ MUST have corresponding test coverage. Missing coverage = vector task creation for uncovered requirements.')
-            ->why('Documentation defines expected behavior. Untested requirements are unverified.')
-            ->onViolation('Create vector task for uncovered requirements.');
+            $this->rule('documentation-requirements-coverage')->critical()
+                ->text('EVERY requirement in .docs/ MUST have corresponding test coverage. Missing coverage = vector task creation for uncovered requirements.')
+                ->why('Documentation defines expected behavior. Untested requirements are unverified.')
+                ->onViolation('Create vector task for uncovered requirements.');
+        }
 
         $this->defineParallelAgentOrchestrationRule();
 
         $this->defineIdempotentValidationRule('entries');
 
         $this->defineVectorMemoryMandatoryRule('ALL test validation results');
+
+        // Phase Execution Sequence - STRICT ORDERING
+        $this->definePhaseSequenceRules(8);
 
         // Task workflow integration
         $this->defineDoMachineReadableProgressRule();

@@ -38,7 +38,6 @@ class DoSyncInclude extends IncludeArchetype
         $this->defineNoDestructiveGitRules();
         $this->defineTagTaxonomyRules();
         $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
         $this->defineDocumentationIsLawRules();
 
         // Code quality rules (DoSync executes directly — needs same quality as TaskSync)
@@ -80,10 +79,12 @@ class DoSyncInclude extends IncludeArchetype
             ->why('Ensures accurate edits based on current file state')
             ->onViolation('Read file first, then proceed with edit.');
 
-        $this->rule('vector-memory-integration')->high()
-            ->text('Search vector memory BEFORE planning. Store learnings AFTER completion.')
-            ->why('Leverages past solutions, builds knowledge base')
-            ->onViolation('Include memory search in analysis, store insights after.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('vector-memory-integration')->high()
+                ->text('Search vector memory BEFORE planning. Store learnings AFTER completion.')
+                ->why('Leverages past solutions, builds knowledge base')
+                ->onViolation('Include memory search in analysis, store insights after.');
+        }
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->defineInputCaptureWithDescriptionGuideline();

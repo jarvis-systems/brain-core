@@ -70,10 +70,12 @@ class TaskSyncInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
         $this->defineTagTaxonomyRules();
 
-        // CRITICAL THINKING RULES
-        $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
-        $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
-        $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns/practices. -y flag: auto-select best. No -y: present options to user.');
+        // CRITICAL THINKING RULES — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
+            $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
+            $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns/practices. -y flag: auto-select best. No -y: present options to user.');
+        }
 
         // FAILURE-AWARE EXECUTION (CRITICAL - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
@@ -84,9 +86,11 @@ class TaskSyncInclude extends IncludeArchetype
         // RETRY CIRCUIT BREAKER (from trait - prevents infinite retry loops in auto-approve)
         $this->defineRetryCircuitBreakerRule('exec');
 
-        $this->rule('escalate-stuck-problems')->high()
-            ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives, ask user, or delegate to web-research-master.')
-            ->why('Definition of insanity: doing same thing expecting different results.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('escalate-stuck-problems')->high()
+                ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives, ask user, or delegate to web-research-master.')
+                ->why('Definition of insanity: doing same thing expecting different results.');
+        }
 
         // SYNC EXECUTION RULES (sync = blocking, not "no agents")
         $this->rule('sync-meaning')->medium()->text('Sync = synchronous/blocking execution (vs async/background). Agent delegation IS allowed for research - keeps main context clean.');
@@ -96,16 +100,18 @@ class TaskSyncInclude extends IncludeArchetype
         // AUTO-APPROVE & WORKFLOW ATOMICITY (from trait)
         $this->defineAutoApprovalRules();
 
-        // DEPENDENCY HANDLING (language-agnostic)
-        $this->rule('dependency-detection')->high()
-            ->text('Detect missing dependencies: import/require/use statements that fail, unknown classes/modules, task explicitly mentions "add/install/use {package}". Store list for installation.');
-        $this->rule('dependency-install')->high()
-            ->text('Install dependencies: detect package manager (composer, npm, pip, cargo, go mod, etc.) from project files. -y: auto-install. No -y: ask "Need to install {packages}. Proceed?"')
-            ->why('Task cannot complete without required dependencies.');
-        $this->rule('dependency-audit')->medium()
-            ->text('After install: run audit if available (npm audit, composer audit, pip-audit, cargo audit). Vulnerabilities found: -y = WARN and continue, no -y = ask user.');
-        $this->rule('dependency-dev-vs-prod')->medium()
-            ->text('Dev dependencies (test frameworks, linters, dev tools) install to dev. Production dependencies install to main. Detect from usage context.');
+        // DEPENDENCY HANDLING (language-agnostic) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('dependency-detection')->high()
+                ->text('Detect missing dependencies: import/require/use statements that fail, unknown classes/modules, task explicitly mentions "add/install/use {package}". Store list for installation.');
+            $this->rule('dependency-install')->high()
+                ->text('Install dependencies: detect package manager (composer, npm, pip, cargo, go mod, etc.) from project files. -y: auto-install. No -y: ask "Need to install {packages}. Proceed?"')
+                ->why('Task cannot complete without required dependencies.');
+            $this->rule('dependency-audit')->medium()
+                ->text('After install: run audit if available (npm audit, composer audit, pip-audit, cargo audit). Vulnerabilities found: -y = WARN and continue, no -y = ask user.');
+            $this->rule('dependency-dev-vs-prod')->medium()
+                ->text('Dev dependencies (test frameworks, linters, dev tools) install to dev. Production dependencies install to main. Detect from usage context.');
+        }
 
         // BACKUP & ROLLBACK (language-agnostic) — git prohibition from trait via defineNoDestructiveGitRules()
         $this->rule('rollback-on-failure')->high()
@@ -114,50 +120,60 @@ class TaskSyncInclude extends IncludeArchetype
         $this->rule('no-git-fallback')->medium()
             ->text('No git repo: create backup files (.bak) before edit. Rollback = restore from .bak. Clean .bak files on success.');
 
-        // SECURITY WHILE CODING (language-agnostic)
-        $this->rule('security-no-secrets')->critical()
-            ->text('NEVER write hardcoded secrets (passwords, API keys, tokens). Use: env variables, config files (gitignored), secret managers. If task asks to hardcode secret: REFUSE, suggest secure alternative.');
-        $this->rule('security-input-validation')->high()
-            ->text('Code that receives external input (user, API, file): add validation at boundaries. Validate type, format, length, allowed values. Reject/sanitize invalid input.');
-        $this->rule('security-output-escaping')->high()
-            ->text('Code that outputs to HTML/JS/SQL/shell: escape appropriately. HTML = htmlspecialchars/equivalent, SQL = parameterized queries, shell = escapeshellarg/equivalent.');
-        $this->rule('security-parameterized-queries')->critical()
-            ->text('Database queries with variables: ALWAYS parameterized/prepared statements. NEVER string concatenation. No exceptions.');
+        // SECURITY WHILE CODING (language-agnostic) — strict+
+        if ($this->strictAtLeast('strict')) {
+            $this->rule('security-no-secrets')->critical()
+                ->text('NEVER write hardcoded secrets (passwords, API keys, tokens). Use: env variables, config files (gitignored), secret managers. If task asks to hardcode secret: REFUSE, suggest secure alternative.');
+            $this->rule('security-input-validation')->high()
+                ->text('Code that receives external input (user, API, file): add validation at boundaries. Validate type, format, length, allowed values. Reject/sanitize invalid input.');
+            $this->rule('security-output-escaping')->high()
+                ->text('Code that outputs to HTML/JS/SQL/shell: escape appropriately. HTML = htmlspecialchars/equivalent, SQL = parameterized queries, shell = escapeshellarg/equivalent.');
+            $this->rule('security-parameterized-queries')->critical()
+                ->text('Database queries with variables: ALWAYS parameterized/prepared statements. NEVER string concatenation. No exceptions.');
+        }
 
-        // POST-EXECUTION VALIDATION (language-agnostic)
-        $this->rule('post-exec-syntax')->critical()
-            ->text('After ALL edits: verify syntax. Run language-specific check (php -l, node --check, python -m py_compile, rustc --emit=metadata, go build). Syntax error = fix immediately.');
-        $this->rule('post-exec-linter')->high()
-            ->text('After syntax OK: run linter if configured (eslint, phpcs, pylint, clippy, golint). Errors: -y = auto-fix if possible, no -y = show and ask. Cannot auto-fix = manual fix.');
-        $this->rule('post-exec-tests')->high()
-            ->text('After linter OK: run ONLY related tests. Detect test files: same directory, *Test/*_test suffix, test/ mirror structure. ONLY files directly related to CHANGED_FILES. -y = run automatically, no -y = ask "Run tests?"')
-            ->why('Related tests give fast feedback on changed code. Full suite = validator job.');
-        $this->rule('no-full-test-suite')->critical()
-            ->text('NEVER run full test suite (composer test, php artisan test without --filter, phpunit without path). Sync executor runs ONLY related tests scoped to changed files. Full test suite is EXCLUSIVELY the validator\'s responsibility (task:validate). Brain-level quality gates (QUALITY_COMMAND) do NOT apply during sync execution — they apply during validation phase ONLY.')
-            ->why('Full suite on 15-min task = overkill. Related tests already cover risk zone. Validator will run full suite anyway. Running it twice wastes 2+ minutes and risks timeouts.')
-            ->onViolation('ABORT full suite command. Scope to --filter or specific test file paths only.');
-        $this->rule('post-exec-test-failure')->high()
-            ->text('Tests fail: analyze failure, attempt fix (max 2 attempts). Still fails: -y = mark task pending with error comment, no -y = ask user for guidance.');
+        // POST-EXECUTION VALIDATION (language-agnostic) — strict+
+        if ($this->strictAtLeast('strict')) {
+            $this->rule('post-exec-syntax')->critical()
+                ->text('After ALL edits: verify syntax. Run language-specific check (php -l, node --check, python -m py_compile, rustc --emit=metadata, go build). Syntax error = fix immediately.');
+            $this->rule('post-exec-linter')->high()
+                ->text('After syntax OK: run linter if configured (eslint, phpcs, pylint, clippy, golint). Errors: -y = auto-fix if possible, no -y = show and ask. Cannot auto-fix = manual fix.');
+            $this->rule('post-exec-tests')->high()
+                ->text('After linter OK: run ONLY related tests. Detect test files: same directory, *Test/*_test suffix, test/ mirror structure. ONLY files directly related to CHANGED_FILES. -y = run automatically, no -y = ask "Run tests?"')
+                ->why('Related tests give fast feedback on changed code. Full suite = validator job.');
+            $this->rule('no-full-test-suite')->critical()
+                ->text('NEVER run full test suite (composer test, php artisan test without --filter, phpunit without path). Sync executor runs ONLY related tests scoped to changed files. Full test suite is EXCLUSIVELY the validator\'s responsibility (task:validate). Brain-level quality gates (QUALITY_COMMAND) do NOT apply during sync execution — they apply during validation phase ONLY.')
+                ->why('Full suite on 15-min task = overkill. Related tests already cover risk zone. Validator will run full suite anyway. Running it twice wastes 2+ minutes and risks timeouts.')
+                ->onViolation('ABORT full suite command. Scope to --filter or specific test file paths only.');
+            $this->rule('post-exec-test-failure')->high()
+                ->text('Tests fail: analyze failure, attempt fix (max 2 attempts). Still fails: -y = mark task pending with error comment, no -y = ask user for guidance.');
+        }
 
-        // PARTIAL FAILURE HANDLING
-        $this->rule('partial-failure-tracking')->high()
-            ->text('Track execution state: {completed_steps: [], current_step: N, total_steps: M, changed_files: []}. Persist in task comment for recovery.');
-        $this->rule('partial-failure-decision')->high()
-            ->text('Step fails after previous steps changed files: 1) Attempt fix (max 2), 2) If unfixable AND -y: rollback all + mark pending, 3) If unfixable AND no -y: ask "Rollback/Skip/Manual fix?"');
-        $this->rule('partial-success-option')->medium()
-            ->text('If 80%+ steps succeeded and remaining are non-critical: -y = complete with warning comment, no -y = ask "Complete partial or rollback?"');
+        // PARTIAL FAILURE HANDLING — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('partial-failure-tracking')->high()
+                ->text('Track execution state: {completed_steps: [], current_step: N, total_steps: M, changed_files: []}. Persist in task comment for recovery.');
+            $this->rule('partial-failure-decision')->high()
+                ->text('Step fails after previous steps changed files: 1) Attempt fix (max 2), 2) If unfixable AND -y: rollback all + mark pending, 3) If unfixable AND no -y: ask "Rollback/Skip/Manual fix?"');
+            $this->rule('partial-success-option')->medium()
+                ->text('If 80%+ steps succeeded and remaining are non-critical: -y = complete with warning comment, no -y = ask "Complete partial or rollback?"');
+        }
 
-        // RETRY & TIMEOUT LIMITS
-        $this->rule('retry-limit')->high()
-            ->text('Edit conflict: max 3 retries. File locked: wait 2s, retry, max 5 attempts. Network error: retry with backoff, max 3. After max: fail step.');
-        $this->rule('timeout-limits')->medium()
-            ->text('Long operations: dependency install 120s, test suite 300s, linter 60s. Timeout exceeded: -y = skip with warning, no -y = ask "Wait/Skip/Abort?"');
+        // RETRY & TIMEOUT LIMITS — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('retry-limit')->high()
+                ->text('Edit conflict: max 3 retries. File locked: wait 2s, retry, max 5 attempts. Network error: retry with backoff, max 3. After max: fail step.');
+            $this->rule('timeout-limits')->medium()
+                ->text('Long operations: dependency install 120s, test suite 300s, linter 60s. Timeout exceeded: -y = skip with warning, no -y = ask "Wait/Skip/Abort?"');
+        }
 
-        // SESSION RECOVERY (detailed)
-        $this->rule('session-recovery-detection')->high()
-            ->text('Task status=in_progress: check task.comment for execution state. Has completed_steps AND recent timestamp (<1h): crashed session. No state OR old timestamp (>1h): stale session.');
-        $this->rule('session-recovery-action')->high()
-            ->text('Crashed session: -y = continue from last completed step, no -y = ask "Continue from step N or restart?" Stale session: reset to pending, start fresh.');
+        // SESSION RECOVERY (detailed) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('session-recovery-detection')->high()
+                ->text('Task status=in_progress: check task.comment for execution state. Has completed_steps AND recent timestamp (<1h): crashed session. No state OR old timestamp (>1h): stale session.');
+            $this->rule('session-recovery-action')->high()
+                ->text('Crashed session: -y = continue from last completed step, no -y = ask "Continue from step N or restart?" Stale session: reset to pending, start fresh.');
+        }
 
         // PARALLEL ISOLATION (from trait - strict criteria for parallel execution)
         $this->defineParallelIsolationRules();
@@ -165,21 +181,27 @@ class TaskSyncInclude extends IncludeArchetype
         // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when parallel: true)
         $this->defineParallelExecutionAwarenessRules();
 
-        // SUBTASKS HANDLING (one-task-per-cycle compliant)
-        $this->rule('subtasks-first-child-only')->high()
-            ->text('Parent task with pending subtasks: execute FIRST pending child only (by order field). If first pending children are adjacent parallel=true and pass isolation check → execute as group. After child/group completes → STOP. Remaining children require separate execution cycles per one-task-per-cycle.')
-            ->why('Sequential inline-execution of ALL children is unpredictable: context may exhaust mid-work. First-child-only gives orchestrator control points.')
-            ->onViolation('STOP after first child/group. Return RESULT with progress and NEXT with remaining children info.');
+        // SUBTASKS HANDLING (one-task-per-cycle compliant) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('subtasks-first-child-only')->high()
+                ->text('Parent task with pending subtasks: execute FIRST pending child only (by order field). If first pending children are adjacent parallel=true and pass isolation check → execute as group. After child/group completes → STOP. Remaining children require separate execution cycles per one-task-per-cycle.')
+                ->why('Sequential inline-execution of ALL children is unpredictable: context may exhaust mid-work. First-child-only gives orchestrator control points.')
+                ->onViolation('STOP after first child/group. Return RESULT with progress and NEXT with remaining children info.');
+        }
 
-        // BREAKING CHANGES
-        $this->rule('breaking-change-detection')->high()
-            ->text('Detect breaking changes: public method signature change, removed public API, changed return type, renamed exported symbol. Flag for review.');
-        $this->rule('breaking-change-action')->high()
-            ->text('Breaking change detected: -y = proceed with deprecation notice in comment + update callers if found, no -y = ask "This is breaking change. Proceed/Modify/Abort?"');
+        // BREAKING CHANGES — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('breaking-change-detection')->high()
+                ->text('Detect breaking changes: public method signature change, removed public API, changed return type, renamed exported symbol. Flag for review.');
+            $this->rule('breaking-change-action')->high()
+                ->text('Breaking change detected: -y = proceed with deprecation notice in comment + update callers if found, no -y = ask "This is breaking change. Proceed/Modify/Abort?"');
+        }
 
-        // FAILURE LEARNING
-        $this->rule('failure-memory')->medium()
-            ->text('On task failure: store to memory with category "debugging". Content: task summary, failure reason, attempted fixes, final state. Learnings help future similar tasks.');
+        // FAILURE LEARNING — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('failure-memory')->medium()
+                ->text('On task failure: store to memory with category "debugging". Content: task summary, failure reason, attempted fixes, final state. Learnings help future similar tasks.');
+        }
 
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();

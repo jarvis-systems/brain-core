@@ -76,6 +76,9 @@ class TaskCreateInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
         $this->defineTagTaxonomyRules();
 
+        // BATCH TRIVIAL (from trait - group trivial identical operations into single task)
+        $this->defineBatchTrivialRule();
+
         $this->rule('file-scope-in-content')->high()
             ->text('Task content SHOULD include expected file scope: "FILES: [file1.php, file2.php, ...]" if codebase exploration identified relevant files. For parallel: true tasks this becomes CRITICAL — executors need explicit scope for parallel conflict detection. Files unknown (new feature) → "FILES: [to be determined during planning]".')
             ->why('Parallel execution awareness reads file scopes from task content. Create is the first place where scope can be captured. Missing files = executor guesses = parallel safety chain weakened.')

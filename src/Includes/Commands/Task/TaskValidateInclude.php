@@ -68,9 +68,11 @@ class TaskValidateInclude extends IncludeArchetype
         // PARENT INHERITANCE (IRON LAW)
         $this->defineParentIdMandatoryRule();
 
-        $this->rule('estimate-mandatory')->critical()
-            ->text('task_create MUST include estimate (hours). Pessimistic > optimistic. Realistic range, not fantasy.')
-            ->onViolation('ABORT. Add estimate. Unsure? Take gut feeling × 1.5.');
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('estimate-mandatory')->critical()
+                ->text('task_create MUST include estimate (hours). Pessimistic > optimistic. Realistic range, not fantasy.')
+                ->onViolation('ABORT. Add estimate. Unsure? Take gut feeling × 1.5.');
+        }
 
         // VALIDATION RULES (common from trait)
         $this->defineValidationCoreRules();
@@ -78,11 +80,13 @@ class TaskValidateInclude extends IncludeArchetype
         // FIX-TASK GATING (from trait - canonical re-validation cycle after fix-tasks)
         $this->defineFixTaskGatingRules();
 
-        // VALIDATION RULES (validate-specific)
-        $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
-        $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
-        $this->rule('no-breaking-changes')->high()->text('Breaking API/interface changes without documentation = fix-task.');
-        $this->rule('flaky-test-detection')->high()->text('Flaky tests = fix-task.');
+        // VALIDATION RULES (validate-specific) — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('no-interpretation')->critical()->text('NEVER interpret task content to decide whether to validate. Task ID given = validate it. JUST EXECUTE.');
+            $this->rule('parent-readonly')->critical()->text('$PARENT is READ-ONLY. NEVER task_update on parent. Validator scope = $VECTOR_TASK_ID ONLY.');
+            $this->rule('no-breaking-changes')->high()->text('Breaking API/interface changes without documentation = fix-task.');
+            $this->rule('flaky-test-detection')->high()->text('Flaky tests = fix-task.');
+        }
 
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
@@ -99,40 +103,45 @@ class TaskValidateInclude extends IncludeArchetype
         // COLLATERAL FAILURE DETECTION (from trait - create global tasks for unrelated test failures)
         $this->defineCollateralFailureDetectionRule();
 
-        // SECURITY VALIDATION (severity policy)
-        $this->rule('security-injection')->critical()->text('Injection vulnerabilities = fix-task.');
-        $this->rule('security-xss')->critical()->text('XSS vulnerabilities = fix-task.');
-        $this->rule('security-secrets')->critical()->text('Hardcoded secrets = fix-task.');
-        $this->rule('security-auth')->high()->text('Auth/authz issues = fix-task.');
-        $this->rule('security-sensitive-data')->high()->text('Sensitive data exposure = fix-task.');
+        // SECURITY, PERFORMANCE, TYPE SAFETY, DEPENDENCY, TEST QUALITY — strict+
+        if ($this->strictAtLeast('strict')) {
+            // SECURITY VALIDATION (severity policy)
+            $this->rule('security-injection')->critical()->text('Injection vulnerabilities = fix-task.');
+            $this->rule('security-xss')->critical()->text('XSS vulnerabilities = fix-task.');
+            $this->rule('security-secrets')->critical()->text('Hardcoded secrets = fix-task.');
+            $this->rule('security-auth')->high()->text('Auth/authz issues = fix-task.');
+            $this->rule('security-sensitive-data')->high()->text('Sensitive data exposure = fix-task.');
 
-        // PERFORMANCE VALIDATION (severity policy)
-        $this->rule('performance-n-plus-one')->high()->text('N+1 query pattern = fix-task.');
-        $this->rule('performance-complexity')->medium()->text('Algorithmic complexity issues = fix-task.');
-        $this->rule('performance-memory')->medium()->text('Memory issues = fix-task.');
+            // PERFORMANCE VALIDATION (severity policy)
+            $this->rule('performance-n-plus-one')->high()->text('N+1 query pattern = fix-task.');
+            $this->rule('performance-complexity')->medium()->text('Algorithmic complexity issues = fix-task.');
+            $this->rule('performance-memory')->medium()->text('Memory issues = fix-task.');
 
-        // TYPE SAFETY (severity policy)
-        $this->rule('type-safety')->high()->text('Type safety violations = fix-task.');
+            // TYPE SAFETY (severity policy)
+            $this->rule('type-safety')->high()->text('Type safety violations = fix-task.');
 
-        // DEPENDENCY VALIDATION (severity policy)
-        $this->rule('dependency-audit')->high()->text('Dependency vulnerabilities = fix-task.');
-        $this->rule('dependency-license')->medium()->text('License compatibility issues = fix-task.');
+            // DEPENDENCY VALIDATION (severity policy)
+            $this->rule('dependency-audit')->high()->text('Dependency vulnerabilities = fix-task.');
+            $this->rule('dependency-license')->medium()->text('License compatibility issues = fix-task.');
 
-        // TEST QUALITY (severity policy)
-        $this->rule('test-quality-assertions')->high()->text('Tests without meaningful assertions = fix-task.');
-        $this->rule('test-quality-edge-cases')->high()->text('Missing edge case tests = fix-task.');
+            // TEST QUALITY (severity policy)
+            $this->rule('test-quality-assertions')->high()->text('Tests without meaningful assertions = fix-task.');
+            $this->rule('test-quality-edge-cases')->high()->text('Missing edge case tests = fix-task.');
+        }
 
-        // DEDUPLICATION & MERGE
-        $this->rule('issue-deduplication')->high()
-            ->text('Before creating fix-task: deduplicate issues. Same file + same issue type from different agents = ONE fix-task. Merge descriptions. Avoid duplicate work.')
-            ->why('Multiple agents may find same issue. Duplicate tasks waste effort.')
-            ->onViolation('Compare issues by file path and issue category before task_create.');
+        // DEDUPLICATION & MERGE — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('issue-deduplication')->high()
+                ->text('Before creating fix-task: deduplicate issues. Same file + same issue type from different agents = ONE fix-task. Merge descriptions. Avoid duplicate work.')
+                ->why('Multiple agents may find same issue. Duplicate tasks waste effort.')
+                ->onViolation('Compare issues by file path and issue category before task_create.');
 
-        // PARTIAL FAILURE HANDLING
-        $this->rule('agent-partial-failure')->high()
-            ->text('If agent crashes/times out: retry ONCE. If still fails: continue with remaining agents, mark agent failure in report. 2 of 3 agents = still validate, but note incomplete coverage.')
-            ->why('One agent failure should not block entire validation. Partial results > no results.')
-            ->onViolation('Log failed agent, include warning in final report, suggest manual review of uncovered area.');
+            // PARTIAL FAILURE HANDLING
+            $this->rule('agent-partial-failure')->high()
+                ->text('If agent crashes/times out: retry ONCE. If still fails: continue with remaining agents, mark agent failure in report. 2 of 3 agents = still validate, but note incomplete coverage.')
+                ->why('One agent failure should not block entire validation. Partial results > no results.')
+                ->onViolation('Log failed agent, include warning in final report, suggest manual review of uncovered area.');
+        }
 
         // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
         $this->defineParallelIsolationRules();
@@ -142,36 +151,40 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineValidatorParallelCosmeticRule();
         $this->defineScopedGitCheckpointRule();
 
-        // COSMETIC ROLLBACK
-        $this->rule('cosmetic-atomic')->medium()
-            ->text('Cosmetic fixes by agents MUST be atomic with validation. If validation creates fix-task (functional issues found), cosmetic changes STILL committed. Cosmetic improvements are always safe to keep.')
-            ->why('Cosmetic fixes are non-breaking. Discarding them wastes work.');
+        // COSMETIC ROLLBACK — standard+
+        if ($this->strictAtLeast('standard')) {
+            $this->rule('cosmetic-atomic')->medium()
+                ->text('Cosmetic fixes by agents MUST be atomic with validation. If validation creates fix-task (functional issues found), cosmetic changes STILL committed. Cosmetic improvements are always safe to keep.')
+                ->why('Cosmetic fixes are non-breaking. Discarding them wastes work.');
+        }
 
-        // Light validation - skip heavy checks for trivial tasks
-        $this->rule('light-validation-tag')->medium()
-            ->text('Task with "light validation" tag = SKIP heavy checks (quality gates, full test suite, code quality agents). RUN only: syntax check, file exists, basic format validation.')
-            ->why('Trivial tasks (docs, typos, comments, config values, formatting) do not need full validation. Explicit tag = conscious decision by task creator.');
+        // Light validation - skip heavy checks for trivial tasks — strict+
+        if ($this->strictAtLeast('strict')) {
+            $this->rule('light-validation-tag')->medium()
+                ->text('Task with "light validation" tag = SKIP heavy checks (quality gates, full test suite, code quality agents). RUN only: syntax check, file exists, basic format validation.')
+                ->why('Trivial tasks (docs, typos, comments, config values, formatting) do not need full validation. Explicit tag = conscious decision by task creator.');
 
-        $this->guideline('light-validation-examples')
-            ->text('Recognize tags that signal trivial/light validation. Match by INTENT, not exact string.')
-            ->example('light-validation, light, trivial, minor, docs-only, documentation, readme, typo, cosmetic, formatting, config-only, skip-tests, no-validation');
+            $this->guideline('light-validation-examples')
+                ->text('Recognize tags that signal trivial/light validation. Match by INTENT, not exact string.')
+                ->example('light-validation, light, trivial, minor, docs-only, documentation, readme, typo, cosmetic, formatting, config-only, skip-tests, no-validation');
 
-        $this->guideline('light-validation-scope')
-            ->text('Light validation appropriate for:')
-            ->example('Documentation changes (README, CHANGELOG, comments, docblocks)')
-            ->example('Typo fixes in text/UI/messages')
-            ->example('Config value changes (not logic)')
-            ->example('Code formatting, import sorting')
-            ->example('Removing dead/unused code')
-            ->example('Adding/updating .gitignore, .editorconfig');
+            $this->guideline('light-validation-scope')
+                ->text('Light validation appropriate for:')
+                ->example('Documentation changes (README, CHANGELOG, comments, docblocks)')
+                ->example('Typo fixes in text/UI/messages')
+                ->example('Config value changes (not logic)')
+                ->example('Code formatting, import sorting')
+                ->example('Removing dead/unused code')
+                ->example('Adding/updating .gitignore, .editorconfig');
 
-        $this->guideline('light-validation-not-for')
-            ->text('NEVER light validation for:')
-            ->example('Any logic changes (even "simple" ones)')
-            ->example('API/interface changes')
-            ->example('Database migrations')
-            ->example('Security-related code')
-            ->example('New features or bug fixes');
+            $this->guideline('light-validation-not-for')
+                ->text('NEVER light validation for:')
+                ->example('Any logic changes (even "simple" ones)')
+                ->example('API/interface changes')
+                ->example('Database migrations')
+                ->example('Security-related code')
+                ->example('New features or bug fixes');
+        }
 
         // Quality gates - commands that MUST pass for validation
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');

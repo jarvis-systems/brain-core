@@ -125,6 +125,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineNoManualAgentFallbackRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('no-manual-agent-fallback')->critical()
             ->text('When workflow delegates to validation/execution agents via Task(), Brain MUST NOT perform agent work directly if agents fail. Brain role = orchestrate + aggregate. Agent role = execute + analyze. If ALL agents fail → set status to "pending", add failure comment with error details, abort. If >=2 of 4 agents succeed → proceed with partial results. NEVER: read files to validate manually, run tests directly, check code quality inline. The ONLY acceptable fallback is retry (max 1) or abort.')
             ->why('Manual fallback violates separation of concerns, produces lower quality validation (single pass vs multi-agent coverage), and masks tool errors that should be investigated. An abort with clear error is better than silent manual degradation.')
@@ -144,6 +148,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineStuckPatternEscalationRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('stuck-pattern-detection')->high()
             ->text('Before creating fix-tasks: analyze FAILURE_PATTERNS + SIBLING_MEMORIES + KNOWN_FAILURES for circular patterns. STUCK PATTERN = same problem zone (file path + issue category) failed 2+ times across validation cycles or sibling task attempts. Indicators: same file in multiple sibling failures, same error category repeated, same fix approach suggested and failed. When stuck pattern detected → ESCALATION REQUIRED before creating fix-task.')
             ->why('Without pattern detection, validator creates the same fix-task with the same approach that already failed. Agent executes, fails, validator creates again → infinite loop. Circuit breaker catches after 3 wasted cycles. Early detection + research saves 2 cycles.')
@@ -280,6 +288,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineValidationCoreRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('docs-are-complete-spec')->critical()
             ->text('Documentation (.docs/) = COMPLETE specification. task.content may be brief summary. ALWAYS read and validate against DOCUMENTATION if exists. Missing from docs = not a requirement. In docs but not done = MISSING.')
             ->why('task.content is often summary. Full spec lives in documentation. Validating only task.content misses requirements.')
@@ -327,6 +339,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineFixTaskGatingRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('fix-task-blocks-validated')->critical()
             ->text('Fix-task created → status MUST be "pending", NEVER "validated". "validated" = ZERO fix-tasks. NO EXCEPTIONS.')
             ->why('MCP auto-propagation: when child task starts (status→in_progress), parent auto-reverts to pending. Setting "validated" with pending children is POINTLESS - system will reset it.')
@@ -358,6 +374,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineCollateralFailureDetectionRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('collateral-failure-detection')->high()
             ->text('After test execution: separate failing tests into SCOPE (tests for files/modules in task.content or changed by this task) and COLLATERAL (tests for code clearly unrelated to task). Ambiguous = treat as SCOPE (conservative). If COLLATERAL failures exist AND task has ZERO in-scope failures → create max 2 GLOBAL remediation tasks with tag "'.self::TAG_REGRESSION.'" and NO parent_id (EXEMPT from parent-id-mandatory — intentional to prevent cascade re-validations). Current task PASSES quality gates. If task has in-scope failures → fail normally, mention collateral in report but do NOT create remediation tasks (fix own issues first). NOTE: practically triggers only on ROOT task validation (full test suite). Subtasks run scoped tests → no collateral possible.')
             ->why('Ignoring unrelated test failures = hidden regressions accumulate silently. Blocking current task on others\' failures = wrong task punished. Global tasks (no parent) enter normal queue without parent-status propagation → zero cascade re-validations. Max 2 per validation prevents spam. If task turns out unnecessary (already fixed), agent executes it, tests pass, done in one cycle — cheaper than missed regression.')
@@ -438,6 +458,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineCommentContextRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('comment-context-mandatory')->critical()
             ->text('AFTER loading task: parse task.comment for accumulated context. Extract: memory IDs (#NNN), file paths, previous execution results, failure reasons, blockers, decisions made. Store as $COMMENT_CONTEXT. Pass to ALL agents alongside task.content.')
             ->why('Comments accumulate critical inter-session context: what was tried, what failed, what files were touched, what decisions were made. Ignoring comments = blind re-execution without history.')
@@ -574,6 +598,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineTaskConsolidationGuideline(string $taskPrefix): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->guideline('task-consolidation')
             ->goal('Consolidate similar fixes into 5-8 hour batches to reduce task overhead')
             ->example()
@@ -657,6 +685,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineParallelIsolationRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('parallel-isolation-mandatory')->critical()
             ->text('Before setting parallel: true, ALL isolation conditions MUST be verified: 1) ZERO file overlap — tasks touch completely different files, 2) ZERO import chain — file A does NOT import/use/require anything from file B scope, 3) ZERO shared model/table — tasks do NOT modify same DB table/migration/model, 4) ZERO shared config — tasks do NOT modify same config key/.env variable, 5) ZERO output→input — task B does NOT need result/output of task A. ALL five MUST be TRUE.')
             ->why('Parallel tasks with shared files or dependencies cause race conditions, lost changes, and merge conflicts. LLM agents cannot lock files.')
@@ -685,6 +717,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineParallelIsolationChecklistGuideline(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->guideline('parallel-isolation-checklist')
             ->goal('Systematic verification of task independence before setting parallel: true')
             ->example()
@@ -714,6 +750,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineTestScopingRule(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('test-scoping')->critical()
             ->text('Test execution MUST be scoped based on task hierarchy level. SUBTASK (has parent_id): run ONLY tests related to changed files — a) test files that directly test changed classes/modules, b) test files that import/use/depend on changed classes (reverse dependency in test directory). ROOT TASK (no parent_id): run the FULL test suite via quality gate command. NEVER run full test suite for subtasks — it wastes more time than the task itself.')
             ->why('Full test suite for a 1-hour subtask can take longer than the task execution itself. Scoped tests catch 95%+ of regressions at 10% of the cost. Full suite runs at root aggregation level and manually before push.')
@@ -730,6 +770,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineStatusPriorityIconsGuideline(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->guideline('status-priority-icons')
             ->goal('Format task output with clear visual hierarchy using emojis and readable structure')
             ->text('Status icons: ⏳ pending, 🔄 in_progress, ✅ completed, 🧪 tested, ✓ validated, ❌ stopped (cancelled/not needed)')
@@ -757,6 +801,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineParallelExecutionAwarenessRules(): void
     {
+        if (! $this->strictAtLeast('standard')) {
+            return;
+        }
+
         $this->rule('parallel-execution-awareness')->critical()
             ->text('If $TASK.parallel === true: you are in PARALLEL CONTEXT. Other agents may be executing sibling tasks RIGHT NOW on the same codebase. IMMEDIATELY after loading task: fetch sibling tasks (same parent_id, parallel: true) to understand what they touch. Build $PARALLEL_SIBLINGS context. Stay STRICTLY within your task file scope.')
             ->why('parallel: true means this task was designed to run concurrently with siblings. Without awareness of sibling scopes, agent may accidentally modify shared files, causing conflicts and lost work across parallel sessions.')
@@ -795,6 +843,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineValidatorParallelCosmeticRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('validator-parallel-cosmetic-defer')->high()
             ->text('In PARALLEL CONTEXT: before making inline cosmetic fix, check if file is in ACTIVE sibling\'s scope (from $SIBLING_SCOPES). File in active sibling scope → DO NOT fix, record in task comment: "DEFERRED COSMETIC: {file}:{line} — {issue}. Reason: file in active sibling #{id} scope." File NOT in any active scope → safe to fix inline. This applies to ALL inline fixes: whitespace, formatting, typos, import sorting, comment cleanup.')
             ->why('Validator cosmetic fixes (Edit) on files being actively modified by a parallel executor = race condition. Even a whitespace fix overwrites the executor\'s in-memory file content, creating silent data loss or merge conflicts.')
@@ -812,6 +864,10 @@ trait TaskCommandCommonTrait
      */
     protected function defineScopedGitCheckpointRule(): void
     {
+        if (! $this->strictAtLeast('strict')) {
+            return;
+        }
+
         $this->rule('scoped-git-checkpoint')->critical()
             ->text('Git checkpoint commits scope depends on context: 1) PARALLEL CONTEXT: "git add {task_file1} {task_file2}" — commit ONLY task-scope files. memory/ excluded implicitly (not in task files). Prevents staging other agents\' uncommitted work and SQLite binary conflicts. 2) NON-PARALLEL context: "git add -A" — full state checkpoint, INCLUDES memory/ for complete project state preservation. 3) If commit fails (pre-commit hook) → LOG and continue, work is still valid.')
             ->why('In parallel context, multiple agents write to memory/ SQLite and codebase concurrently. "git add -A" stages everything: other agents\' half-done work + binary SQLite mid-write = corrupted checkpoint. In non-parallel, "git add -A" is safe and DESIRED — memory/ commit preserves knowledge base alongside code for full revert capability.')
