@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace BrainCore\Compilation;
 
-use BrainCore\Compilation\Traits\CompileStandartsTrait;
+use BrainCore\Compilation\Traits\CompileStandardsTrait;
 use BrainCore\MD;
 
 class Operator
 {
-    use CompileStandartsTrait;
+    use CompileStandardsTrait;
 
     /**
      * Threshold for inline vs block formatting (characters).

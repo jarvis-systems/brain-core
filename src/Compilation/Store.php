@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace BrainCore\Compilation;
 
-use BrainCore\Compilation\Traits\CompileStandartsTrait;
+use BrainCore\Compilation\Traits\CompileStandardsTrait;
 use BrainCore\MD;
 
 /**
@@ -12,7 +12,7 @@ use BrainCore\MD;
  */
 class Store
 {
-    use CompileStandartsTrait;
+    use CompileStandardsTrait;
 
     /**
      * Store value with assignment.

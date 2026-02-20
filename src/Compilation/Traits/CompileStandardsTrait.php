@@ -13,7 +13,7 @@ use Symfony\Component\VarExporter\VarExporter;
  * Uses MD constants for consistent formatting across all compiled output.
  * Arrows (→) indicate flow/causality - research shows this improves model comprehension.
  */
-trait CompileStandartsTrait
+trait CompileStandardsTrait
 {
     protected static function generateOperator(
         string $name,

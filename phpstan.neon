@@ -1,0 +1,29 @@
+parameters:
+    level: 0
+    paths:
+        - src
+    ignoreErrors:
+        # Core intentionally references BrainNode\* classes via compile-time
+        # forward references. These resolve at runtime when core is installed
+        # as a dependency of node (the execution package).
+        -
+            identifier: class.notFound
+            message: '#BrainNode\\#'
+
+        # symfony/yaml is a transitive dependency provided by the node package.
+        # ConvertCommand uses it only in the YAML output path.
+        -
+            identifier: class.notFound
+            message: '#Symfony\\Component\\Yaml\\Yaml#'
+
+        # bfg/dto library uses PHP 8.x constructor property promotion with
+        # magic __get() accessors. Properties appear write-only to phpstan
+        # but are readable via DTO's magic method delegation.
+        -
+            identifier: property.writeOnly
+
+        # Merger, XmlBuilder, TomlBuilder use new static() in factory methods
+        # for consistent internal API. These classes are not designed for
+        # external extension — the pattern is intentional.
+        -
+            identifier: new.static

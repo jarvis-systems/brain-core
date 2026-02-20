@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace BrainCore\Abstracts;
 
-use BrainCore\Compilation\Traits\CompileStandartsTrait;
+use BrainCore\Compilation\Traits\CompileStandardsTrait;
 
 abstract class ToolAbstract
 {
-    use CompileStandartsTrait;
+    use CompileStandardsTrait;
 
     abstract public static function name(): string;
 
