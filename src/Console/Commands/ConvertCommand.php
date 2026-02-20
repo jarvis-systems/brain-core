@@ -170,10 +170,10 @@ class ConvertCommand extends Command
                         'structure' => TomlBuilder::from($structure),
                     ];
                 } else {
-                    dump([
+                    fwrite(STDERR, json_encode([
                         ...$defaultData,
                         'structure' => $structure,
-                    ]);
+                    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL);
                     $result = false;
                 }
             } else {

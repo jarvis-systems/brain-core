@@ -24,7 +24,7 @@ trait McpSchemaTrait
 
     public static function callValidatedJson(string $method, array $args = [], string $mode = 'standard'): string
     {
-        McpSchemaValidator::validate($method, $args, self::schema(), $mode);
-        return self::callJson($method, $args);
+        McpSchemaValidator::validate($method, $args, static::schema(), $mode);
+        return static::callJson($method, $args);
     }
 }
