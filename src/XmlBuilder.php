@@ -61,15 +61,16 @@ class XmlBuilder
         if ($element === '') {
             return '';
         }
-        if (Brain::getEnv('BRAIN_COMPILE_WITHOUT_META') && in_array($element, ['meta', 'metadata'], true)) {
+        try {
+            $withoutMeta = Brain::getEnv('BRAIN_COMPILE_WITHOUT_META');
+        } catch (\RuntimeException) {
+            $withoutMeta = false;
+        }
+        if ($withoutMeta && in_array($element, ['meta', 'metadata'], true)) {
             return '';
         }
 
         [$attributes, $cleanNode, $params] = $this->extractAttributes($node);
-
-//        if ($element === 'guideline') {
-//            dd($cleanNode, $params);
-//        }
 
         $text = $cleanNode['text'] ?? null;
         $children = isset($cleanNode['child']) && is_array($cleanNode['child'])
@@ -98,7 +99,7 @@ class XmlBuilder
 
         if ($this->hasInlineText($text, $children)) {
             $str = '<' . $element . $attributes . '>';
-            $str .= $this->escape((string) $text);
+            $str .= $this->raw((string) $text);
             $str .= '</' . $element . '>';
             // Append extracted guidelines after purpose
             if ($extractedGuidelines !== null) {
@@ -141,7 +142,7 @@ class XmlBuilder
         }
 
         if ($text !== null && $text !== '') {
-            $lines[] = $this->escape((string) $text);
+            $lines[] = $this->raw((string) $text);
         }
 
         if ($element === 'guidelines') {
@@ -204,10 +205,6 @@ class XmlBuilder
                 }
             }
             $firstChildRendered = true;
-        }
-
-        if ($element === 'guideline') {
-//            dd($lines);
         }
 
         if ($examples) {
@@ -300,7 +297,7 @@ class XmlBuilder
             $value = $value ? 'true' : 'false';
         }
 
-        return $key . '="' . $this->escape((string) $value) . '"';
+        return $key . '="' . $this->raw((string) $value) . '"';
     }
 
     /**
@@ -319,10 +316,30 @@ class XmlBuilder
         return $text !== null && $text !== '' && empty($children);
     }
 
-    protected function escape(string $value): string
+    /**
+     * Raw passthrough — intentionally no escaping.
+     *
+     * Brain output is a mixed dialect (XML structural tags + Markdown content)
+     * optimized for LLM prompt consumption. Raw passthrough preserves content
+     * as-is for token efficiency and readability.
+     *
+     * @see escapeXml() for genuine XML escaping when needed
+     * @see .docs/architecture/output-dialect.md for contract details
+     */
+    protected function raw(string $value): string
     {
-//        return htmlspecialchars($value, ENT_XML1, 'UTF-8');
-//        return htmlspecialchars($value, 0, 'UTF-8');
         return $value;
+    }
+
+    /**
+     * Genuine XML escaping for contexts requiring well-formed XML.
+     *
+     * Use when output MUST be valid XML (parsers, strict validation).
+     * Currently unused in default builder because Brain output targets
+     * LLM prompts, not XML parsers.
+     */
+    protected function escapeXml(string $value): string
+    {
+        return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 }
