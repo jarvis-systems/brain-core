@@ -44,7 +44,7 @@ class MemListInclude extends IncludeArchetype
         $this->guideline('workflow-step2')
             ->text('STEP 2 - Fetch Recent Memories')
             ->example()
-            ->phase('fetch', VectorMemoryMcp::call('list_recent_memories', '{limit: ' . Store::get('LIMIT') . '}'))
+            ->phase('fetch', VectorMemoryMcp::callValidatedJson('list_recent_memories', ['limit' => Store::get('LIMIT')]))
             ->phase('store', Store::as('MEMORIES', 'recent memories array'));
 
         // Workflow Step 3 - Handle Empty

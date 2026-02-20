@@ -96,7 +96,7 @@ class DoSyncInclude extends IncludeArchetype
             ->phase(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
             ->phase(Store::as('TASK', '{$TASK_DESCRIPTION with flags removed, trimmed}'))
             ->phase('Analyze conversation: requirements, constraints, preferences, prior decisions')
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "similar: {$TASK}", limit: 5, category: "code-solution"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'similar: {$TASK}', 'limit' => 5, 'category' => 'code-solution']))
             ->phase(Store::as('PRIOR_SOLUTIONS', 'Relevant past approaches'))
             ->phase(Operator::output([
                 '=== CONTEXT ===',
@@ -124,7 +124,7 @@ class DoSyncInclude extends IncludeArchetype
                 WebSearchTool::describe('Research best practices for {$TASK}'),
                 Store::as('WEB_RESEARCH_FINDINGS', 'External knowledge'),
             ]))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for {$TASK}\n\nMaterials: {summary}", category: "'.self::CAT_CODE_SOLUTION.'", tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Context for {$TASK}\n\nMaterials: {summary}', 'category' => self::CAT_CODE_SOLUTION, 'tags' => [self::MTAG_SOLUTION, self::MTAG_REUSABLE]]))
             ->phase(Operator::output([
                 '=== PHASE 1.5: MATERIALS GATHERED ===',
                 'Materials: {count} | Docs: {status} | Web: {status}',
@@ -256,7 +256,7 @@ class DoSyncInclude extends IncludeArchetype
             ->goal('Report results and store learnings to vector memory')
             ->example()
             ->phase(Store::as('SUMMARY', '{completed_steps, files_modified, outcome}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Completed: {$TASK}\n\nApproach: {steps}\n\nFiles: {list}\n\nLearnings: {insights}", category: "'.self::CAT_CODE_SOLUTION.'", tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Completed: {$TASK}\n\nApproach: {steps}\n\nFiles: {list}\n\nLearnings: {insights}', 'category' => self::CAT_CODE_SOLUTION, 'tags' => [self::MTAG_SOLUTION, self::MTAG_REUSABLE]]))
             ->phase(Operator::output([
                 '',
                 '=== COMPLETE ===',

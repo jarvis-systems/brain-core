@@ -104,10 +104,10 @@ trait TaskCommandCommonTrait
         $this->guideline('guaranteed-finalization-check')
             ->goal('Safety net before final output')
             ->example()
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → check current status')
+            ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' → check current status')
             ->phase(Operator::if('status = "in_progress"', [
                 'SAFETY NET TRIGGERED: workflow completed but status still in_progress.',
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "SAFETY NET: Workflow ended without explicit status update. Returned to pending for retry.", append_comment: true}'),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'SAFETY NET: Workflow ended without explicit status update. Returned to pending for retry.', 'append_comment' => true]),
                 Operator::output(['RESULT: FAILED — safety_net_triggered, reason=status_stuck_in_progress']),
             ]))
             ->phase('Proceed to RESULT/NEXT output');
@@ -269,8 +269,8 @@ trait TaskCommandCommonTrait
             ->phase('1. Parse ' . Store::get('TASK') . '.comment: find last "CIRCUIT BREAKER:" entry. Count "'.$marker.':" markers AFTER it (or from start if none). → ' . Store::as('ATTEMPT_COUNT', '{count, default 0}'))
             ->phase('2. ' . Operator::if(Store::get('TASK') . '.tags contains "' . self::TAG_STUCK . '"', Operator::abort('Task is STUCK. Remove "' . self::TAG_STUCK . '" tag to retry.')))
             ->phase('3. ' . Operator::if(Store::get('ATTEMPT_COUNT') . ' >= 3', [
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, add_tag: "' . self::TAG_STUCK . '", comment: "CIRCUIT BREAKER: 3 '.$phase.' attempts exhausted. Needs human investigation. See failure history above.", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{id} \'{title}\' failed after 3 '.$phase.' attempts. Review task comments for failure details.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'add_tag' => self::TAG_STUCK, 'comment' => 'CIRCUIT BREAKER: 3 '.$phase.' attempts exhausted. Needs human investigation. See failure history above.', 'append_comment' => true]),
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'STUCK: Task #{id} \'{title}\' failed after 3 '.$phase.' attempts. Review task comments for failure details.', 'category' => self::CAT_DEBUGGING, 'tags' => [self::MTAG_FAILURE]]),
                 Operator::abort('Circuit breaker → tagged "' . self::TAG_STUCK . '".'),
             ]))
             ->phase('4. ' . Operator::if(Store::get('ATTEMPT_COUNT') . ' < 3', 'Proceed. Include "'.$marker.': {N+1}/3" when setting in_progress.'));
@@ -393,7 +393,7 @@ trait TaskCommandCommonTrait
             ->phase('2. '.Operator::if(Store::get('COLLATERAL_FAILURES').' not empty AND '.Store::get('ISSUES').' = 0 (no in-scope failures)', [
                 'Group collateral failures by module/area (max 2 groups)',
                 Operator::forEach('group in collateral_groups (max 2)', [
-                    VectorTaskMcp::call('task_create', '{title: "Fix regression: {module/area}", content: "Test failure(s) detected during validation of task #{$TASK.id} (\'{$TASK.title}\').\n\nThese failures are OUTSIDE that task\'s scope — collateral/regression.\n\nFailing tests:\n- {test_names_with_errors}\n\nError summary:\n{error_details}\n\nDiscovered by: validator during task #{$TASK.id} validation.\nNOT caused by task #{$TASK.id}.", priority: "high", estimate: 2, tags: ["'.self::TAG_REGRESSION.'", "'.self::TAG_BUGFIX.'"]}').' ← NO parent_id (global task, exempt from parent-id-mandatory)',
+                    VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Fix regression: {module/area}', 'content' => 'Test failure(s) detected during validation of task #{$TASK.id} (\'{$TASK.title}\').\n\nThese failures are OUTSIDE that task\'s scope — collateral/regression.\n\nFailing tests:\n- {test_names_with_errors}\n\nError summary:\n{error_details}\n\nDiscovered by: validator during task #{$TASK.id} validation.\nNOT caused by task #{$TASK.id}.', 'priority' => 'high', 'estimate' => 2, 'tags' => [self::TAG_REGRESSION, self::TAG_BUGFIX]]).' ← NO parent_id (global task, exempt from parent-id-mandatory)',
                 ]),
                 'Current task: PASSES quality gates (collateral failures are NOT blockers)',
             ]))
@@ -511,7 +511,7 @@ trait TaskCommandCommonTrait
             ]))
             ->phase('Use pre-captured: $RAW_INPUT, $HAS_AUTO_APPROVE, $CLEAN_ARGS, $VECTOR_TASK_ID')
             ->phase('Validate $VECTOR_TASK_ID: must be numeric, extracted from "15", "#15", "task 15", "task:15", "task-15"')
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']))
             ->phase(Store::as('VECTOR_TASK',
                 '{task object with title, content, status, parent_id, priority, tags, comment}'))
             ->phase(Operator::if('$VECTOR_TASK not found', [
@@ -566,10 +566,10 @@ trait TaskCommandCommonTrait
         // Parent and subtasks loading
         $guideline
             ->phase(Operator::if('$VECTOR_TASK.parent_id !== null', [
-                VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK.parent_id}'),
+                VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK.parent_id']),
                 Store::as('PARENT_TASK', '{parent task for broader context}'),
             ]))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID, limit: 20}'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID', 'limit' => 20]))
             ->phase(Store::as('SUBTASKS', '{child tasks if any}'))
             ->phase(Store::as('TASK_DESCRIPTION', '$VECTOR_TASK.title + $VECTOR_TASK.content'))
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $VECTOR_TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))

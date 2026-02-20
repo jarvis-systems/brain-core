@@ -136,7 +136,7 @@ trait DoCommandCommonTrait
             ->phase('  3. Task requires multiple sessions (cannot complete in one context window)')
             ->phase('  4. >4 distinct sub-steps that each require their own analysis')
             ->phase(Operator::if('any trigger matched', [
-                VectorTaskMcp::call('task_create', '{title: "$TASK_DESCRIPTION", content: "Escalated from /do:'.$commandType.'. Original task too large for single-shot execution. Triggers: {matched_triggers}.", priority: "medium", estimate: {estimated_hours}, tags: ["'.self::TAG_MANUAL_ONLY.'"]}'),
+                VectorTaskMcp::callValidatedJson('task_create', ['title' => '$TASK_DESCRIPTION', 'content' => 'Escalated from /do:'.$commandType.'. Original task too large for single-shot execution. Triggers: {matched_triggers}.', 'priority' => 'medium', 'estimate' => '{estimated_hours}', 'tags' => [self::TAG_MANUAL_ONLY]]),
                 Store::as('ESCALATED_TASK_ID', '{created task ID}'),
                 Operator::output([
                     '',
@@ -175,7 +175,7 @@ trait DoCommandCommonTrait
             ->phase('1. ' . Store::as('RETRY_COUNTS', '{} (empty map, keyed by step_id)'))
             ->phase('2. On step failure: increment $RETRY_COUNTS[step_id]')
             ->phase('3. ' . Operator::if('$RETRY_COUNTS[step_id] >= 3', [
-                VectorMemoryMcp::call('store_memory', '{content: "FAILED: Step {step_id} in do:'.$commandType.' failed 3x. Task: {$TASK_DESCRIPTION}. Error: {last_error}. Context: {step_context}.", category: "'.self::CAT_DEBUGGING.'", tags: ["'.self::MTAG_FAILURE.'"]}'),
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'FAILED: Step {step_id} in do:'.$commandType.' failed 3x. Task: {$TASK_DESCRIPTION}. Error: {last_error}. Context: {step_context}.', 'category' => self::CAT_DEBUGGING, 'tags' => [self::MTAG_FAILURE]]),
                 Operator::if('$HAS_AUTO_APPROVE === true', 'SKIP step, continue to next'),
                 Operator::if('$HAS_AUTO_APPROVE === false', 'Ask user: "Step failed 3x. Skip / Abort?"'),
             ]))
@@ -207,7 +207,7 @@ trait DoCommandCommonTrait
         $this->guideline('do-failure-awareness')
             ->goal('Mine failure history before execution to avoid repeating mistakes')
             ->example()
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$TASK_DESCRIPTION failure", limit: 5, category: "'.self::CAT_DEBUGGING.'"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$TASK_DESCRIPTION failure', 'limit' => 5, 'category' => self::CAT_DEBUGGING]))
             ->phase(Store::as('KNOWN_FAILURES', '{failed approaches, errors, blocked patterns}'))
             ->phase(Operator::if('$KNOWN_FAILURES not empty', [
                 Store::as('BLOCKED_APPROACHES', '{extracted approaches that MUST NOT be attempted}'),
@@ -496,7 +496,7 @@ trait DoCommandCommonTrait
             ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
             ->phase(TaskTool::agent('{'.Store::var('CONTEXT_AGENT').'}', 'DEEP MEMORY RESEARCH for '.$researchType.' of "'.Store::var('TASK_DESCRIPTION').'": 1) Multi-probe search: '.$returnStructure.' 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return structured results. Store consolidated context.'))
             ->phase(Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "'.Store::var('TASK_DESCRIPTION').'", limit: 10, category: "code-solution"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => Store::var('TASK_DESCRIPTION'), 'limit' => 10, 'category' => 'code-solution']))
             ->phase(Store::as('RELATED_SOLUTIONS', 'Related solutions from memory'))
             ->phase(Operator::output([
                 'Context gathered via {'.Store::var('CONTEXT_AGENT').'}:',

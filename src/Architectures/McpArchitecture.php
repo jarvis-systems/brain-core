@@ -53,6 +53,26 @@ abstract class McpArchitecture extends ArchitectureAbstract
         return static::call($name);
     }
 
+    public static function callJson(string $method, array $args = []): string
+    {
+        self::ksortRecursive($args);
+        $json = json_encode(
+            $args,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+        return static::id() . "__$method($json)";
+    }
+
+    private static function ksortRecursive(array &$array): void
+    {
+        foreach ($array as &$value) {
+            if (is_array($value)) {
+                self::ksortRecursive($value);
+            }
+        }
+        ksort($array);
+    }
+
     /**
      * Get agent ID.
      *

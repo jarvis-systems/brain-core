@@ -97,7 +97,7 @@ class InitTaskInclude extends IncludeArchetype
             ]))
             ->phase('STEP 1 - Check task state:')
             ->do([
-                VectorTaskMcp::call('task_stats', '{}'),
+                VectorTaskMcp::callValidatedJson('task_stats', []),
                 Store::as('TASK_STATE', '{total, pending, in_progress}'),
             ])
             ->phase('STEP 2 - Decision:')
@@ -264,11 +264,11 @@ class InitTaskInclude extends IncludeArchetype
             ->example()
             ->phase('PARALLEL: Multi-probe memory searches:')
             ->do([
-                VectorMemoryMcp::call('search_memories', '{query: "project architecture implementation patterns", limit: 5, category: "' . self::CAT_ARCHITECTURE . '"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "project requirements features roadmap", limit: 5, category: "' . self::CAT_LEARNING . '"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "bugs issues problems technical debt", limit: 5, category: "' . self::CAT_BUG_FIX . '"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "decisions trade-offs alternatives", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}'),
-                VectorMemoryMcp::call('search_memories', '{query: "project context conventions standards", limit: 5, category: "' . self::CAT_PROJECT_CONTEXT . '"}'),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'project architecture implementation patterns', 'limit' => 5, 'category' => self::CAT_ARCHITECTURE]),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'project requirements features roadmap', 'limit' => 5, 'category' => self::CAT_LEARNING]),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'bugs issues problems technical debt', 'limit' => 5, 'category' => self::CAT_BUG_FIX]),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'decisions trade-offs alternatives', 'limit' => 5, 'category' => self::CAT_CODE_SOLUTION]),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'project context conventions standards', 'limit' => 5, 'category' => self::CAT_PROJECT_CONTEXT]),
             ])
             ->phase(Store::as('PRIOR_KNOWLEDGE', '{memories from all probes, filtered for actionable insights}'));
 
@@ -405,12 +405,12 @@ class InitTaskInclude extends IncludeArchetype
             ->example()
             ->phase('CREATE epics:')
             ->do([
-                VectorTaskMcp::call('task_create_bulk', '{tasks: ' . Store::get('EPIC_LIST') . '}'),
+                VectorTaskMcp::callValidatedJson('task_create_bulk', ['tasks' => Store::get('EPIC_LIST')]),
                 Store::as('CREATED_EPICS', '[task_ids]'),
             ])
             ->phase('VERIFY creation:')
             ->do([
-                VectorTaskMcp::call('task_stats', '{}'),
+                VectorTaskMcp::callValidatedJson('task_stats', []),
                 'Confirm: {count} epics created',
             ]);
 
@@ -423,11 +423,11 @@ class InitTaskInclude extends IncludeArchetype
             ->example()
             ->phase('STORE initialization insight:')
             ->do([
-                VectorMemoryMcp::call('store_memory', '{
-                    content: "INIT-TASK|epics:{count}|hours:{total}|areas:{list}|stack:{tech}|critical_path:{deps}",
-                    category: "' . self::CAT_ARCHITECTURE . '",
-                    tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]
-                }'),
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-TASK|epics:{count}|hours:{total}|areas:{list}|stack:{tech}|critical_path:{deps}',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE],
+                ]),
             ])
             ->phase('REPORT:')
             ->do([

@@ -29,7 +29,7 @@ class MemStoreInclude extends IncludeArchetype
         $this->rule('check-duplicates')->high()
             ->text('MUST search for similar memories before storing')
             ->why('Prevents duplicate entries and wasted storage')
-            ->onViolation('Execute ' . VectorMemoryMcp::call('search_memories', '{query: "{content_summary}", limit: 3}'));
+            ->onViolation('Execute ' . VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{content_summary}', 'limit' => 3]));
 
         $this->rule('mandatory-approval')->critical()
             ->text('MUST get user approval before storing memory')
@@ -62,7 +62,7 @@ class MemStoreInclude extends IncludeArchetype
             ->text('STEP 2 - Search for Similar Memories')
             ->example()
             ->phase('summarize', 'Create short summary (20-30 words) of content for search')
-            ->phase('search', VectorMemoryMcp::call('search_memories', '{query: "{summary}", limit: 5}'))
+            ->phase('search', VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{summary}', 'limit' => 5]))
             ->phase('analyze', Operator::if(
                 'similar memories found with similarity > 0.8',
                 Operator::do(
@@ -115,11 +115,11 @@ class MemStoreInclude extends IncludeArchetype
         $this->guideline('workflow-step5')
             ->text('STEP 5 - Store Memory After Approval')
             ->example()
-            ->phase('store', VectorMemoryMcp::call('store_memory', '{
-                content: "' . Store::get('INPUT') . '.content",
-                category: "' . Store::get('SUGGESTION') . '.category",
-                tags: ' . Store::get('SUGGESTION') . '.tags
-            }'))
+            ->phase('store', VectorMemoryMcp::callValidatedJson('store_memory', [
+                'content' => Store::get('INPUT') . '.content',
+                'category' => Store::get('SUGGESTION') . '.category',
+                'tags' => Store::get('SUGGESTION') . '.tags',
+            ]))
             ->phase('confirm', 'Display: "Memory stored successfully"');
 
         // Categories Reference

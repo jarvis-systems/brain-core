@@ -6,6 +6,7 @@ namespace BrainCore\Variations\Masters;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('Provides guidelines and rules for creating Brain scripts using Laravel Console v12.0 features and best practices.')]
 class ScriptMasterInclude extends IncludeArchetype
@@ -147,6 +148,6 @@ class ScriptMasterInclude extends IncludeArchetype
             ->high()
             ->text('Store significant script patterns and learnings to vector memory after creation.')
             ->why('Builds collective knowledge base for future script development.')
-            ->onViolation('Add mcp__vector-memory__store_memory() call with script insights.');
+            ->onViolation(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => '{script insights}', 'category' => 'code-solution', 'tags' => ['script', 'brain']]));
     }
 }

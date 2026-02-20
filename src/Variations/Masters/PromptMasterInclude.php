@@ -154,6 +154,6 @@ class PromptMasterInclude extends IncludeArchetype
         $this->rule('memory-storage')->high()
             ->text('Store significant prompt patterns and learnings to vector memory.')
             ->why('Builds collective knowledge base for future prompt development.')
-            ->onViolation(VectorMemoryMcp::call('store_memory', '{content: "...", category: "code-solution", tags: ["prompt", "brain"]}'));
+            ->onViolation(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => '...', 'category' => 'code-solution', 'tags' => ['prompt', 'brain']]));
     }
 }

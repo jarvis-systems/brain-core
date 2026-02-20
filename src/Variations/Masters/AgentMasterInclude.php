@@ -34,7 +34,7 @@ class AgentMasterInclude extends IncludeArchetype
             ->phase('context', BashTool::call('date'))
             ->phase('reference', ReadTool::describe(Runtime::NODE_DIRECTORY('Agents/'), 'Scan existing agent patterns'))
             ->phase('duplication-check', GlobTool::call(Runtime::NODE_DIRECTORY('Agents/*.php')))
-            ->phase('memory-search', VectorMemoryMcp::call('search_memories', '{query: "agent {domain}", limit: 5}'))
+            ->phase('memory-search', VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'agent {domain}', 'limit' => 5]))
             ->phase('research', WebSearchTool::describe(Runtime::YEAR() . ' AI agent design patterns'))
             ->phase('create', 'Write agent using CompilationSystemKnowledge structure-agent pattern')
             ->phase('validate', BashTool::call(BrainCLI::COMPILE))

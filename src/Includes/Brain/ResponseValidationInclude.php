@@ -6,6 +6,7 @@ namespace BrainCore\Includes\Brain;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Variations\Traits\ModeResolverTrait;
 
 #[Purpose(<<<'PURPOSE'
 Defines Brain-level agent response validation protocol.
@@ -14,11 +15,20 @@ PURPOSE
 )]
 class ResponseValidationInclude extends IncludeArchetype
 {
+    use ModeResolverTrait;
+
     /**
      * Handle the architecture logic.
      */
     protected function handle(): void
     {
+        // === DEEP-COGNITIVE-ONLY: All validation guidelines ===
+        // CoreInclude quality-gate rule already serves as compact always-on version.
+
+        if (!$this->isDeepCognitive()) {
+            return;
+        }
+
         $this->guideline('validation-semantic')
             ->text('Validate semantic alignment between agent response and delegated task.')
             ->example('Compare response embedding vs task query using cosine similarity')->key('method')

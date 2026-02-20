@@ -190,7 +190,7 @@ class TaskAsyncInclude extends IncludeArchetype
         // WORKFLOW
         $this->guideline('workflow')->example()
             // 1. Load task (ALWAYS FIRST)
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' ' . Store::as('TASK'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
             ->phase(Operator::if('status=completed', [
                 Operator::if('$HAS_AUTO_APPROVE', Operator::abort('Already completed. Use different task ID.')),
@@ -205,12 +205,12 @@ class TaskAsyncInclude extends IncludeArchetype
                 ]),
                 Operator::if('no state OR timestamp >1h', [
                     'Stale session detected',
-                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "pending", comment: "Stale session reset", append_comment: true}'),
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Stale session reset', 'append_comment' => true]),
                 ]),
             ]))
             ->phase(Operator::if('status=tested AND comment contains "TDD MODE"', 'TDD execution mode → jump to tdd-mode guideline'))
-            ->phase(Operator::if('parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' ' . Store::as('SUBTASKS'))
+            ->phase(Operator::if('parent_id', VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('SUBTASKS'))
 
             // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
@@ -219,14 +219,14 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [exec]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))
             ->phase(Operator::if(Store::get('TASK') . '.tags contains "' . self::TAG_STUCK . '"', Operator::abort('Task is STUCK. Remove "' . self::TAG_STUCK . '" tag to retry.')))
             ->phase(Operator::if(Store::get('ATTEMPT_COUNT') . ' >= 3', [
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, add_tag: "' . self::TAG_STUCK . '", comment: "CIRCUIT BREAKER: 3 exec attempts exhausted. Needs human investigation.", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "STUCK: Task #{id} failed 3x exec. See task comments.", category: "' . self::CAT_DEBUGGING . '", tags: ["' . self::MTAG_FAILURE . '"]}'),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'add_tag' => self::TAG_STUCK, 'comment' => 'CIRCUIT BREAKER: 3 exec attempts exhausted. Needs human investigation.', 'append_comment' => true]),
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'STUCK: Task #{id} failed 3x exec. See task comments.', 'category' => self::CAT_DEBUGGING, 'tags' => [self::MTAG_FAILURE]]),
                 Operator::abort('Circuit breaker → tagged "' . self::TAG_STUCK . '".'),
             ]))
 
             // 1.25 Parallel execution awareness (if parallel: true → identify siblings, interpret statuses, read scopes from comments)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [
-                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}'),
+                VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$TASK.parent_id', 'limit' => 20]),
                 Store::as('PARALLEL_SIBLINGS', 'filter: parallel=true AND id != $TASK.id → {id, title, status, comment}'),
                 Store::as('ACTIVE_SIBLINGS', 'filter PARALLEL_SIBLINGS where status=in_progress — ONLY these are concurrent threats'),
                 'Extract "PARALLEL SCOPE: [...]" from each ACTIVE_SIBLINGS comment → ' . Store::as('SIBLING_SCOPES', '{sibling_id → [files from comment] — REAL planned files, not guesses}'),
@@ -235,7 +235,7 @@ class TaskAsyncInclude extends IncludeArchetype
             ]))
 
             // 1.3 Set in_progress IMMEDIATELY (all checks passed, work begins NOW)
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "in_progress", comment: "ATTEMPT [exec]: {$ATTEMPT_COUNT + 1}/3. Started work.", append_comment: true}'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'in_progress', 'comment' => 'ATTEMPT [exec]: {$ATTEMPT_COUNT + 1}/3. Started work.', 'append_comment' => true]))
 
             // 1.5 Subtasks check (one-task-per-cycle: first batch only, then STOP)
             ->phase(Operator::if(Store::get('SUBTASKS') . ' has pending items', [
@@ -245,7 +245,7 @@ class TaskAsyncInclude extends IncludeArchetype
                 Operator::if('$HAS_AUTO_APPROVE', [
                     'Delegate ONLY $FIRST_BATCH to agents (parallel if group, single if sequential)',
                     'After $FIRST_BATCH completes → STOP.',
-                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}.", append_comment: true}'),
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'comment' => 'Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}.', 'append_comment' => true]),
                     'RESULT: PARTIAL — batch completed. NEXT: /task:async {$VECTOR_TASK_ID} [-y] (remaining children)',
                 ]),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N subtasks. Execute first batch ({FIRST_BATCH})?"'),
@@ -258,8 +258,8 @@ class TaskAsyncInclude extends IncludeArchetype
             // 3. Research (ONLY if triggers matched)
             ->phase(Store::as('NEEDS_RESEARCH', 'ANY: content <50 chars, contains "example/like/similar/e.g./такий як/як у", no paths AND no class names, unknown lib/pattern, contradicts code, ambiguous, "how to" without specifics'))
             ->phase(Operator::if(Store::get('NEEDS_RESEARCH'), [
-                '3.1: ' . Context7Mcp::call('resolve-library-id', '{libraryName: "{detected_lib}"}') . ' → IF library mentioned',
-                '3.2: ' . Context7Mcp::call('query-docs', '{query: "{task question}"}') . ' → get docs',
+                '3.1: ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{detected_lib}']) . ' → IF library mentioned',
+                '3.2: ' . Context7Mcp::callJson('query-docs', ['query' => '{task question}']) . ' → get docs',
                 '3.3: IF context7 insufficient → ' . TaskTool::agent('web-research-master', 'Research: {task.title}. Find: implementation patterns, best practices.'),
                 Store::as('RESEARCH_OPTIONS', '[{option, source, pros, cons}]'),
             ]))
@@ -267,17 +267,17 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND NOT $HAS_AUTO_APPROVE', 'Present: "Found N approaches: 1)... 2)... Which? (or your variant)"'))
 
             // 4. Context gathering (memory + local docs + FAILURES)
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: task.title, limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' ' . Store::as('MEMORY'))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{task.title} {problem keywords} failed error not working broken", limit: 5}') . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
-            ->phase(VectorTaskMcp::call('task_list', '{query: task.title, limit: 3}') . ' ' . Store::as('RELATED'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'task.title', 'limit' => 5, 'category' => self::CAT_CODE_SOLUTION]) . ' ' . Store::as('MEMORY'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{task.title} {problem keywords} failed error not working broken', 'limit' => 5]) . ' ' . Store::as('KNOWN_FAILURES') . ' ← CRITICAL: what already FAILED (search by failure keywords, not category)')
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['query' => 'task.title', 'limit' => 3]) . ' ' . Store::as('RELATED'))
             ->phase(Operator::if(
                 Store::get('TASK') . '.parent_id',
                 [
-                    VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' ' . Store::as('SIBLING_TASKS'),
+                    VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$TASK.parent_id', 'limit' => 20]) . ' ' . Store::as('SIBLING_TASKS'),
                     // CRITICAL: Search vector memory for EACH sibling task to get stored insights/failures
                     Operator::forEach('sibling in ' . Store::get('SIBLING_TASKS'), [
-                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title}", limit: 3}') . ' → ALL memories for this sibling (failures, solutions, insights)',
-                        VectorMemoryMcp::call('search_memories', '{query: "{sibling.title} failed error not working", limit: 3}') . ' → specifically failure-related memories',
+                        VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{sibling.title}', 'limit' => 3]) . ' → ALL memories for this sibling (failures, solutions, insights)',
+                        VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{sibling.title} failed error not working', 'limit' => 3]) . ' → specifically failure-related memories',
                         'Append results to ' . Store::as('SIBLING_MEMORIES'),
                     ]),
                     'Extract from siblings comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked',
@@ -321,12 +321,12 @@ class TaskAsyncInclude extends IncludeArchetype
             // 5.5 Register own file scope in task comment (siblings read via task_list — zero extra calls)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true', [
                 Store::as('MY_FILE_SCOPE', '{all unique files from $PLAN agent subtasks}'),
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "PARALLEL SCOPE: [$MY_FILE_SCOPE]", append_comment: true}'),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'comment' => 'PARALLEL SCOPE: [$MY_FILE_SCOPE]', 'append_comment' => true]),
             ]))
 
             // 5.6 Final parallel conflict check (re-fetch siblings — comments may have updated since phase 1.25)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true', [
-                VectorTaskMcp::call('task_list', '{parent_id: $TASK.parent_id, limit: 20}') . ' → re-fetch siblings with fresh comments',
+                VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$TASK.parent_id', 'limit' => 20]) . ' → re-fetch siblings with fresh comments',
                 Store::as('ACTIVE_SIBLINGS', 'filter: parallel=true AND id != $TASK.id AND status=in_progress → {id, title, comment}'),
                 'Extract "PARALLEL SCOPE: [...]" from each ACTIVE_SIBLINGS comment → ' . Store::as('SIBLING_SCOPES', '{updated sibling_id → [files]}'),
                 'Cross-reference ' . Store::get('MY_FILE_SCOPE') . ' vs ' . Store::get('SIBLING_SCOPES') . ' (active only) → ' . Store::as('SHARED_FILES', '{overlapping files — FORBIDDEN}'),
@@ -347,8 +347,8 @@ class TaskAsyncInclude extends IncludeArchetype
                     Operator::if('$HAS_AUTO_APPROVE', [
                         'Abort remaining delegations',
                         'DO NOT rollback — other agents have uncommitted work. Leave files as-is.',
-                        VectorTaskMcp::call('task_update', '{status: "pending", comment: "Critical agent failed: {error}. Files left as-is (no rollback — parallel safety).", append_comment: true}'),
-                        VectorMemoryMcp::call('store_memory', '{content: "FAILURE: Task #{id}, agent: {name}, error: {msg}", category: "' . self::CAT_DEBUGGING . '"}'),
+                        VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Critical agent failed: {error}. Files left as-is (no rollback — parallel safety).', 'append_comment' => true]),
+                        VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'FAILURE: Task #{id}, agent: {name}, error: {msg}', 'category' => self::CAT_DEBUGGING]),
                         Operator::abort('Critical agent failed, no rollback'),
                     ]),
                     Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Critical task failed. Abort all/Retry/Manual?"'),
@@ -373,22 +373,22 @@ class TaskAsyncInclude extends IncludeArchetype
             // 8. Handle partial success
             ->phase(Operator::if('some agents failed', [
                 Operator::if('$HAS_AUTO_APPROVE AND >80% succeeded', [
-                    VectorTaskMcp::call('task_update', '{status: "completed", comment: "Partial success: {succeeded}/{total}. Failed: {list}", append_comment: true}'),
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Partial success: {succeeded}/{total}. Failed: {list}', 'append_comment' => true]),
                 ]),
                 Operator::if('$HAS_AUTO_APPROVE AND <=80% succeeded', [
-                    VectorTaskMcp::call('task_update', '{status: "pending", comment: "Too many failures: {failed}/{total}", append_comment: true}'),
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Too many failures: {failed}/{total}', 'append_comment' => true]),
                     Operator::abort('Too many agent failures'),
                 ]),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "N/M succeeded. Complete partial/Rollback all/Retry failed?"'),
             ]))
 
             // 9. Complete
-            ->phase(VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "Done. Agents: {list}. Files: {files}.", append_comment: true}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Done. Agents: {list}. Files: {files}.', 'append_comment' => true]))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}', 'category' => self::CAT_CODE_SOLUTION]))
 
             // NEXT (lifecycle reinforcement — at workflow end for recency)
             ->phase(Operator::if('TRIVIAL execution (doc-only/comment-only/formatting-only changes AND ≤1 file AND no code logic changes)', [
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "validated", comment: "Trivial change — validation skipped (doc/comment/formatting only).", append_comment: true}'),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'validated', 'comment' => 'Trivial change — validation skipped (doc/comment/formatting only).', 'append_comment' => true]),
                 'NEXT: skip validation → proceed to next sibling or parent validation per next-step-lifecycle-flow.',
             ]))
             ->phase(Operator::if('NOT trivial (code logic changes OR multiple files)', 'NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync). ALWAYS validate after execution — NEVER suggest /task:sync or /task:async for next task before this task is validated.'));
@@ -408,14 +408,14 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase('Delegate implementation to agent with TDD context: "Tests exist at {path}. Implement to make tests pass."')
             ->phase('After implementation → ' . TaskTool::agent('explore', 'Run tests. Detect framework (jest, pytest, phpunit, pest, cargo test, go test). Report pass/fail.'))
             ->phase(Operator::if('all tests pass', [
-                VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, status: "completed", comment: "TDD: All tests PASSED", append_comment: true}'),
-                VectorMemoryMcp::call('store_memory', '{content: "TDD success: {feature}, delegation strategy: {summary}", category: "' . self::CAT_CODE_SOLUTION . '"}'),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'TDD: All tests PASSED', 'append_comment' => true]),
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'TDD success: {feature}, delegation strategy: {summary}', 'category' => self::CAT_CODE_SOLUTION]),
             ]))
             ->phase(Operator::if('tests fail', [
                 'Analyze failure from agent report',
                 'Delegate fix to same agent with failure context (max 5 iterations)',
                 Operator::if('still failing after 5 iterations', [
-                    VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "TDD stuck: {failing_tests}. Need guidance.", append_comment: true}'),
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'comment' => 'TDD stuck: {failing_tests}. Need guidance.', 'append_comment' => true]),
                     Operator::if('$HAS_AUTO_APPROVE', Operator::abort('TDD: Cannot pass tests after 5 iterations')),
                     Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Cannot pass tests via agents. Show failures for manual review?"'),
                 ]),

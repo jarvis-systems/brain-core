@@ -117,7 +117,7 @@ class DoValidateInclude extends IncludeArchetype
                 ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
                 ->phase(TaskTool::agent('{' . Store::var('CONTEXT_AGENT') . '}', 'DEEP MEMORY RESEARCH for validation of "' . Store::var('TASK_DESCRIPTION') . '": 1) Multi-probe search: implementation patterns, requirements, architecture decisions, past validations, bug fixes 2) Search across categories: code-solution, architecture, learning, bug-fix 3) Extract actionable insights for validation 4) Return: {implementations: [...], requirements: [...], patterns: [...], past_validations: [...], key_insights: [...]}. Store consolidated context.'))
                 ->phase(Store::as('MEMORY_CONTEXT', '{VectorMaster agent results}'))
-                ->phase(VectorMemoryMcp::call('search_memories', '{query: "' . Store::var('TASK_DESCRIPTION') . '", limit: 10, category: "code-solution"}'))
+                ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => Store::var('TASK_DESCRIPTION'), 'limit' => 10, 'category' => 'code-solution']))
                 ->phase(Store::as('RELATED_SOLUTIONS', 'Related solutions from memory'))
                 ->phase(Operator::output([
                     'Context gathered via {' . Store::var('CONTEXT_AGENT') . '}:',
@@ -223,7 +223,7 @@ class DoValidateInclude extends IncludeArchetype
                 '=== PHASE 6: TASK CREATION (CONSOLIDATED) ===',
             ]))
             ->phase('Check existing pending tasks to avoid duplicates')
-            ->phase(VectorTaskMcp::call('task_list', '{query: "fix '.Store::var('TASK_DESCRIPTION').'", status: "pending", limit: 20}'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['query' => 'fix '.Store::var('TASK_DESCRIPTION'), 'status' => 'pending', 'limit' => 20]))
             ->phase(Store::as('EXISTING_FIX_TASKS', 'Existing pending fix tasks'))
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
                 thought: "Planning task consolidation strategy. Analyzing: total effort, issue grouping, dependencies, optimal batch sizes (5-8h), priority ordering.",
@@ -243,26 +243,7 @@ class DoValidateInclude extends IncludeArchetype
             ->phase(Operator::if('{'.Store::var('TOTAL_ESTIMATE').'} <= 8', [
                 'ALL issues fit into ONE consolidated task (5-8h range)',
                 Operator::if('issues exist AND NOT duplicate in '.Store::var('EXISTING_FIX_TASKS'), [
-                    VectorTaskMcp::call('task_create',
-                        '{title: "Fix: '.Store::var('TASK_DESCRIPTION').' (validation)"'
-                        .', content: "## Validation Fix Task'
-                        .'\n\nTotal estimate: {'.Store::var('TOTAL_ESTIMATE').'}h'
-                        .'\n\n## Critical Issues ({'.Store::var('CRITICAL_ISSUES.count').'})'
-                        .'\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Type: {issue.type}\n  Suggestion: {issue.suggestion}}'
-                        .'\n\n## Major Issues ({'.Store::var('MAJOR_ISSUES.count').'})'
-                        .'\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}}'
-                        .'\n\n## Minor Issues ({'.Store::var('MINOR_ISSUES.count').'})'
-                        .'\n{FOR each issue: - [{issue.severity}] {issue.description}}'
-                        .'\n\n## Missing Requirements ({'.Store::var('MISSING_REQUIREMENTS.count').'})'
-                        .'\n{FOR each req: - {req.description}\n  Acceptance criteria: {req.acceptance_criteria}}'
-                        .'\n\n## Context References'
-                        .'\n- Memory IDs: {'.Store::var('MEMORY_CONTEXT.memory_ids').'}'
-                        .'\n- Documentation: {'.Store::var('DOCS_INDEX.paths').'}'
-                        .'\n- Validation agents used: {'.Store::var('SELECTED_AGENTS').'}"'
-                        .', priority: "high"'
-                        .', estimate: {'.Store::var('TOTAL_ESTIMATE').'}'
-                        .', tags: ["'.self::TAG_VALIDATION_FIX.'", "'.self::TAG_MANUAL_ONLY.'"]}'
-                    ),
+                    VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Fix: '.Store::var('TASK_DESCRIPTION').' (validation)', 'content' => '## Validation Fix Task\n\nTotal estimate: {'.Store::var('TOTAL_ESTIMATE').'}h\n\n## Critical Issues ({'.Store::var('CRITICAL_ISSUES.count').'})\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Type: {issue.type}\n  Suggestion: {issue.suggestion}}\n\n## Major Issues ({'.Store::var('MAJOR_ISSUES.count').'})\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}}\n\n## Minor Issues ({'.Store::var('MINOR_ISSUES.count').'})\n{FOR each issue: - [{issue.severity}] {issue.description}}\n\n## Missing Requirements ({'.Store::var('MISSING_REQUIREMENTS.count').'})\n{FOR each req: - {req.description}\n  Acceptance criteria: {req.acceptance_criteria}}\n\n## Context References\n- Memory IDs: {'.Store::var('MEMORY_CONTEXT.memory_ids').'}\n- Documentation: {'.Store::var('DOCS_INDEX.paths').'}\n- Validation agents used: {'.Store::var('SELECTED_AGENTS').'}', 'priority' => 'high', 'estimate' => '{'.Store::var('TOTAL_ESTIMATE').'}', 'tags' => [self::TAG_VALIDATION_FIX, self::TAG_MANUAL_ONLY]]),
                     Store::as('CREATED_TASKS[]', '{created task_id}'),
                     Operator::output(['Created consolidated fix task #{task_id} ({'.Store::var('TOTAL_ESTIMATE').'}h, {issues_count} issues)']),
                 ]),
@@ -276,21 +257,7 @@ class DoValidateInclude extends IncludeArchetype
                     Store::as('BATCH_ISSUES', '{slice of issues for this batch, ~6h worth, priority-ordered}'),
                     Store::as('BATCH_ESTIMATE', '{sum of batch issue estimates}'),
                     Operator::if('NOT duplicate in '.Store::var('EXISTING_FIX_TASKS'), [
-                        VectorTaskMcp::call('task_create',
-                            '{title: "Fix batch {batch_index}/'.Store::var('NUM_BATCHES').': '.Store::var('TASK_DESCRIPTION').'"'
-                            .', content: "## Validation Fix Batch {batch_index}'
-                            .'\n\nBatch estimate: {'.Store::var('BATCH_ESTIMATE').'}h'
-                            .'\n\n## Issues in this batch'
-                            .'\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Suggestion: {issue.suggestion}}'
-                            .'\n\n## Context References'
-                            .'\n- Memory IDs: {'.Store::var('MEMORY_CONTEXT.memory_ids').'}'
-                            .'\n- Documentation: {'.Store::var('DOCS_INDEX.paths').'}'
-                            .'\n- Total batches: '.Store::var('NUM_BATCHES').'"'
-                            .', priority: "high"'
-                            .', estimate: {'.Store::var('BATCH_ESTIMATE').'}'
-                            .', order: {batch_index}'
-                            .', tags: ["'.self::TAG_VALIDATION_FIX.'", "'.self::TAG_MANUAL_ONLY.'"]}'
-                        ),
+                        VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Fix batch {batch_index}/'.Store::var('NUM_BATCHES').': '.Store::var('TASK_DESCRIPTION'), 'content' => '## Validation Fix Batch {batch_index}\n\nBatch estimate: {'.Store::var('BATCH_ESTIMATE').'}h\n\n## Issues in this batch\n{FOR each issue: - [{issue.severity}] {issue.description}\n  File: {issue.file}:{issue.line}\n  Suggestion: {issue.suggestion}}\n\n## Context References\n- Memory IDs: {'.Store::var('MEMORY_CONTEXT.memory_ids').'}\n- Documentation: {'.Store::var('DOCS_INDEX.paths').'}\n- Total batches: '.Store::var('NUM_BATCHES'), 'priority' => 'high', 'estimate' => '{'.Store::var('BATCH_ESTIMATE').'}', 'order' => '{batch_index}', 'tags' => [self::TAG_VALIDATION_FIX, self::TAG_MANUAL_ONLY]]),
                         Store::as('CREATED_TASKS[]', '{created task_id}'),
                         Operator::output(['Created batch {batch_index}/'.Store::var('NUM_BATCHES').': {'.Store::var('BATCH_ESTIMATE').'}h ({'.Store::var('BATCH_ISSUES.count').'} issues)']),
                     ]),
@@ -323,17 +290,7 @@ class DoValidateInclude extends IncludeArchetype
             ]))
             ->phase(Store::as('VALIDATION_SUMMARY', '{all_issues_count, tasks_created_count, pass_rate}'))
             ->phase(Store::as('VALIDATION_STATUS', Operator::if('{' . Store::var('CRITICAL_ISSUES.count') . '} === 0 AND {' . Store::var('MISSING_REQUIREMENTS.count') . '} === 0', 'PASSED', 'NEEDS_WORK')))
-            ->phase(VectorMemoryMcp::call('store_memory',
-                '{content: "Validation of '.Store::var('TASK_DESCRIPTION').''
-                .'\n\nStatus: {'.Store::var('VALIDATION_STATUS').'}'
-                .'\nCritical: {'.Store::var('CRITICAL_ISSUES.count').'}'
-                .'\nMajor: {'.Store::var('MAJOR_ISSUES.count').'}'
-                .'\nMinor: {'.Store::var('MINOR_ISSUES.count').'}'
-                .'\nTasks created: {'.Store::var('CREATED_TASKS.count').'}'
-                .'\n\nFindings:\n{summary of key findings}"'
-                .', category: "'.self::CAT_CODE_SOLUTION.'"'
-                .', tags: ["'.self::MTAG_DECISION.'", "'.self::MTAG_REUSABLE.'"]}'
-            ))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Validation of '.Store::var('TASK_DESCRIPTION').'\n\nStatus: {'.Store::var('VALIDATION_STATUS').'}\nCritical: {'.Store::var('CRITICAL_ISSUES.count').'}\nMajor: {'.Store::var('MAJOR_ISSUES.count').'}\nMinor: {'.Store::var('MINOR_ISSUES.count').'}\nTasks created: {'.Store::var('CREATED_TASKS.count').'}\n\nFindings:\n{summary of key findings}', 'category' => self::CAT_CODE_SOLUTION, 'tags' => [self::MTAG_DECISION, self::MTAG_REUSABLE]]))
             ->phase(Operator::output([
                 '',
                 '=== VALIDATION REPORT ===',

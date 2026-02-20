@@ -61,7 +61,7 @@ class MemCleanupInclude extends IncludeArchetype
                 Store::get('MODE') . ' === "single"',
                 Operator::do(
                     'Use ID from ' . Store::get('DELETE_IDS'),
-                    VectorMemoryMcp::call('get_by_memory_id', '{memory_id: {id}}'),
+                    VectorMemoryMcp::callValidatedJson('get_by_memory_id', ['memory_id' => '{id}']),
                     Store::as('TARGET', 'memory to delete'),
                     'Display: "--- Memory to Delete ---"',
                     'Display: "ID: {id}"',
@@ -97,7 +97,7 @@ class MemCleanupInclude extends IncludeArchetype
                 Store::get('MODE') . ' === "bulk"',
                 Operator::do(
                     'Parse: days_old (default 30), max_to_keep (default 1000)',
-                    VectorMemoryMcp::call('get_memory_stats', '{}'),
+                    VectorMemoryMcp::callValidatedJson('get_memory_stats', []),
                     'Calculate: how many would be deleted',
                     'Display: "--- Cleanup Preview ---"',
                     'Display: "Current total: {total} memories"',
@@ -120,21 +120,21 @@ class MemCleanupInclude extends IncludeArchetype
             ->phase('execute-single', Operator::if(
                 Store::get('MODE') . ' === "single"',
                 Operator::do(
-                    VectorMemoryMcp::call('delete_by_memory_id', '{memory_id: {id}}'),
+                    VectorMemoryMcp::callValidatedJson('delete_by_memory_id', ['memory_id' => '{id}']),
                     'Display: "Memory #{id} deleted successfully."'
                 )
             ))
             ->phase('execute-multi', Operator::if(
                 Store::get('MODE') . ' === "multi"',
                 Operator::do(
-                    'ForEach ID: ' . VectorMemoryMcp::call('delete_by_memory_id', '{memory_id: {id}}'),
+                    'ForEach ID: ' . VectorMemoryMcp::callValidatedJson('delete_by_memory_id', ['memory_id' => '{id}']),
                     'Display: "Deleted {count} memories successfully."'
                 )
             ))
             ->phase('execute-bulk', Operator::if(
                 Store::get('MODE') . ' === "bulk"',
                 Operator::do(
-                    VectorMemoryMcp::call('clear_old_memories', '{days_old: {days}, max_to_keep: {max}}'),
+                    VectorMemoryMcp::callValidatedJson('clear_old_memories', ['days_old' => '{days}', 'max_to_keep' => '{max}']),
                     'Display: "Cleanup completed. Removed {count} old memories."'
                 )
             ));

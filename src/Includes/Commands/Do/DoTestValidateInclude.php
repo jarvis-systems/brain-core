@@ -145,7 +145,7 @@ class DoTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('CONTEXT_AGENT', '{vector-master agent_id}'))
             ->phase(TaskTool::agent('{$CONTEXT_AGENT}', 'DEEP MEMORY RESEARCH for test validation of "{$TASK_DESCRIPTION}": 1) Multi-probe search: past test implementations, test patterns, testing best practices, test failures, coverage gaps 2) Search across categories: code-solution, learning, bug-fix 3) Extract test-specific insights: what worked, what failed, patterns used 4) Return: {test_history: [...], test_patterns: [...], past_failures: [...], quality_standards: [...], key_insights: [...]}. Store consolidated test context.'))
             ->phase(Store::as('TEST_MEMORY_CONTEXT', '{VectorMaster agent results}'))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "test $TASK_DESCRIPTION", limit: 10}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'test $TASK_DESCRIPTION', 'limit' => 10]))
             ->phase(Store::as('RELATED_TEST_MEMORIES', 'Related test memories'))
             ->phase(Operator::output([
                 'Context gathered via {$CONTEXT_AGENT}:',
@@ -269,7 +269,7 @@ class DoTestValidateInclude extends IncludeArchetype
                 '=== PHASE 7: FIX TASK CREATION ===',
             ]))
             ->phase('Check existing pending tasks to avoid duplicates')
-            ->phase(VectorTaskMcp::call('task_list', '{query: "test fix $TASK_DESCRIPTION", status: "pending", limit: 20}'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['query' => 'test fix $TASK_DESCRIPTION', 'status' => 'pending', 'limit' => 20]))
             ->phase(Store::as('EXISTING_FIX_TASKS', 'Existing pending test fix tasks'))
             ->phase('Calculate total estimate for ALL test issues:')
             ->phase(Operator::do([
@@ -283,27 +283,7 @@ class DoTestValidateInclude extends IncludeArchetype
             ->phase(Operator::if('$ALL_TEST_ISSUES.count > 0 AND $TOTAL_ESTIMATE <= 8', [
                 'ALL issues fit into ONE consolidated task',
                 Operator::if('NOT duplicate in $EXISTING_FIX_TASKS', [
-                    VectorTaskMcp::call('task_create',
-                        '{title: "Test fix: $TASK_DESCRIPTION (test-validation)"'
-                        .', content: "## Test Validation Fix Task'
-                        .'\n\nTotal estimate: {$TOTAL_ESTIMATE}h'
-                        .'\n\n## Missing Coverage ({$MISSING_COVERAGE.count})'
-                        .'\n{FOR each req: - {req.description} | Type: {req.expected_test_type} | Scenarios: {req.testable_scenarios}}'
-                        .'\n\n## Failing Tests ({$FAILING_TESTS.count})'
-                        .'\n{FOR each test: - {test.test_file}:{test.test_method} | Error: {test.error_message}}'
-                        .'\n\n## Bloated Tests ({$BLOATED_TESTS.count})'
-                        .'\n{FOR each test: - {test.test_file}:{test.test_method} | Bloat: {test.bloat_type} | Suggestion: {test.suggestion}}'
-                        .'\n\n## Missing Workflows ({$MISSING_WORKFLOWS.count})'
-                        .'\n{FOR each wf: - {wf.workflow} | Missing: {wf.missing_scenarios}}'
-                        .'\n\n## Isolation Issues ({$ISOLATION_ISSUES.count})'
-                        .'\n{FOR each test: - {test.test_file} | Issue: {test.isolation_issue}}'
-                        .'\n\n## Context'
-                        .'\n- Memory IDs: {$TEST_MEMORY_CONTEXT.memory_ids}'
-                        .'\n- Documentation: {$DOCS_INDEX.paths}"'
-                        .', priority: "high"'
-                        .', estimate: {$TOTAL_ESTIMATE}'
-                        .', tags: ["'.self::TAG_VALIDATION_FIX.'", "'.self::TAG_TEST.'", "'.self::TAG_MANUAL_ONLY.'"]}'
-                    ),
+                    VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Test fix: $TASK_DESCRIPTION (test-validation)', 'content' => '## Test Validation Fix Task\n\nTotal estimate: {$TOTAL_ESTIMATE}h\n\n## Missing Coverage ({$MISSING_COVERAGE.count})\n{FOR each req: - {req.description} | Type: {req.expected_test_type} | Scenarios: {req.testable_scenarios}}\n\n## Failing Tests ({$FAILING_TESTS.count})\n{FOR each test: - {test.test_file}:{test.test_method} | Error: {test.error_message}}\n\n## Bloated Tests ({$BLOATED_TESTS.count})\n{FOR each test: - {test.test_file}:{test.test_method} | Bloat: {test.bloat_type} | Suggestion: {test.suggestion}}\n\n## Missing Workflows ({$MISSING_WORKFLOWS.count})\n{FOR each wf: - {wf.workflow} | Missing: {wf.missing_scenarios}}\n\n## Isolation Issues ({$ISOLATION_ISSUES.count})\n{FOR each test: - {test.test_file} | Issue: {test.isolation_issue}}\n\n## Context\n- Memory IDs: {$TEST_MEMORY_CONTEXT.memory_ids}\n- Documentation: {$DOCS_INDEX.paths}', 'priority' => 'high', 'estimate' => '{$TOTAL_ESTIMATE}', 'tags' => [self::TAG_VALIDATION_FIX, self::TAG_TEST, self::TAG_MANUAL_ONLY]]),
                     Store::as('CREATED_TASKS[]', '{created task_id}'),
                     Operator::output(['Created consolidated test fix task #{task_id} ({$TOTAL_ESTIMATE}h)']),
                 ]),
@@ -316,21 +296,7 @@ class DoTestValidateInclude extends IncludeArchetype
                     Store::as('BATCH_ISSUES', '{slice of issues for this batch, ~6h worth}'),
                     Store::as('BATCH_ESTIMATE', '{sum of batch issue estimates}'),
                     Operator::if('NOT duplicate in $EXISTING_FIX_TASKS', [
-                        VectorTaskMcp::call('task_create',
-                            '{title: "Test fix batch {batch_index}/$NUM_BATCHES: $TASK_DESCRIPTION"'
-                            .', content: "## Test Fix Batch {batch_index}'
-                            .'\n\nBatch estimate: {$BATCH_ESTIMATE}h'
-                            .'\n\n## Issues'
-                            .'\n{FOR each issue: - [{issue.type}] {issue.description}'
-                            .'\n  File: {issue.file}'
-                            .'\n  Suggestion: {issue.suggestion}}'
-                            .'\n\n## Context'
-                            .'\n- Total batches: $NUM_BATCHES ($TOTAL_ESTIMATE h total)"'
-                            .', priority: "high"'
-                            .', estimate: {$BATCH_ESTIMATE}'
-                            .', order: {batch_index}'
-                            .', tags: ["'.self::TAG_VALIDATION_FIX.'", "'.self::TAG_TEST.'", "'.self::TAG_MANUAL_ONLY.'"]}'
-                        ),
+                        VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Test fix batch {batch_index}/$NUM_BATCHES: $TASK_DESCRIPTION', 'content' => '## Test Fix Batch {batch_index}\n\nBatch estimate: {$BATCH_ESTIMATE}h\n\n## Issues\n{FOR each issue: - [{issue.type}] {issue.description}\n  File: {issue.file}\n  Suggestion: {issue.suggestion}}\n\n## Context\n- Total batches: $NUM_BATCHES ($TOTAL_ESTIMATE h total)', 'priority' => 'high', 'estimate' => '{$BATCH_ESTIMATE}', 'order' => '{batch_index}', 'tags' => [self::TAG_VALIDATION_FIX, self::TAG_TEST, self::TAG_MANUAL_ONLY]]),
                         Store::as('CREATED_TASKS[]', '{created task_id}'),
                         Operator::output(['Created batch {batch_index}/$NUM_BATCHES: {$BATCH_ESTIMATE}h']),
                     ]),
@@ -351,19 +317,7 @@ class DoTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('COVERAGE_RATE', '{covered_requirements / total_requirements * 100}%'))
             ->phase(Store::as('TEST_HEALTH_SCORE', '{100 - (bloat_count + isolation_count + failing_count) / total_tests * 100}%'))
             ->phase(Store::as('VALIDATION_STATUS', Operator::if('$MISSING_COVERAGE.count === 0 AND $FAILING_TESTS.count === 0', 'PASSED', 'NEEDS_WORK')))
-            ->phase(VectorMemoryMcp::call('store_memory',
-                '{content: "Test validation of {$TASK_DESCRIPTION}'
-                .'\n\nStatus: {$VALIDATION_STATUS}'
-                .'\nCoverage rate: {$COVERAGE_RATE}'
-                .'\nTest health: {$TEST_HEALTH_SCORE}'
-                .'\n\nMissing coverage: {$MISSING_COVERAGE.count}'
-                .'\nFailing tests: {$FAILING_TESTS.count}'
-                .'\nBloated tests: {$BLOATED_TESTS.count}'
-                .'\nTasks created: {$CREATED_TASKS.count}'
-                .'\n\nKey findings: {summary}"'
-                .', category: "'.self::CAT_CODE_SOLUTION.'"'
-                .', tags: ["'.self::MTAG_DECISION.'", "'.self::MTAG_REUSABLE.'"]}'
-            ))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Test validation of {$TASK_DESCRIPTION}\n\nStatus: {$VALIDATION_STATUS}\nCoverage rate: {$COVERAGE_RATE}\nTest health: {$TEST_HEALTH_SCORE}\n\nMissing coverage: {$MISSING_COVERAGE.count}\nFailing tests: {$FAILING_TESTS.count}\nBloated tests: {$BLOATED_TESTS.count}\nTasks created: {$CREATED_TASKS.count}\n\nKey findings: {summary}', 'category' => self::CAT_CODE_SOLUTION, 'tags' => [self::MTAG_DECISION, self::MTAG_REUSABLE]]))
             ->phase(Operator::output([
                 '',
                 '=== TEST VALIDATION REPORT ===',

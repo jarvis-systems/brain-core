@@ -54,7 +54,7 @@ class TaskStatusInclude extends IncludeArchetype
         $this->guideline('default-stats')
             ->text('Default overview when ' . Store::get('RAW_INPUT') . ' is empty')
             ->example()
-            ->phase('fetch', VectorTaskMcp::call('task_stats', '{}'))
+            ->phase('fetch', VectorTaskMcp::callValidatedJson('task_stats', []))
             ->phase('store', Store::as('STATS', 'statistics response'))
             ->phase('format', Operator::do(
                 'Display: Total tasks: {total}',
@@ -76,8 +76,8 @@ class TaskStatusInclude extends IncludeArchetype
             ))
             ->phase('fetch-completed', Operator::if(
                 Store::get('RAW_INPUT') . ' contains "completed"',
-                VectorTaskMcp::call('task_list', '{status: "completed", limit: 50}'),
-                VectorTaskMcp::call('task_list', '{limit: 50}')
+                VectorTaskMcp::callValidatedJson('task_list', ['status' => 'completed', 'limit' => 50]),
+                VectorTaskMcp::callValidatedJson('task_list', ['limit' => 50])
             ))
             ->phase('filter', 'Filter results by detected timeframe using task timestamps')
             ->phase('output', Operator::do(
@@ -90,7 +90,7 @@ class TaskStatusInclude extends IncludeArchetype
             ->text('Handle status-based filters when ' . Store::get('QUERY_TYPE') . ' = status')
             ->example()
             ->phase('detect', 'Extract status: completed|pending|in_progress|stopped')
-            ->phase('fetch', VectorTaskMcp::call('task_list', '{status: "{detected_status}", limit: 30}'))
+            ->phase('fetch', VectorTaskMcp::callValidatedJson('task_list', ['status' => '{detected_status}', 'limit' => 30]))
             ->phase('store', Store::as('TASKS', 'filtered task list'))
             ->phase('output', Operator::do(
                 'Display: "{status}" tasks: {count}',
@@ -104,7 +104,7 @@ class TaskStatusInclude extends IncludeArchetype
             ->phase('by-priority', Operator::if(
                 Store::get('RAW_INPUT') . ' = "by priority"',
                 Operator::do(
-                    VectorTaskMcp::call('task_list', '{limit: 100}'),
+                    VectorTaskMcp::callValidatedJson('task_list', ['limit' => 100]),
                     'Group by priority: critical, high, medium, low',
                     'Display: Priority | Count | % of Total',
                     'Display: Critical: {n} ({pct}%)',
@@ -116,7 +116,7 @@ class TaskStatusInclude extends IncludeArchetype
             ->phase('by-tags', Operator::if(
                 Store::get('RAW_INPUT') . ' = "by tags"',
                 Operator::do(
-                    VectorTaskMcp::call('task_list', '{limit: 100}'),
+                    VectorTaskMcp::callValidatedJson('task_list', ['limit' => 100]),
                     'Extract and count unique tags',
                     'Display: Tag | Count',
                     'Sort by count descending'
@@ -125,7 +125,7 @@ class TaskStatusInclude extends IncludeArchetype
             ->phase('by-parent', Operator::if(
                 Store::get('RAW_INPUT') . ' = "by parent"',
                 Operator::do(
-                    VectorTaskMcp::call('task_list', '{limit: 100}'),
+                    VectorTaskMcp::callValidatedJson('task_list', ['limit' => 100]),
                     'Group by parent_id (null = root tasks)',
                     'Display: Root tasks: {n}',
                     'Display: Child tasks by parent with counts'
@@ -137,8 +137,8 @@ class TaskStatusInclude extends IncludeArchetype
             ->text('Handle parent_id=N queries when ' . Store::get('QUERY_TYPE') . ' = specific')
             ->example()
             ->phase('parse', 'Extract N from "parent_id=N" in ' . Store::get('RAW_INPUT'))
-            ->phase('fetch-parent', VectorTaskMcp::call('task_get', '{task_id: N}'))
-            ->phase('fetch-children', VectorTaskMcp::call('task_list', '{parent_id: N, limit: 50}'))
+            ->phase('fetch-parent', VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'N']))
+            ->phase('fetch-children', VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => 'N', 'limit' => 50]))
             ->phase('output', Operator::do(
                 'Display parent: #{id} {title} [{status}]',
                 'Display children count: {n} subtasks',

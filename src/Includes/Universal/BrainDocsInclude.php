@@ -13,7 +13,7 @@ class BrainDocsInclude extends IncludeArchetype
     protected function handle(): void
     {
         $this->guideline('brain-docs-tool')
-            ->text('brain docs — PRIMARY tool for .docs/ project documentation discovery and search. Self-documenting: brain docs --help for usage, -v for examples, -vv for best practices. Key capabilities: --download=<url> persists external docs locally (lossless, zero tokens vs vector memory summaries), --undocumented finds code without docs. Always use brain docs BEFORE creating documentation, web research, or making assumptions about project.');
+            ->text('brain docs — PRIMARY tool for .docs/ project documentation discovery and search. Self-documenting: brain docs --help for usage, -v for examples, -vv for best practices. Key capabilities: --download=<url> persists external docs locally (lossless, zero tokens vs vector memory summaries), --undocumented finds code without docs. Always use brain docs BEFORE any project-related reasoning: research, analysis, conclusions, recommendations, implementation. One check — zero overhead — prevents costly rework.');
 
         $this->rule('no-manual-indexing')->critical()
             ->text('NEVER create index.md or README.md for documentation indexing. brain docs handles all indexing automatically.')

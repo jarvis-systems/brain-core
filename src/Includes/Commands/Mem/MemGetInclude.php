@@ -48,7 +48,7 @@ class MemGetInclude extends IncludeArchetype
         $this->guideline('workflow-step2')
             ->text('STEP 2 - Fetch Memory by ID')
             ->example()
-            ->phase('fetch', VectorMemoryMcp::call('get_by_memory_id', '{memory_id: ' . Store::get('MEMORY_ID') . '}'))
+            ->phase('fetch', VectorMemoryMcp::callValidatedJson('get_by_memory_id', ['memory_id' => Store::get('MEMORY_ID')]))
             ->phase('store', Store::as('MEMORY', 'memory object or null'));
 
         // Workflow Step 3 - Handle Not Found

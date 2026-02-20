@@ -103,7 +103,7 @@ class InitDocsInclude extends IncludeArchetype
             ])
             ->phase('STEP 2 - Check vector memory for prior doc insights:')
             ->do([
-                VectorMemoryMcp::call('search_memories', '{query: "documentation project structure modules", limit: 5, category: "' . self::CAT_PROJECT_CONTEXT . '"}'),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'documentation project structure modules', 'limit' => 5, 'category' => self::CAT_PROJECT_CONTEXT]),
                 Store::as('PRIOR_DOC_KNOWLEDGE'),
             ])
             ->phase('STEP 3 - Decision:')
@@ -281,11 +281,7 @@ class InitDocsInclude extends IncludeArchetype
             ->example()
             ->phase('STORE initialization insight:')
             ->do([
-                VectorMemoryMcp::call('store_memory', '{
-                    content: "INIT-DOCS|docs:{count}|lines:{total}|types:{type_list}|areas:{area_list}|mode:{fresh|augment}",
-                    category: "' . self::CAT_PROJECT_CONTEXT . '",
-                    tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]
-                }'),
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'INIT-DOCS|docs:{count}|lines:{total}|types:{type_list}|areas:{area_list}|mode:{fresh|augment}', 'category' => self::CAT_PROJECT_CONTEXT, 'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE]]),
             ])
             ->phase('REPORT:')
             ->do([

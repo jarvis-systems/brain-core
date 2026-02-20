@@ -72,10 +72,10 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->example()
 
             // 1. Load task
-            ->phase(VectorTaskMcp::call('task_get', '{task_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('TASK'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' → ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found. Use /do:brainstorm for topic-only.')))
-            ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::call('task_get', '{task_id: parent_id}') . ' → ' . Store::as('PARENT')))
-            ->phase(VectorTaskMcp::call('task_list', '{parent_id: $VECTOR_TASK_ID}') . ' → ' . Store::as('SUBTASKS'))
+            ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' → ' . Store::as('PARENT')))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' → ' . Store::as('SUBTASKS'))
 
             // Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
@@ -90,8 +90,8 @@ class TaskBrainstormInclude extends IncludeArchetype
                 ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
                 'DOCUMENTATION provides: constraints, existing decisions, rejected alternatives. Ideas MUST respect documented architecture.',
             ]))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "{TASK.title} {TOPIC}", limit: 5}') . ' → ' . Store::as('MEMORY'))
-            ->phase(Operator::if('unknown library/tech in TOPIC', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand first'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{TASK.title} {TOPIC}', 'limit' => 5]) . ' → ' . Store::as('MEMORY'))
+            ->phase(Operator::if('unknown library/tech in TOPIC', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand first'))
             ->phase(Operator::if('needs codebase analysis', TaskTool::agent('explore', 'Analyze codebase for {TOPIC}. Find: relevant files, patterns, implementations.') . ' → ' . Store::as('CODE_CONTEXT')))
             ->phase(Operator::if('needs external research', TaskTool::agent('web-research-master', 'Research {TOPIC}: best practices, patterns, pitfalls.') . ' → ' . Store::as('WEB_RESEARCH')))
 
@@ -130,7 +130,7 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->phase(Operator::if('user wants task update', [
                 'Show current vs proposed changes',
                 'Options: apply, rewrite, append, cancel',
-                Operator::if('confirmed', VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, content: "{new}", comment: "Brainstorm: {TOPIC}", append_comment: true}')),
+                Operator::if('confirmed', VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'content' => '{new}', 'comment' => 'Brainstorm: {TOPIC}', 'append_comment' => true])),
             ]))
 
             // 5c. Create subtasks (optional)
@@ -138,12 +138,12 @@ class TaskBrainstormInclude extends IncludeArchetype
                 'List actionable items from brainstorm',
                 'Apply parallel-isolation-checklist for each subtask pair: list files, cross-reference, verify ALL 5 isolation conditions. Default: parallel: false.',
                 'Ask: "Create these subtasks? (yes/no/modify)"',
-                Operator::if('confirmed', VectorTaskMcp::call('task_create_bulk', '{tasks: [{title, content, parent_id: $VECTOR_TASK_ID, priority, estimate, order, parallel, file_manifest: [files]}]}')),
+                Operator::if('confirmed', VectorTaskMcp::callValidatedJson('task_create_bulk', ['tasks' => '[{title, content, parent_id: $VECTOR_TASK_ID, priority, estimate, order, parallel, file_manifest: [files]}]'])),
             ]))
 
             // 6. Complete
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Brainstorm #{TASK.id}: {TOPIC}. Insights: {summary}. Modified: {yes/no}. Subtasks: {count}.", category: "' . self::CAT_ARCHITECTURE . '", tags: ["' . self::MTAG_INSIGHT . '"]}'))
-            ->phase(Operator::if('task modified OR subtasks created', VectorTaskMcp::call('task_update', '{task_id: $VECTOR_TASK_ID, comment: "Brainstorm completed: {TOPIC}", append_comment: true}')))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Brainstorm #{TASK.id}: {TOPIC}. Insights: {summary}. Modified: {yes/no}. Subtasks: {count}.', 'category' => self::CAT_ARCHITECTURE, 'tags' => [self::MTAG_INSIGHT]]))
+            ->phase(Operator::if('task modified OR subtasks created', VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'comment' => 'Brainstorm completed: {TOPIC}', 'append_comment' => true])))
             ->phase('Report: task, topic, modifications, subtasks created');
 
         // ERROR HANDLING

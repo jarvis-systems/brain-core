@@ -105,14 +105,14 @@ class TaskCreateInclude extends IncludeArchetype
 
             // 3. Research (conditional depth)
             ->phase(Operator::if(Store::get('IS_SIMPLE'), [
-                VectorTaskMcp::call('task_list', '{query: "{objective}", limit: 5}') . ' → check duplicates',
-                VectorMemoryMcp::call('search_memories', '{query: "{domain}", limit: 3}'),
+                VectorTaskMcp::callValidatedJson('task_list', ['query' => '{objective}', 'limit' => 5]) . ' → check duplicates',
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{domain}', 'limit' => 3]),
             ], [
                 // Full research for complex tasks
                 TaskTool::agent('explore', 'Search existing tasks for duplicates/related. Objective: {' . Store::get('TASK_SCOPE') . '}. Return: duplicates, potential parent, dependencies.') . ' → ' . Store::as('EXISTING_TASKS'),
-                VectorMemoryMcp::call('search_memories', '{query: "{domain} {objective}", limit: 5, category: "' . self::CAT_CODE_SOLUTION . '"}') . ' → ' . Store::as('PRIOR_WORK'),
+                VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{domain} {objective}', 'limit' => 5, 'category' => self::CAT_CODE_SOLUTION]) . ' → ' . Store::as('PRIOR_WORK'),
                 Operator::if('code-related task', TaskTool::agent('explore', 'Scan codebase for {domain}. Find: files, patterns, dependencies, SIMILAR existing implementations. Return: paths, architecture notes, analogous code to reference.') . ' → ' . Store::as('CODEBASE_CONTEXT')),
-                Operator::if('unknown library/pattern', Context7Mcp::call('query-docs', '{query: "{library}"}') . ' → understand before formulating'),
+                Operator::if('unknown library/pattern', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand before formulating'),
             ]))
             ->phase(Operator::if('duplicate found', 'STOP. Ask: update existing or create new?'))
 
@@ -143,7 +143,7 @@ class TaskCreateInclude extends IncludeArchetype
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Auto-approved', 'Ask: "Create? (yes/no/modify)"'))
 
             // 7. Create
-            ->phase(VectorTaskMcp::call('task_create', '{title, content, priority, tags, estimate, parallel, comment}') . ' → ' . Store::as('CREATED_ID'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_create', ['title' => '{title}', 'content' => '{content}', 'priority' => '{priority}', 'tags' => '{tags}', 'estimate' => '{estimate}', 'parallel' => '{parallel}', 'comment' => '{comment}']) . ' → ' . Store::as('CREATED_ID'))
             ->phase(Operator::if('task has multiple distinct concerns/modules (from codebase analysis)', 'Recommend: /task:decompose ' . Store::get('CREATED_ID')))
             ->phase('STOP. Do NOT execute. Return control to user.');
 

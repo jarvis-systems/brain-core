@@ -11,10 +11,13 @@ use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\GlobTool;
 use BrainCore\Compilation\Tools\ReadTool;
+use BrainCore\Variations\Traits\ModeResolverTrait;
 
 #[Purpose('Brain compilation system knowledge: namespaces, PHP API, archetype structures. MANDATORY scanning of actual source files before code generation.')]
 class CompilationSystemKnowledgeInclude extends IncludeArchetype
 {
+    use ModeResolverTrait;
+
     protected function handle(): void
     {
         // ═══════════════════════════════════════════════════════════════════
@@ -41,8 +44,10 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
                 ->phase('ready', 'NOW you can generate code using ACTUAL API from source');
 
         // ═══════════════════════════════════════════════════════════════════
-        // NAMESPACES - EXACT AND COMPLETE
+        // REFERENCE SECTIONS (deep/exhaustive only)
         // ═══════════════════════════════════════════════════════════════════
+
+        if ($this->isDeepCognitive()) {
 
         $this->guideline('namespaces-compilation')
             ->text('BrainCore\\Compilation namespace - pseudo-syntax generation helpers.')
@@ -185,7 +190,7 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
             ->text('MCP classes: call() for tool invocation, id() for reference.')
             ->example('call(name, ...args) → "mcp__{id}__{name}(args)"')->key('call')
             ->example('id(...args) → "mcp__{id}(args)"')->key('id')
-            ->example('Usage: VectorMemoryMcp::call("search_memories", "{query: ...}") → "mcp__vector-memory__search_memories({...})"')->key('example');
+            ->example('Usage: VectorMemoryMcp::callValidatedJson("search_memories", ["query" => "..."]) → "mcp__vector-memory__search_memories({...})"')->key('example');
 
         $this->guideline('api-agent')
             ->text('AgentArchetype: agent delegation methods.')
@@ -234,6 +239,8 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
             ->example('protected static function defaultCommand(): string')->key('command')
             ->example('protected static function defaultArgs(): array')->key('args');
 
+        } // end isDeepCognitive — namespaces, vars, API, structures
+
         // ═══════════════════════════════════════════════════════════════════
         // COMPILATION FLOW & DIRECTORIES
         // ═══════════════════════════════════════════════════════════════════
@@ -273,8 +280,10 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
             ->onViolation('Remove ALL #[Includes()] from Command classes.');
 
         // ═══════════════════════════════════════════════════════════════════
-        // BUILDER API
+        // BUILDER API & CLI (deep/exhaustive only)
         // ═══════════════════════════════════════════════════════════════════
+
+        if ($this->isDeepCognitive()) {
 
         $this->guideline('builder-rules')
             ->text('Rule builder pattern.')
@@ -316,6 +325,8 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
             ->text('Debug mode for Brain CLI troubleshooting.')
             ->example('BRAIN_CLI_DEBUG=1 brain compile - Enable debug output with full stack traces')->key('debug')
             ->example('Use debug mode when compilation fails without clear error message')->key('when');
+
+        } // end isDeepCognitive — builder, CLI
 
         // ═══════════════════════════════════════════════════════════════════
         // DIRECTIVE

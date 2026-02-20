@@ -81,7 +81,7 @@ class InitVectorInclude extends IncludeArchetype
         $this->guideline('phase1-status')
             ->goal('Check memory state, determine fresh vs augment mode')
             ->example()
-            ->phase(VectorMemoryMcp::call('get_memory_stats', '{}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('get_memory_stats', []))
             ->phase(Store::as('MEM', '{total, categories}'))
             ->phase(Operator::if('$MEM.total === 0', 'Fresh init', 'Augment existing'));
 
@@ -206,21 +206,21 @@ class InitVectorInclude extends IncludeArchetype
         $this->guideline('phase4-synthesis')
             ->goal('Synthesize all findings into project-wide architecture')
             ->example()
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "project structure architecture stack patterns", limit: 20, category: "' . self::CAT_ARCHITECTURE . '"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'project structure architecture stack patterns', 'limit' => 20, 'category' => self::CAT_ARCHITECTURE]))
             ->phase(Store::as('ALL_FINDINGS'))
             ->phase(
-                VectorMemoryMcp::call('store_memory', '{
-                    content: "INIT-VECTOR SYNTHESIS|PROJECT:{type}|AREAS:{list}|STACK:{tech}|PATTERNS:{arch}|DEPS:{graph}",
-                    category: "' . self::CAT_ARCHITECTURE . '",
-                    tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]
-                }')
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-VECTOR SYNTHESIS|PROJECT:{type}|AREAS:{list}|STACK:{tech}|PATTERNS:{arch}|DEPS:{graph}',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE],
+                ])
             );
 
         // Phase 5: Completion
         $this->guideline('phase5-complete')
             ->goal('Report completion with metrics')
             ->example()
-            ->phase(VectorMemoryMcp::call('get_memory_stats', '{}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('get_memory_stats', []))
             ->phase(Operator::output([
                 '=== INIT-VECTOR COMPLETE ===',
                 'Areas: {count} | Memories: {total} | Time: {elapsed}',

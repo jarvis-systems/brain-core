@@ -43,7 +43,7 @@ class MemStatsInclude extends IncludeArchetype
         $this->guideline('workflow-step2')
             ->text('STEP 2 - Fetch Memory Statistics')
             ->example()
-            ->phase('fetch', VectorMemoryMcp::call('get_memory_stats', '{}'))
+            ->phase('fetch', VectorMemoryMcp::callValidatedJson('get_memory_stats', []))
             ->phase('store', Store::as('STATS', 'statistics object'));
 
         // Workflow Step 3 - Default Overview
@@ -73,7 +73,7 @@ class MemStatsInclude extends IncludeArchetype
             ->phase('check', Operator::if(
                 Store::get('FILTER') . '.type === "category"',
                 Operator::do(
-                    VectorMemoryMcp::call('search_memories', '{query: "*", category: "{category}", limit: 50}'),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '*', 'category' => '{category}', 'limit' => 50]),
                     'Calculate: count, avg access, date range',
                     'Display: "--- Category: {category} ---"',
                     'Display: "Count: {count} memories"',
@@ -89,7 +89,7 @@ class MemStatsInclude extends IncludeArchetype
             ->phase('check', Operator::if(
                 Store::get('FILTER') . '.type === "tags"',
                 Operator::do(
-                    VectorMemoryMcp::call('get_unique_tags', '{}'),
+                    VectorMemoryMcp::callValidatedJson('get_unique_tags', []),
                     'Display: "--- All Tags ---"',
                     'ForEach tag: "{tag}: {count} memories"',
                     'Sort by count descending'

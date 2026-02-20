@@ -87,7 +87,7 @@ class DocWorkInclude extends IncludeArchetype
         $this->defineAggressiveDocsSearchGuideline();
 
         $this->rule('external-docs-via-context7')->high()
-            ->text('When documenting features that use external packages/libraries: resolve library via '.Context7Mcp::call('resolve-library-id', '{libraryName: "{package}"}').' then query docs via '.Context7Mcp::call('query-docs', '{libraryId: "{resolved_id}", query: "{specific_topic}"}').'. Use Context7 for KNOWN packages (composer/npm dependencies). Use web-research-master for broader context or unknown sources. NEVER guess external API behavior — verify against official docs.')
+            ->text('When documenting features that use external packages/libraries: resolve library via '.Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package}']).' then query docs via '.Context7Mcp::callJson('query-docs', ['libraryId' => '{resolved_id}', 'query' => '{specific_topic}']).'. Use Context7 for KNOWN packages (composer/npm dependencies). Use web-research-master for broader context or unknown sources. NEVER guess external API behavior — verify against official docs.')
             ->why('Documentation referencing external packages must be accurate. Guessing package behavior = docs become lies on first version bump. Context7 provides indexed, version-aware library docs.')
             ->onViolation('Identify external dependencies from codebase research. Resolve and query via Context7 before writing docs about them.');
 
@@ -159,8 +159,8 @@ class DocWorkInclude extends IncludeArchetype
             ]))
 
             // 1.3: Vector memory context
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$DOC_TARGET", limit: 5}').' → '.Store::as('MEMORY_CONTEXT'))
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "$DOC_TARGET architecture design", limit: 3}').' → append to '.Store::get('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$DOC_TARGET', 'limit' => 5]).' → '.Store::as('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$DOC_TARGET architecture design', 'limit' => 3]).' → append to '.Store::get('MEMORY_CONTEXT'))
 
             // 1.4: Scope clarification (interactive or auto-inferred)
             ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
@@ -178,8 +178,8 @@ class DocWorkInclude extends IncludeArchetype
             // 2.2: External package docs via Context7 (if dependencies detected)
             ->phase(Operator::if('$CODEBASE_RESEARCH reveals external packages/libraries', [
                 'For each significant dependency: resolve library ID',
-                Context7Mcp::call('resolve-library-id', '{libraryName: "{package_name}"}').' → '.Store::as('LIBRARY_ID'),
-                Context7Mcp::call('query-docs', '{libraryId: "$LIBRARY_ID", query: "{relevant_topic}"}').' → append to '.Store::get('CODEBASE_RESEARCH'),
+                Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package_name}']).' → '.Store::as('LIBRARY_ID'),
+                Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{relevant_topic}']).' → append to '.Store::get('CODEBASE_RESEARCH'),
             ]))
             // 2.3: Broader context via web research (if needed beyond package docs)
             ->phase(Operator::if('external context needed beyond package docs (architecture patterns, industry practices)', [
@@ -236,7 +236,7 @@ class DocWorkInclude extends IncludeArchetype
                 'Write files to .docs/',
                 BashTool::call(BrainCLI::DOCS('{DOC_TARGET keywords}')).' → verify files indexed by brain docs',
                 Operator::if('NOT indexed', 'Check YAML front matter format. Fix and retry.'),
-                VectorMemoryMcp::call('store_memory', '{content: "Documentation {created|updated}: {DOC_TARGET}. Path: {file_paths}. Sections: {section_names}. Based on: {source_files}.", category: "'.self::CAT_PROJECT_CONTEXT.'", tags: ["'.self::MTAG_INSIGHT.'", "'.self::MTAG_REUSABLE.'"]}'),
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Documentation {created|updated}: {DOC_TARGET}. Path: {file_paths}. Sections: {section_names}. Based on: {source_files}.', 'category' => self::CAT_PROJECT_CONTEXT, 'tags' => [self::MTAG_INSIGHT, self::MTAG_REUSABLE]]),
                 'RESULT: Documentation {DOC_MODE}d at {paths}. Indexed in brain docs.',
             ]));
 

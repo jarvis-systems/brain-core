@@ -134,7 +134,7 @@ class DoAsyncInclude extends IncludeArchetype
         $this->guideline('phase1-agent-discovery')
             ->goal('Discover agents leveraging conversation context + vector memory')
             ->example()
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "similar: {$TASK_DESCRIPTION}", limit: 5, category: "code-solution,architecture"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'similar: {$TASK_DESCRIPTION}', 'limit' => 5, 'category' => 'code-solution,architecture']))
             ->phase(Store::as('PAST_SOLUTIONS', 'Past approaches'))
             ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'brain list:masters'))
             ->phase(Store::as('AVAILABLE_AGENTS', 'Agents list'))
@@ -149,7 +149,7 @@ class DoAsyncInclude extends IncludeArchetype
         $this->guideline('phase2-requirements-analysis-approval')
             ->goal('Create requirements plan leveraging conversation + memory + GET USER APPROVAL + START TASK')
             ->example()
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "patterns: {task_domain}", limit: 5, category: "learning,architecture"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'patterns: {task_domain}', 'limit' => 5, 'category' => 'learning,architecture']))
             ->phase(Store::as('IMPLEMENTATION_PATTERNS', 'Past patterns'))
             ->phase('Analyze: $TASK_DESCRIPTION + $CONVERSATION_CONTEXT + $PAST_SOLUTIONS + $IMPLEMENTATION_PATTERNS')
             ->phase('Determine needs: scan targets, web research (if non-trivial), docs scan (if architecture-related)')
@@ -192,7 +192,7 @@ class DoAsyncInclude extends IncludeArchetype
                 Store::as('WEB_RESEARCH_FINDINGS', 'External knowledge'),
             ]))
             ->phase(Store::as('CONTEXT_PACKAGES', '{agent_name: {context, materials, task_domain}, ...}'))
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: "Context for {$TASK_DESCRIPTION}\n\nMaterials: {summary}", category: "'.self::CAT_CODE_SOLUTION.'", tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Context for {$TASK_DESCRIPTION}\n\nMaterials: {summary}', 'category' => self::CAT_CODE_SOLUTION, 'tags' => [self::MTAG_SOLUTION, self::MTAG_REUSABLE]]))
             ->phase(Operator::output([
                 '=== PHASE 3: MATERIALS GATHERED ===',
                 'Materials: {count} | Docs: {status} | Web: {status}',
@@ -203,7 +203,7 @@ class DoAsyncInclude extends IncludeArchetype
         $this->guideline('phase4-execution-planning-approval')
             ->goal('Create atomic plan leveraging past execution patterns, analyze dependencies, and GET USER APPROVAL')
             ->example()
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "execution approach for {task_type}", limit: 5, category: "code-solution"}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'execution approach for {task_type}', 'limit' => 5, 'category' => 'code-solution']))
             ->phase(Store::as('EXECUTION_PATTERNS', 'Past successful execution approaches'))
             ->phase(SequentialThinkingMcp::call('sequentialthinking', '{
                 thought: "Planning agent delegation. Analyzing: task decomposition, agent selection, step dependencies, parallelization opportunities, file scope per step.",
@@ -285,15 +285,7 @@ class DoAsyncInclude extends IncludeArchetype
             ->goal('Report results and store comprehensive learnings to vector memory')
             ->example()
             ->phase(Store::as('COMPLETION_SUMMARY', '{completed_steps, files_modified, outcomes, learnings}'))
-            ->phase(VectorMemoryMcp::call('store_memory',
-                '{content: "Completed: {$TASK_DESCRIPTION}'
-                .'\n\nApproach: {summary}'
-                .'\n\nSteps: {outcomes}'
-                .'\n\nLearnings: {insights}'
-                .'\n\nFiles: {list}"'
-                .', category: "'.self::CAT_CODE_SOLUTION.'"'
-                .', tags: ["'.self::MTAG_SOLUTION.'", "'.self::MTAG_REUSABLE.'"]}'
-            ))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Completed: {$TASK_DESCRIPTION}\n\nApproach: {summary}\n\nSteps: {outcomes}\n\nLearnings: {insights}\n\nFiles: {list}', 'category' => self::CAT_CODE_SOLUTION, 'tags' => [self::MTAG_SOLUTION, self::MTAG_REUSABLE]]))
             ->phase(Operator::output([
                 '',
                 '=== EXECUTION COMPLETE ===',

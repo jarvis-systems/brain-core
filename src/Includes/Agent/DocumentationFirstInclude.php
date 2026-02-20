@@ -23,7 +23,7 @@ class DocumentationFirstInclude extends IncludeArchetype
             ->onViolation('STOP. Run ' . BashTool::call('brain docs {keywords}') . ' and align with documentation.');
 
         $this->rule('docs-before-action')->critical()
-            ->text('Before ANY implementation, coding, or architectural decision - check .docs first.')
+            ->text('Before ANY implementation, coding, architectural decision, analysis, or conclusion about project - check .docs first.')
             ->why('Prevents drift from documented architecture and specifications.')
             ->onViolation('Abort action. Search documentation via brain docs before proceeding.');
 

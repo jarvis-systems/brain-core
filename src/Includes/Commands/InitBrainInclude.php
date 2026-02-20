@@ -333,27 +333,27 @@ class InitBrainInclude extends IncludeArchetype
             ->phase('Search vector memory for Common.php insights')
             ->phase(
                 Operator::task([
-                    VectorMemoryMcp::call('search_memories', '{query: "environment Docker CI/CD containerization rules", limit: 5}'),
-                    VectorMemoryMcp::call('search_memories', '{query: "tech stack PHP Node database coding standards", limit: 5}'),
-                    VectorMemoryMcp::call('search_memories', '{query: "shared configuration infrastructure patterns", limit: 5}'),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'environment Docker CI/CD containerization rules', 'limit' => 5]),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'tech stack PHP Node database coding standards', 'limit' => 5]),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'shared configuration infrastructure patterns', 'limit' => 5]),
                 ])
             )
             ->phase(Store::as('VECTOR_COMMON_INSIGHTS'))
             ->phase('Search vector memory for Master.php insights')
             ->phase(
                 Operator::task([
-                    VectorMemoryMcp::call('search_memories', '{query: "agent execution patterns tool usage constraints", limit: 5}'),
-                    VectorMemoryMcp::call('search_memories', '{query: "task handling decomposition estimation code generation", limit: 5}'),
-                    VectorMemoryMcp::call('search_memories', '{query: "test writing conventions quality gates validation", limit: 5}'),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'agent execution patterns tool usage constraints', 'limit' => 5]),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'task handling decomposition estimation code generation', 'limit' => 5]),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'test writing conventions quality gates validation', 'limit' => 5]),
                 ])
             )
             ->phase(Store::as('VECTOR_MASTER_INSIGHTS'))
             ->phase('Search vector memory for Brain.php insights')
             ->phase(
                 Operator::task([
-                    VectorMemoryMcp::call('search_memories', '{query: "orchestration delegation strategies agent selection", limit: 5}'),
-                    VectorMemoryMcp::call('search_memories', '{query: "workflow coordination response synthesis validation", limit: 5}'),
-                    VectorMemoryMcp::call('search_memories', '{query: "context management memory limits Brain policies", limit: 5}'),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'orchestration delegation strategies agent selection', 'limit' => 5]),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'workflow coordination response synthesis validation', 'limit' => 5]),
+                    VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'context management memory limits Brain policies', 'limit' => 5]),
                 ])
             )
             ->phase(Store::as('VECTOR_BRAIN_INSIGHTS'))
@@ -762,32 +762,32 @@ class InitBrainInclude extends IncludeArchetype
             ->goal('Store all insights to vector memory for future reference')
             ->example()
             ->phase(
-                VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "INIT-BRAIN|PROJECT:{project_type}|STACK:{tech_stack}|PATTERNS:{architecture_patterns}|DATE:{current_date}"',
-                    'category: "' . self::CAT_ARCHITECTURE . '"',
-                    'tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]',
-                ))
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-BRAIN|PROJECT:{project_type}|STACK:{tech_stack}|PATTERNS:{architecture_patterns}|DATE:{current_date}',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE],
+                ])
             )
             ->phase(
-                VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "INIT-BRAIN ENV|DOCKER:{has_docker}|CI:{cicd_platform}|TOOLS:{dev_tools}|DATE:{current_date}"',
-                    'category: "' . self::CAT_ARCHITECTURE . '"',
-                    'tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]',
-                ))
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-BRAIN ENV|DOCKER:{has_docker}|CI:{cicd_platform}|TOOLS:{dev_tools}|DATE:{current_date}',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE],
+                ])
             )
             ->phase(
-                VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "INIT-BRAIN DISTRIBUTION|COMMON:{common_rules_count}|MASTER:{master_rules_count}|BRAIN:{brain_rules_count}|DATE:{current_date}"',
-                    'category: "' . self::CAT_ARCHITECTURE . '"',
-                    'tags: ["' . self::MTAG_DECISION . '", "' . self::MTAG_PROJECT_WIDE . '"]',
-                ))
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-BRAIN DISTRIBUTION|COMMON:{common_rules_count}|MASTER:{master_rules_count}|BRAIN:{brain_rules_count}|DATE:{current_date}',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_DECISION, self::MTAG_PROJECT_WIDE],
+                ])
             )
             ->phase(
-                VectorMemoryMcp::call('store_memory', Operator::input(
-                    'content: "INIT-BRAIN MINING|COMMON:{vector_common_count}|MASTER:{vector_master_count}|BRAIN:{vector_brain_count}|VALIDATED:{vector_total_validated}|DATE:{current_date}"',
-                    'category: "' . self::CAT_LEARNING . '"',
-                    'tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_REUSABLE . '"]',
-                ))
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-BRAIN MINING|COMMON:{vector_common_count}|MASTER:{vector_master_count}|BRAIN:{vector_brain_count}|VALIDATED:{vector_total_validated}|DATE:{current_date}',
+                    'category' => self::CAT_LEARNING,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_REUSABLE],
+                ])
             );
 
         // =====================================================

@@ -127,7 +127,7 @@ class InitAgentsInclude extends IncludeArchetype
             ->phase(BashTool::describe('date +"%Y-%m-%d"', Store::as('CURRENT_DATE')))
             ->phase(BashTool::describe('date +"%Y"', Store::as('CURRENT_YEAR')))
             ->phase('PARALLEL: Check vector memory cache while temporal context loads')
-            ->phase(VectorMemoryMcp::call('search_memories', '{query: "multi-agent architecture patterns", category: "learning", limit: 3}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'multi-agent architecture patterns', 'category' => self::CAT_LEARNING, 'limit' => 3]))
             ->phase(Operator::if('cache_hit AND cache_age < 30 days', [
                 Store::as('CACHED_PATTERNS', 'Cached industry patterns from vector memory'),
                 Store::as('CACHE_VALID', 'true'),
@@ -165,7 +165,11 @@ class InitAgentsInclude extends IncludeArchetype
                     Store::as('INDUSTRY_PATTERNS')
                 ),
                 Operator::if('fresh research performed', 'Store results in vector memory'),
-                VectorMemoryMcp::call('store_memory', '{content: $INDUSTRY_PATTERNS, category: "' . self::CAT_LEARNING . '", tags: ["' . self::MTAG_PATTERN . '", "' . self::MTAG_REUSABLE . '"]}')
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => Store::get('INDUSTRY_PATTERNS'),
+                    'category' => self::CAT_LEARNING,
+                    'tags' => [self::MTAG_PATTERN, self::MTAG_REUSABLE],
+                ])
             ]))
             ->phase(Operator::if('search_mode === "targeted"', [
                 'Use $CACHED_PATTERNS from phase 1 if available',
@@ -241,7 +245,11 @@ class InitAgentsInclude extends IncludeArchetype
                 )
             )
             ->phase('Cache technology patterns in vector memory')
-            ->phase(VectorMemoryMcp::call('store_memory', '{content: $TECH_PATTERNS, category: "' . self::CAT_LEARNING . '", tags: ["' . self::MTAG_PATTERN . '", "' . self::MTAG_REUSABLE . '"]}'))
+            ->phase(VectorMemoryMcp::callValidatedJson('store_memory', [
+                'content' => Store::get('TECH_PATTERNS'),
+                'category' => self::CAT_LEARNING,
+                'tags' => [self::MTAG_PATTERN, self::MTAG_REUSABLE],
+            ]))
             ->phase(Operator::if('search_mode === "targeted"', [
                 'Log: "Found {count} patterns for {$SEARCH_FILTER.tech}"',
                 'Boost relevance score for matching patterns'
@@ -377,11 +385,19 @@ class InitAgentsInclude extends IncludeArchetype
             ->phase(Operator::if('agents_generated > 0', [
                 'Calculate: avg_confidence = average(generated_agents.confidence)',
                 'Calculate: avg_industry_alignment = average(generated_agents.industry_alignment)',
-                VectorMemoryMcp::call('store_memory', '{content: "INIT-AGENTS|mode={search_mode}|tech={$PROJECT_STACK.technologies}|agents={agents_count}|confidence={avg_confidence}|alignment={avg_industry_alignment}|coverage=improved", category: "' . self::CAT_ARCHITECTURE . '", tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]}'),
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-AGENTS|mode={search_mode}|tech={$PROJECT_STACK.technologies}|agents={agents_count}|confidence={avg_confidence}|alignment={avg_industry_alignment}|coverage=improved',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE],
+                ]),
                 Operator::output('Generation summary with agent details, confidence scores, and industry alignment metrics'),
             ]))
             ->phase(Operator::if('agents_generated === 0', [
-                VectorMemoryMcp::call('store_memory', '{content: "INIT-AGENTS|mode={search_mode}|result=full_coverage|agents={agents_count}", category: "' . self::CAT_ARCHITECTURE . '", tags: ["' . self::MTAG_INSIGHT . '", "' . self::MTAG_PROJECT_WIDE . '"]}'),
+                VectorMemoryMcp::callValidatedJson('store_memory', [
+                    'content' => 'INIT-AGENTS|mode={search_mode}|result=full_coverage|agents={agents_count}',
+                    'category' => self::CAT_ARCHITECTURE,
+                    'tags' => [self::MTAG_INSIGHT, self::MTAG_PROJECT_WIDE],
+                ]),
                 Operator::output('Full coverage confirmation with existing agent list and industry coverage score'),
             ]))
             ->phase('Include cache performance metrics: {cache_hits}, {web_searches_performed}');
