@@ -34,5 +34,15 @@ class BrainDocsInclude extends IncludeArchetype
             ->text('Include code ONLY when it is cheaper in tokens than text explanation AND no other choice exists.')
             ->why('Code is expensive, hard to read, not primary documentation format. Text first, code last resort.')
             ->onViolation('Replace code examples with concise textual description unless code is genuinely more efficient.');
+
+        $this->rule('yaml-front-matter')->critical()
+            ->text('ALL .docs/ files MUST start with YAML front matter: ---\nname: "Title"\ndescription: "Brief description"\n---. Required fields: name (unique), description (>= 10 chars). Optional: type, date, version, status, url.')
+            ->why('brain docs --validate enforces front matter. Without it: search ranking broken, validation fails, indexing degraded.')
+            ->onViolation('Prepend YAML front matter BEFORE H1 header. Run Bash(\'brain docs --validate\') to verify.');
+
+        $this->rule('validate-before-commit')->high()
+            ->text('Run brain docs --validate BEFORE committing documentation changes. All files must pass with 0 errors and 0 warnings.')
+            ->why('Catches missing front matter, duplicate names, empty content before they pollute the repository.')
+            ->onViolation('Bash(\'brain docs --validate\') → fix all errors/warnings → re-validate → commit.');
     }
 }
