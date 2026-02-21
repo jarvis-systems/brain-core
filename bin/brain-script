@@ -1,6 +1,8 @@
 #!/usr/bin/env php
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Console\Application;
 
 /** @var Application $app */
@@ -55,7 +57,7 @@ try {
     $status = $app->run();
 } catch (Exception $e) {
     if (getenv('BRAIN_SCRIPT_DEBUG') == '1') {
-        dump($e);
+        fwrite(STDERR, "[brain-script] " . $e::class . ": " . $e->getMessage() . PHP_EOL);
     }
     fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
     $status = 1;
