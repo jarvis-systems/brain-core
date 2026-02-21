@@ -12,6 +12,7 @@ use BrainCore\Includes\Brain\DelegationProtocolsInclude;
 use BrainCore\Includes\Brain\PreActionValidationInclude;
 use BrainCore\Includes\Universal\BrainDocsInclude;
 use BrainCore\Includes\Universal\CompilationSystemKnowledgeInclude;
+use BrainCore\Includes\Universal\CompileSafetyInclude;
 use BrainCore\Includes\Universal\SecretOutputPolicyInclude;
 use BrainCore\Includes\Universal\VectorMemoryInclude;
 use BrainCore\Includes\Universal\VectorTaskInclude;
@@ -26,6 +27,7 @@ trait BrainIncludesTrait
     {
         // === UNIVERSAL (Brain runtime essentials) ===
         $this->include(CoreConstraintsInclude::class);                  // Simplified constraints for Brain orchestration
+        $this->include(CompileSafetyInclude::class);                     // Compile discipline and worktree hygiene
         $this->include(SecretOutputPolicyInclude::class);               // Secret output prevention policy
         $this->include(VectorMemoryInclude::class);                     // Vector memory primary knowledge base
         $this->include(VectorTaskInclude::class);                       // Vector task management and tracking
