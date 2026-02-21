@@ -34,7 +34,7 @@ class TomlBuilderTest extends TestCase
             ],
         ];
 
-        $toml = TomlBuilder::from($data)->build();
+        $toml = TomlBuilder::from($data);
 
         $expected = <<<TOML
 [mcp_servers.laravel-boost]
@@ -72,7 +72,7 @@ TOML;
             ],
         ];
 
-        $toml = TomlBuilder::from($data)->build();
+        $toml = TomlBuilder::from($data);
 
         $expected = <<<TOML
 [settings]

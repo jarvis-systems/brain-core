@@ -188,6 +188,8 @@ class Merger
                     $current[] = $incomingChild;
                 } else {
                     array_splice($current, $insertIndex, 0, [$incomingChild]);
+                    // Rebuild index: splice shifts positions of all subsequent items
+                    $index = $this->buildChildrenIndex($current);
                 }
                 continue;
             }

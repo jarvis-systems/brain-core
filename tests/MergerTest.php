@@ -9,6 +9,19 @@ use PHPUnit\Framework\TestCase;
 
 class MergerTest extends TestCase
 {
+    /**
+     * Invoke protected Merger::handle() via Reflection.
+     *
+     * @param  array<string, mixed>  $structure
+     * @return array<string, mixed>
+     */
+    private function merge(array $structure): array
+    {
+        $merger = new Merger($structure);
+
+        return (new \ReflectionMethod($merger, 'handle'))->invoke($merger);
+    }
+
     public function testPurposeNodesRemainGrouped(): void
     {
         $structure = [
@@ -30,7 +43,7 @@ class MergerTest extends TestCase
             ],
         ];
 
-        $merged = (new Merger($structure))->handle();
+        $merged = $this->merge($structure);
 
         $elements = array_map(
             static fn (array $node): string => $node['element'],
@@ -82,7 +95,7 @@ class MergerTest extends TestCase
             ],
         ];
 
-        $merged = (new Merger($structure))->handle();
+        $merged = $this->merge($structure);
 
         $responseContract = $merged['child'][0];
         $this->assertSame('response_contract', $responseContract['element']);
@@ -146,7 +159,7 @@ class MergerTest extends TestCase
             'single' => false,
         ];
 
-        $merged = (new Merger($structure))->handle();
+        $merged = $this->merge($structure);
 
         $style = $merged['child'][0];
 
