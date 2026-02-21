@@ -9,6 +9,7 @@ use BrainCore\Includes\Agent\DocumentationFirstInclude;
 use BrainCore\Includes\Universal\BrainDocsInclude;
 use BrainCore\Includes\Universal\LaravelBoostClassToolsInclude;
 use BrainCore\Includes\Universal\LaravelBoostGuidelinesInclude;
+use BrainCore\Includes\Universal\SecretOutputPolicyInclude;
 use BrainCore\Includes\Universal\SequentialReasoningInclude;
 use BrainCore\Includes\Universal\VectorMemoryInclude;
 use BrainCore\Includes\Universal\VectorTaskInclude;
@@ -28,6 +29,7 @@ trait AgentIncludesTrait
     protected function handle(): void
     {
         // === UNIVERSAL ===
+        $this->include(SecretOutputPolicyInclude::class);           // Secret output prevention policy
         $this->include(VectorMemoryInclude::class);                 // Vector memory primary knowledge base
         if ($this->taskUsage) {
             $this->include(VectorTaskInclude::class);               // Vector task management and tracking
