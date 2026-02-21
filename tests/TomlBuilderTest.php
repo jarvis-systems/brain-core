@@ -25,7 +25,7 @@ class TomlBuilderTest extends TestCase
                     'args' => ['-y', '@pinkpixel/web-scout-mcp'],
                 ],
                 'github' => [
-                    'command' => '/Users/xsaven/PhpstormProjects/github-mcp-server_Darwin_arm64/github-mcp-server',
+                    'command' => '/usr/local/bin/github-mcp-server',
                     'args' => ['stdio'],
                     'env' => [
                         'GITHUB_PERSONAL_ACCESS_TOKEN' => 'token',
@@ -49,7 +49,7 @@ command = "npx"
 args = ["-y", "@pinkpixel/web-scout-mcp"]
 
 [mcp_servers.github]
-command = "/Users/xsaven/PhpstormProjects/github-mcp-server_Darwin_arm64/github-mcp-server"
+command = "/usr/local/bin/github-mcp-server"
 args = ["stdio"]
 
 [mcp_servers.github.env]
