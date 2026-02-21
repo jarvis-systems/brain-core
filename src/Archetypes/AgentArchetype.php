@@ -95,13 +95,18 @@ abstract class AgentArchetype extends ArchetypeArchitecture
     {
         $ref = new \ReflectionClass(static::class);
         $attributes = $ref->getAttributes(Meta::class);
-        $id = 'explore';
+        $id = null;
         foreach ($attributes as $attribute) {
             $meta = $attribute->newInstance();
             if ($meta->name === 'id') {
                 $id = $meta->getText();
                 break;
             }
+        }
+        if ($id === null) {
+            throw new \RuntimeException(
+                sprintf('Agent %s requires #[Meta(\'id\', ...)] attribute. No silent fallback allowed.', static::class)
+            );
         }
         return puzzle('agent', $id);
     }

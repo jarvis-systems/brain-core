@@ -181,6 +181,12 @@ class NodeIntegrityTest extends TestCase
             if (empty($descriptions)) {
                 $failures[] = "$relative: missing #[Meta('description', ...)]";
             }
+
+            // Meta('model') is mandatory for agents
+            $models = self::getMetaValues($content, 'model');
+            if (empty($models)) {
+                $failures[] = "$relative: missing #[Meta('model', ...)]";
+            }
         }
 
         $this->assertEmpty(
@@ -339,7 +345,123 @@ class NodeIntegrityTest extends TestCase
         );
     }
 
-    // ── Test 8: pins.json structure ─────────────────────────────────────
+    // ── Test 8: No test/stub MCP files in production ────────────────────
+
+    public function testNoTestStubMcpFiles(): void
+    {
+        $mcpDir = self::$nodeDir . '/Mcp';
+        $files = self::phpFiles($mcpDir);
+
+        $stubs = [];
+        foreach ($files as $file) {
+            $basename = basename($file, '.php');
+            if (preg_match('/^Test\d*Mcp$/', $basename)) {
+                $stubs[] = str_replace(self::$projectRoot . '/', '', $file);
+            }
+        }
+
+        $this->assertEmpty(
+            $stubs,
+            "Test/stub MCP files found (should be removed):\n" . implode("\n", $stubs)
+        );
+    }
+
+    // ── Test 9: Commands must not include Brain/Universal includes ──────
+
+    public function testCommandsDoNotIncludeBrainOrUniversalIncludes(): void
+    {
+        $commandDir = self::$nodeDir . '/Commands';
+        $files = self::phpFiles($commandDir);
+        $this->assertNotEmpty($files, 'No command files found in node/Commands/');
+
+        $forbiddenNamespaces = [
+            'BrainCore\\Includes\\Brain\\',
+            'BrainCore\\Includes\\Universal\\',
+            'BrainCore\\Variations\\Brain\\',
+            'BrainCore\\Variations\\Universal\\',
+        ];
+
+        $violations = [];
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            $relative = str_replace(self::$projectRoot . '/', '', $file);
+
+            foreach ($forbiddenNamespaces as $ns) {
+                if (str_contains($content, $ns)) {
+                    $violations[] = "$relative: imports from forbidden namespace $ns";
+                }
+            }
+        }
+
+        $this->assertEmpty(
+            $violations,
+            "Commands must not include Brain/Universal includes (already in Brain context):\n" . implode("\n", $violations)
+        );
+    }
+
+    // ── Test 10: Agent IDs are unique ─────────────────────────────────────
+
+    public function testAgentIdsAreUnique(): void
+    {
+        $agentDir = self::$nodeDir . '/Agents';
+        $files = self::phpFiles($agentDir);
+        $this->assertNotEmpty($files, 'No agent files found in node/Agents/');
+
+        $ids = [];
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            $relative = str_replace(self::$projectRoot . '/', '', $file);
+
+            $fileIds = self::getMetaValues($content, 'id');
+            foreach ($fileIds as $id) {
+                $ids[$id][] = $relative;
+            }
+        }
+
+        $duplicates = array_filter($ids, fn (array $files): bool => count($files) > 1);
+        $messages = [];
+        foreach ($duplicates as $id => $dupeFiles) {
+            $messages[] = "$id: " . implode(', ', $dupeFiles);
+        }
+
+        $this->assertEmpty(
+            $duplicates,
+            "Duplicate agent IDs found:\n" . implode("\n", $messages)
+        );
+    }
+
+    // ── Test 11: MCP IDs are unique ───────────────────────────────────────
+
+    public function testMcpIdsAreUnique(): void
+    {
+        $mcpDir = self::$nodeDir . '/Mcp';
+        $files = self::phpFiles($mcpDir);
+        $this->assertNotEmpty($files, 'No MCP files found in node/Mcp/');
+
+        $ids = [];
+        foreach ($files as $file) {
+            $content = file_get_contents($file);
+            $relative = str_replace(self::$projectRoot . '/', '', $file);
+
+            $fileIds = self::getMetaValues($content, 'id');
+            foreach ($fileIds as $id) {
+                $ids[$id][] = $relative;
+            }
+        }
+
+        $duplicates = array_filter($ids, fn (array $files): bool => count($files) > 1);
+        $messages = [];
+        foreach ($duplicates as $id => $dupeFiles) {
+            $messages[] = "$id: " . implode(', ', $dupeFiles);
+        }
+
+        $this->assertEmpty(
+            $duplicates,
+            "Duplicate MCP IDs found:\n" . implode("\n", $messages)
+        );
+    }
+
+    // ── Test 12: pins.json structure ─────────────────────────────────────
 
     public function testPinsJsonStructure(): void
     {

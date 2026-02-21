@@ -53,11 +53,6 @@ class Core
         $this->variables[$name] = $value;
     }
 
-    /**
-     * @param  string  $name
-     * @param  mixed|null  $default
-     * @return scalar
-     */
     public function getVariable(string $name, mixed $default = null): mixed
     {
         return $this->variables[$name]

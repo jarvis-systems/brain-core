@@ -77,10 +77,7 @@ abstract class McpArchitecture extends ArchitectureAbstract
     }
 
     /**
-     * Get agent ID.
-     *
-     * @param  mixed  ...$args
-     * @return string
+     * Get MCP server ID with optional arguments formatted for tool invocation.
      */
     public static function id(...$args): string
     {
@@ -96,13 +93,18 @@ abstract class McpArchitecture extends ArchitectureAbstract
         }
         $ref = new \ReflectionClass(static::class);
         $attributes = $ref->getAttributes(Meta::class);
-        $id = 'unknown';
+        $id = null;
         foreach ($attributes as $attribute) {
             $meta = $attribute->newInstance();
             if ($meta->name === 'id') {
                 $id = $meta->getText();
                 break;
             }
+        }
+        if ($id === null) {
+            throw new \RuntimeException(
+                sprintf('MCP class %s requires #[Meta(\'id\', ...)] attribute. No silent fallback allowed.', static::class)
+            );
         }
         return "mcp__" . $id . (empty($args) ? '' : '(' . implode(', ', $args) . ')');
     }

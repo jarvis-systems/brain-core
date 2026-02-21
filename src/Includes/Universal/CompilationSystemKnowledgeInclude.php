@@ -218,11 +218,11 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
             ->example('protected function handle(): void { ... }')->key('handle');
 
         $this->guideline('structure-command')
-            ->text('Command structure: minimal attributes, NO includes, CommandArchetype base.')
+            ->text('Command structure: minimal attributes, command-specific includes optional, CommandArchetype base.')
             ->example('#[Meta("id", "command-id")]')->key('meta-id')
             ->example('#[Meta("description", "Brief description")]')->key('meta-desc')
             ->example('#[Purpose("Command purpose")]')->key('purpose')
-            ->example('NO #[Includes()] - commands inherit Brain context')->key('no-includes')
+            ->example('Command-specific #[Includes()] allowed — Brain/Universal includes forbidden (already in context)')->key('includes-policy')
             ->example('extends CommandArchetype')->key('extends')
             ->example('protected function handle(): void { ... }')->key('handle');
 
@@ -274,10 +274,10 @@ class CompilationSystemKnowledgeInclude extends IncludeArchetype
             ->why('Hardcoded paths break multi-target compilation and platform portability.')
             ->onViolation('Replace hardcoded paths with Runtime:: references.');
 
-        $this->rule('commands-no-includes')->critical()
-            ->text('Commands MUST NOT have #[Includes()] attributes. Commands inherit Brain context.')
-            ->why('Commands execute in Brain context where includes are already loaded. Duplication bloats output.')
-            ->onViolation('Remove ALL #[Includes()] from Command classes.');
+        $this->rule('commands-no-brain-includes')->critical()
+            ->text('Commands MUST NOT include Brain or Universal includes (already loaded from Brain context). Command-specific includes for unique workflow logic are allowed.')
+            ->why('Brain/Universal includes are already merged into Brain context. Duplicating them in commands bloats output. Command-specific includes (BrainCore\\Includes\\Commands\\*) provide unique logic and are the intended pattern.')
+            ->onViolation('Remove Brain/Universal #[Includes()] from Command classes. Command-specific includes may remain.');
 
         // ═══════════════════════════════════════════════════════════════════
         // BUILDER API & CLI (deep/exhaustive only)
