@@ -42,6 +42,9 @@ abstract class McpArchitecture extends ArchitectureAbstract
             try {
                 $args[$index] = VarExporter::export($arg);
             } catch (\Throwable $e) {
+                if (getenv('BRAIN_COMPILE_DEBUG')) {
+                    error_log("[brain-compile] McpArchitecture::call: " . $e->getMessage());
+                }
                 $args[$index] = '"unserializable_argument"';
             }
         }
@@ -85,6 +88,9 @@ abstract class McpArchitecture extends ArchitectureAbstract
             try {
                 $args[$index] = VarExporter::export($arg);
             } catch (\Throwable $e) {
+                if (getenv('BRAIN_COMPILE_DEBUG')) {
+                    error_log("[brain-compile] McpArchitecture::id: " . $e->getMessage());
+                }
                 $args[$index] = '"unserializable_argument"';
             }
         }

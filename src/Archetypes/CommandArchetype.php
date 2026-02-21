@@ -73,6 +73,9 @@ abstract class CommandArchetype extends ArchetypeArchitecture
             try {
                 $args[$index] = VarExporter::export($arg);
             } catch (\Throwable $e) {
+                if (getenv('BRAIN_COMPILE_DEBUG')) {
+                    error_log("[brain-compile] CommandArchetype::id: " . $e->getMessage());
+                }
                 unset($args[$index]);
             }
         }

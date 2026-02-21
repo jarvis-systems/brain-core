@@ -15,6 +15,17 @@ use Symfony\Component\VarExporter\VarExporter;
  */
 trait CompileStandardsTrait
 {
+    /**
+     * Log graceful degradation event when VarExporter fails.
+     * Gated by BRAIN_COMPILE_DEBUG env — silent by default.
+     */
+    protected static function logDegradation(string $context, \Throwable $e): void
+    {
+        if (getenv('BRAIN_COMPILE_DEBUG')) {
+            error_log("[brain-compile] $context: " . $e->getMessage());
+        }
+    }
+
     protected static function generateOperator(
         string $name,
         array|string $arguments = [],
@@ -41,7 +52,8 @@ trait CompileStandardsTrait
             } elseif (!is_string($arg)) {
                 try {
                     $arguments[$index] = VarExporter::export($arg);
-                } catch (\Throwable) {
+                } catch (\Throwable $e) {
+                    static::logDegradation('generateOperatorArguments', $e);
                     $arguments[$index] = '[unserializable]';
                 }
             }
@@ -89,7 +101,8 @@ trait CompileStandardsTrait
             } elseif (! is_string($arg)) {
                 try {
                     $args[$index] = VarExporter::export($arg);
-                } catch (\Throwable) {
+                } catch (\Throwable $e) {
+                    static::logDegradation('concat', $e);
                     $args[$index] = '[unserializable]';
                 }
             }
@@ -108,7 +121,8 @@ trait CompileStandardsTrait
             } else {
                 try {
                     $result[] = VarExporter::export($item);
-                } catch (\Throwable) {
+                } catch (\Throwable $e) {
+                    static::logDegradation('flattenArray', $e);
                     $result[] = '[unserializable]';
                 }
             }
@@ -122,7 +136,8 @@ trait CompileStandardsTrait
         foreach ($array as $item) {
             try {
                 $result[] = VarExporter::export($item);
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                static::logDegradation('exportedArray', $e);
                 $result[] = '[unserializable]';
             }
         }
@@ -154,7 +169,8 @@ trait CompileStandardsTrait
                         $parameters[$key] = VarExporter::export($value);
                     }
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                static::logDegradation('parametersToString', $e);
                 if ($exportOnlyNonString) {
                     $parameters[$key] = '[unserializable]';
                 } else {

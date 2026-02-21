@@ -17,9 +17,10 @@ class TaskTool extends ToolAbstract
     public static function agent(string $name, ...$args): string
     {
         foreach ($args as $index => $arg) {
-            try{
+            try {
                 $args[$index] = VarExporter::export($arg);
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                static::logDegradation('TaskTool::agent', $e);
                 $args[$index] = "'[unserializable]'";
             }
         }
