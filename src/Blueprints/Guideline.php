@@ -28,11 +28,6 @@ class Guideline extends BlueprintArchitecture
         return 'guideline';
     }
 
-    public function workflow()
-    {
-
-    }
-
     /**
      * @param  non-empty-string|array  $text
      * @return $this

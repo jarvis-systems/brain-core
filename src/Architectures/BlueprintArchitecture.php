@@ -81,7 +81,7 @@ abstract class BlueprintArchitecture extends ArchitectureAbstract
         return $this;
     }
 
-    public static function mutateToString(mixed $value)
+    public static function mutateToString(mixed $value): mixed
     {
         if (is_array($value)) {
             $value = implode(" ", $value);
