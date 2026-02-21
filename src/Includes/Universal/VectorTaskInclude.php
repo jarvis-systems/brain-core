@@ -29,24 +29,8 @@ class VectorTaskInclude extends IncludeArchetype
                 ->text('Pull gates-rules from cookbook BEFORE task operations.');
         }
 
-        // === COOKBOOK GOVERNANCE POLICY ===
-
-        $budgetCap = $this->isParanoidMode() || $this->isDeepCognitive() ? 4 : 2;
-
-        $this->rule('cookbook-governance')->critical()
-            ->text('Cookbook calls ONLY via: (1) compile-time preset above, (2) explicit onViolation. BANNED: uncertainty triggers, speculative pulls, runtime param construction.')
-            ->why('Compile-time preset = determinism. Speculative pulls = budget waste + non-determinism.')
-            ->onViolation('Remove unauthorized cookbook() call. Iron rules in context are the source of truth.');
-
-        $this->guideline('cookbook-constraints')
-            ->text('Cookbook operational constraints.')
-            ->example('Compiled iron rules override cookbook case text on conflict')->key('precedence')
-            ->example('Cookbook case MUST NOT trigger another cookbook pull')->key('no-recursion')
-            ->example($budgetCap . ' pulls max/session. Most operations need preset only (0 extra). Do not seek reasons to use quota.')->key('budget-cap')
-            ->example('Do NOT pull when: trivial task, answer already in context, same query repeated, token budget >80%')->key('when-not-to-pull');
-
-        $this->guideline('gate5-satisfied')
-            ->text('Gate 5 (Cookbook-First) is satisfied by compile-time preset baked above. It is NOT a runtime uncertainty trigger.');
+        // Shared cookbook governance (cookbook-governance, cookbook-constraints, gate5-satisfied)
+        // is emitted by VectorMemoryInclude — always co-loaded via BrainIncludesTrait.
 
         // === IRON RULES ===
 
