@@ -235,6 +235,18 @@ class BlueprintTest extends TestCase
         $this->assertSame('no-secrets', $array['id']);
     }
 
+    public function testIronRuleIdMethodSyncsWithDtoStorage(): void
+    {
+        // id() method must sync with Dto internal storage via set()
+        $rule = IronRule::fromEmpty();
+        $result = $rule->id('no-hardcoded-paths');
+
+        $this->assertSame($rule, $result, 'id() must return $this');
+
+        $array = $rule->toArray();
+        $this->assertSame('no-hardcoded-paths', $array['id']);
+    }
+
     // ──────────────────────────────────────────────
     // Guideline — builder chain
     // ──────────────────────────────────────────────
@@ -279,6 +291,18 @@ class BlueprintTest extends TestCase
 
         $array = $guideline->toArray();
         $this->assertSame('input-validation', $array['id']);
+    }
+
+    public function testGuidelineIdMethodSyncsWithDtoStorage(): void
+    {
+        // id() method must sync with Dto internal storage via set()
+        $guideline = Guideline::fromEmpty();
+        $result = $guideline->id('validate-all-inputs');
+
+        $this->assertSame($guideline, $result, 'id() must return $this');
+
+        $array = $guideline->toArray();
+        $this->assertSame('validate-all-inputs', $array['id']);
     }
 
     public function testGuidelineAccumulatesChildren(): void
@@ -344,6 +368,17 @@ class BlueprintTest extends TestCase
         $this->assertSame($first, $second, 'forbiddenPhrases() must return same instance');
     }
 
+    public function testStyleIdMethodSyncsWithDtoStorage(): void
+    {
+        $style = Style::fromEmpty();
+        $result = $style->id('default-style');
+
+        $this->assertSame($style, $result, 'id() must return $this');
+
+        $array = $style->toArray();
+        $this->assertSame('default-style', $array['id']);
+    }
+
     public function testStyleFullChainAccumulatesChildren(): void
     {
         $style = Style::fromEmpty();
@@ -382,6 +417,17 @@ class BlueprintTest extends TestCase
         $result = $response->patches('Changes allowed after validation');
 
         $this->assertSame($response, $result, 'patches() must return $this');
+    }
+
+    public function testResponseIdMethodSyncsWithDtoStorage(): void
+    {
+        $response = Response::fromEmpty();
+        $result = $response->id('main-contract');
+
+        $this->assertSame($response, $result, 'id() must return $this');
+
+        $array = $response->toArray();
+        $this->assertSame('main-contract', $array['id']);
     }
 
     public function testResponseFullChainAccumulatesChildren(): void

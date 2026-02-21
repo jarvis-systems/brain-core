@@ -55,7 +55,7 @@ abstract class BlueprintArchitecture extends ArchitectureAbstract
      */
     public function id(string|null $id = null): static
     {
-        $this->id = $id;
+        $this->set('id', $id);
 
         return $this;
     }

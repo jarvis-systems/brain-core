@@ -1,0 +1,35 @@
+<system>
+<meta>
+<id>test-brain</id>
+</meta>
+
+<purpose>Test purpose for golden-file snapshot.</purpose>
+
+<provides>Core capabilities for testing.</provides>
+
+<provides>Memory management iron rules.</provides>
+
+
+# Iron Rules
+## No-secrets (CRITICAL)
+NEVER hardcode secrets in source files.
+- **why**: Secrets in source code leak to version control.
+- **on_violation**: Remove immediately and rotate credentials.
+
+## Determinism (HIGH)
+All builds must be deterministic.
+- **why**: Non-determinism causes drift between environments.
+
+
+
+# Test first
+Write tests before implementation.
+- PHPUnit test case
+- `step-1`: Create test file
+- `step-2`: Run and see it fail
+
+
+# Scan first
+Always scan source files before generating code.
+
+</system>
