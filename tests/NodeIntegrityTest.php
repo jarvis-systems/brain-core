@@ -461,7 +461,67 @@ class NodeIntegrityTest extends TestCase
         );
     }
 
-    // ── Test 12: pins.json structure ─────────────────────────────────────
+    // ── Test 12: MCP schema bypass annotations ────────────────────────────
+
+    public function testMcpSchemaBypassAnnotations(): void
+    {
+        $dirs = [
+            self::$projectRoot . '/core/src',
+            self::$nodeDir,
+        ];
+
+        // Schema-enabled MCP classes that MUST use callValidatedJson() or have @mcp-schema-bypass
+        $schemaEnabledPattern = '/VectorMemoryMcp::call\(|VectorTaskMcp::call\(/';
+        $validatedPattern = '/callValidatedJson|callJson/';
+
+        $violations = [];
+
+        foreach ($dirs as $dir) {
+            $files = self::phpFiles($dir);
+            foreach ($files as $file) {
+                $lines = file($file, FILE_IGNORE_NEW_LINES);
+                if ($lines === false) {
+                    continue;
+                }
+                $relative = str_replace(self::$projectRoot . '/', '', $file);
+
+                foreach ($lines as $lineNum => $lineContent) {
+                    // Skip if line uses validated variants
+                    if (preg_match($validatedPattern, $lineContent)) {
+                        continue;
+                    }
+                    // Check if line has raw ::call() on schema-enabled MCP
+                    if (!preg_match($schemaEnabledPattern, $lineContent)) {
+                        continue;
+                    }
+                    // Look for @mcp-schema-bypass in previous 3 lines
+                    $hasBypass = false;
+                    for ($offset = 1; $offset <= 3; $offset++) {
+                        $prevLine = $lineNum - $offset;
+                        if ($prevLine >= 0 && str_contains($lines[$prevLine], '@mcp-schema-bypass')) {
+                            $hasBypass = true;
+                            break;
+                        }
+                    }
+                    if (!$hasBypass) {
+                        $violations[] = sprintf(
+                            '%s:%d — raw ::call() on schema-enabled MCP without @mcp-schema-bypass',
+                            $relative,
+                            $lineNum + 1
+                        );
+                    }
+                }
+            }
+        }
+
+        $this->assertEmpty(
+            $violations,
+            "MCP schema bypass violations (use callValidatedJson() or add @mcp-schema-bypass):\n"
+            . implode("\n", $violations)
+        );
+    }
+
+    // ── Test 13: pins.json structure ──────────────────────────────────────
 
     public function testPinsJsonStructure(): void
     {

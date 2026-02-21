@@ -41,6 +41,9 @@ class TaskListInclude extends IncludeArchetype
         $this->guideline('workflow-step2')
             ->text('STEP 2 - Query Vector Task Storage')
             ->example()
+            // @mcp-schema-bypass: Store::get() returns runtime placeholder string ($VAR),
+            // not array — cannot be validated at compile time. Migrate to callValidatedJson()
+            // when Store supports structured array params.
             ->phase('query', VectorTaskMcp::call('task_list', Store::get('FILTERS')))
             ->phase('output', Store::as('TASKS', 'task list from vector storage'));
 

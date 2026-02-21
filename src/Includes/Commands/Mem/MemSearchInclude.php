@@ -45,6 +45,9 @@ class MemSearchInclude extends IncludeArchetype
         $this->guideline('workflow-step2')
             ->text('STEP 2 - Execute Semantic Search')
             ->example()
+            // @mcp-schema-bypass: Store::get() returns runtime placeholder string ($VAR),
+            // not array — cannot be validated at compile time. Migrate to callValidatedJson()
+            // when Store supports structured array params.
             ->phase('search', VectorMemoryMcp::call('search_memories', Store::get('PARAMS')))
             ->phase('store', Store::as('RESULTS', 'search results array'));
 
