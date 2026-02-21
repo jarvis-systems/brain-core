@@ -947,79 +947,70 @@ class InitBrainInclude extends IncludeArchetype
             ->example('Gate 9: Compiled output exists at ' . Runtime::BRAIN_FILE)
             ->example('Gate 10: At least one insight stored to vector memory');
 
-        // =====================================================
-        // EXAMPLES
-        // =====================================================
+        // Deep cognitive only: examples, performance optimization, directive
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('example-laravel-docker-project')
+                ->scenario('Laravel project with Docker, Sail, and comprehensive documentation')
+                ->example()
+                ->phase('Discovery: Laravel 11, PHP 8.3, MySQL, Redis, Queue, Sanctum')
+                ->phase('Environment: Docker (Sail), GitHub Actions CI/CD, PHPStan L8')
+                ->phase('Docs: 15 .md files with architecture, requirements, domain logic')
+                ->phase('Vector Mining: 12 insights found, 8 validated for distribution')
+                ->phase('')
+                ->phase('SMART DISTRIBUTION:')
+                ->phase('  Common.php: Docker/Sail environment rules, PHP 8.3 type constraints, MySQL conventions')
+                ->phase('  Master.php: Service class patterns, repository usage, Pest test conventions')
+                ->phase('  Brain.php: Agent delegation for Laravel domains (Auth, Queue, Cache)')
+                ->phase('')
+                ->phase('Result: All three files enhanced, Scrutinizer Variation preserved')
+                ->phase('Insights: 8 architectural insights stored to vector memory');
 
-        $this->guideline('example-laravel-docker-project')
-            ->scenario('Laravel project with Docker, Sail, and comprehensive documentation')
-            ->example()
-            ->phase('Discovery: Laravel 11, PHP 8.3, MySQL, Redis, Queue, Sanctum')
-            ->phase('Environment: Docker (Sail), GitHub Actions CI/CD, PHPStan L8')
-            ->phase('Docs: 15 .md files with architecture, requirements, domain logic')
-            ->phase('Vector Mining: 12 insights found, 8 validated for distribution')
-            ->phase('')
-            ->phase('SMART DISTRIBUTION:')
-            ->phase('  Common.php: Docker/Sail environment rules, PHP 8.3 type constraints, MySQL conventions')
-            ->phase('  Master.php: Service class patterns, repository usage, Pest test conventions')
-            ->phase('  Brain.php: Agent delegation for Laravel domains (Auth, Queue, Cache)')
-            ->phase('')
-            ->phase('Result: All three files enhanced, Scrutinizer Variation preserved')
-            ->phase('Insights: 8 architectural insights stored to vector memory');
+            $this->guideline('example-node-docker-project')
+                ->scenario('Node.js/Express project with Docker and TypeScript')
+                ->example()
+                ->phase('Discovery: Node.js 20, Express, TypeScript, MongoDB')
+                ->phase('Environment: Docker Compose, GitLab CI, ESLint + Prettier')
+                ->phase('Docs: None found - codebase analysis only')
+                ->phase('Vector Mining: 7 insights found, 5 validated for distribution')
+                ->phase('')
+                ->phase('SMART DISTRIBUTION:')
+                ->phase('  Common.php: Docker network rules, Node 20 constraints, ESLint compliance')
+                ->phase('  Master.php: TypeScript type generation, async/await patterns, Jest test structure')
+                ->phase('  Brain.php: API route delegation strategy')
+                ->phase('')
+                ->phase('Result: All three files enhanced, Architect Variation preserved')
+                ->phase('Insights: 5 tech stack insights stored');
 
-        $this->guideline('example-node-docker-project')
-            ->scenario('Node.js/Express project with Docker and TypeScript')
-            ->example()
-            ->phase('Discovery: Node.js 20, Express, TypeScript, MongoDB')
-            ->phase('Environment: Docker Compose, GitLab CI, ESLint + Prettier')
-            ->phase('Docs: None found - codebase analysis only')
-            ->phase('Vector Mining: 7 insights found, 5 validated for distribution')
-            ->phase('')
-            ->phase('SMART DISTRIBUTION:')
-            ->phase('  Common.php: Docker network rules, Node 20 constraints, ESLint compliance')
-            ->phase('  Master.php: TypeScript type generation, async/await patterns, Jest test structure')
-            ->phase('  Brain.php: API route delegation strategy')
-            ->phase('')
-            ->phase('Result: All three files enhanced, Architect Variation preserved')
-            ->phase('Insights: 5 tech stack insights stored');
+            $this->guideline('example-hybrid-microservices')
+                ->scenario('Hybrid PHP/JavaScript microservices with Kubernetes')
+                ->example()
+                ->phase('Discovery: Laravel API + React SPA + Docker + Kafka')
+                ->phase('Environment: Kubernetes, GitHub Actions, PHPStan + ESLint')
+                ->phase('Docs: ADRs, API specs, deployment docs, domain model')
+                ->phase('Vector Mining: 18 insights found, 12 validated for distribution')
+                ->phase('')
+                ->phase('SMART DISTRIBUTION:')
+                ->phase('  Common.php: K8s service discovery, cross-service authentication, Kafka topic naming')
+                ->phase('  Master.php: Event schema validation, API contract testing, service boundary respect')
+                ->phase('  Brain.php: Multi-service orchestration, cross-domain delegation, event saga coordination')
+                ->phase('')
+                ->phase('Project Includes: Suggested MicroserviceBoundaries.php, EventSchemas.php')
+                ->phase('Result: All three files enhanced with microservice awareness')
+                ->phase('Insights: 12 cross-cutting concerns stored');
 
-        $this->guideline('example-hybrid-microservices')
-            ->scenario('Hybrid PHP/JavaScript microservices with Kubernetes')
-            ->example()
-            ->phase('Discovery: Laravel API + React SPA + Docker + Kafka')
-            ->phase('Environment: Kubernetes, GitHub Actions, PHPStan + ESLint')
-            ->phase('Docs: ADRs, API specs, deployment docs, domain model')
-            ->phase('Vector Mining: 18 insights found, 12 validated for distribution')
-            ->phase('')
-            ->phase('SMART DISTRIBUTION:')
-            ->phase('  Common.php: K8s service discovery, cross-service authentication, Kafka topic naming')
-            ->phase('  Master.php: Event schema validation, API contract testing, service boundary respect')
-            ->phase('  Brain.php: Multi-service orchestration, cross-domain delegation, event saga coordination')
-            ->phase('')
-            ->phase('Project Includes: Suggested MicroserviceBoundaries.php, EventSchemas.php')
-            ->phase('Result: All three files enhanced with microservice awareness')
-            ->phase('Insights: 12 cross-cutting concerns stored');
+            $this->guideline('performance-optimization')
+                ->text('Optimization strategies for efficient initialization')
+                ->example()
+                ->phase('Parallel Execution: All independent tasks run simultaneously')
+                ->phase('Selective Reading: Only read files needed for analysis')
+                ->phase('Incremental Storage: Store insights progressively, not at end')
+                ->phase('Smart Caching: Leverage vector memory for repeated runs')
+                ->phase('Early Validation: Fail fast on critical errors')
+                ->phase('Streaming Output: Report progress as phases complete');
 
-        // =====================================================
-        // PERFORMANCE OPTIMIZATION
-        // =====================================================
-
-        $this->guideline('performance-optimization')
-            ->text('Optimization strategies for efficient initialization')
-            ->example()
-            ->phase('Parallel Execution: All independent tasks run simultaneously')
-            ->phase('Selective Reading: Only read files needed for analysis')
-            ->phase('Incremental Storage: Store insights progressively, not at end')
-            ->phase('Smart Caching: Leverage vector memory for repeated runs')
-            ->phase('Early Validation: Fail fast on critical errors')
-            ->phase('Streaming Output: Report progress as phases complete');
-
-        // =====================================================
-        // DIRECTIVE
-        // =====================================================
-
-        $this->guideline('directive')
-            ->text('Core initialization directive')
-            ->example('Discover thoroughly! Research current practices! Configure precisely! Validate rigorously! Store knowledge! Report comprehensively!');
+            $this->guideline('directive')
+                ->text('Core initialization directive')
+                ->example('Discover thoroughly! Research current practices! Configure precisely! Validate rigorously! Store knowledge! Report comprehensively!');
+        }
     }
 }

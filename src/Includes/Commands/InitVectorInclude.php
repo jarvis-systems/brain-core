@@ -232,28 +232,28 @@ class InitVectorInclude extends IncludeArchetype
         // REFERENCE GUIDELINES
         // =========================================================================
 
-        // Dense Storage Format
-        $this->guideline('storage-format')
-            ->text('Compact storage format for maximum vector search relevance')
-            ->example('BAD: "The src/ directory contains 150 PHP files organized in MVC pattern..."')->key('verbose')
-            ->example('GOOD: "src|150php|MVC|App\\Models,App\\Http|Laravel11|eloquent,routing"')->key('dense')
-            ->example('Format: path|files|pattern|namespaces|framework|features')->key('schema');
+        // Deep cognitive only: reference patterns
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('storage-format')
+                ->text('Compact storage format for maximum vector search relevance')
+                ->example('BAD: "The src/ directory contains 150 PHP files organized in MVC pattern..."')->key('verbose')
+                ->example('GOOD: "src|150php|MVC|App\\Models,App\\Http|Laravel11|eloquent,routing"')->key('dense')
+                ->example('Format: path|files|pattern|namespaces|framework|features')->key('schema');
 
-        // Parallel Execution Pattern
-        $this->guideline('parallel-pattern')
-            ->text('How to execute agents in parallel')
-            ->example()
-            ->phase('WRONG: forEach(areas) → sequential, slow')
-            ->phase('RIGHT: List multiple Task() calls in single response')
-            ->phase('Brain executes all Task() calls simultaneously')
-            ->phase('Each agent works independently, stores to memory')
-            ->phase('Wait for all to complete, then synthesize');
+            $this->guideline('parallel-pattern')
+                ->text('How to execute agents in parallel')
+                ->example()
+                ->phase('WRONG: forEach(areas) → sequential, slow')
+                ->phase('RIGHT: List multiple Task() calls in single response')
+                ->phase('Brain executes all Task() calls simultaneously')
+                ->phase('Each agent works independently, stores to memory')
+                ->phase('Wait for all to complete, then synthesize');
 
-        // brain docs + DocumentationMaster Integration
-        $this->guideline('brain-docs-usage')
-            ->text('brain docs for INDEX (metadata), then DocumentationMaster agents for CONTENT analysis')
-            ->example(BashTool::call(BrainCLI::DOCS))->key('list-all')
-            ->example(BashTool::call(BrainCLI::DOCS('keyword1,keyword2')))->key('search');
+            $this->guideline('brain-docs-usage')
+                ->text('brain docs for INDEX (metadata), then DocumentationMaster agents for CONTENT analysis')
+                ->example(BashTool::call(BrainCLI::DOCS))->key('list-all')
+                ->example(BashTool::call(BrainCLI::DOCS('keyword1,keyword2')))->key('search');
+        }
 
         // Error Handling (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')
@@ -273,21 +273,22 @@ class InitVectorInclude extends IncludeArchetype
             ->example('Gate 6: synthesis stored to vector memory')
             ->example('Gate 7: get_memory_stats confirms new entries');
 
-        // Example: Fresh Init
-        $this->guideline('example-fresh')
-            ->scenario('Fresh initialization with 8 docs')
-            ->example()
-            ->phase('1', 'Memory: 0 entries → fresh init')
-            ->phase('2', 'Structure scan: 5 areas (src, tests, config, .docs, build)')
-            ->phase('3a', 'PARALLEL: ExploreMaster(src/) + ExploreMaster(tests/) → 2 agents')
-            ->phase('3b', 'brain docs → 8 docs found → batch into 3+3+2')
-            ->phase('3b-parallel', 'PARALLEL: 3x DocumentationMaster agents')
-            ->phase('3c', 'PARALLEL: ExploreMaster(config/) + ExploreMaster(build/) → 2 agents')
-            ->phase('4', 'Synthesis: search architecture memories → project-wide summary')
-            ->phase('5', 'Complete: 15 memories, 7 agents (4 Explore + 3 DocMaster)');
+        // Deep cognitive only: example, directive
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('example-fresh')
+                ->scenario('Fresh initialization with 8 docs')
+                ->example()
+                ->phase('1', 'Memory: 0 entries → fresh init')
+                ->phase('2', 'Structure scan: 5 areas (src, tests, config, .docs, build)')
+                ->phase('3a', 'PARALLEL: ExploreMaster(src/) + ExploreMaster(tests/) → 2 agents')
+                ->phase('3b', 'brain docs → 8 docs found → batch into 3+3+2')
+                ->phase('3b-parallel', 'PARALLEL: 3x DocumentationMaster agents')
+                ->phase('3c', 'PARALLEL: ExploreMaster(config/) + ExploreMaster(build/) → 2 agents')
+                ->phase('4', 'Synthesis: search architecture memories → project-wide summary')
+                ->phase('5', 'Complete: 15 memories, 7 agents (4 Explore + 3 DocMaster)');
 
-        // Directive
-        $this->guideline('directive')
-            ->text('PARALLEL agents! brain docs → DocumentationMaster! Dense storage! Predefined tags! Fast init!');
+            $this->guideline('directive')
+                ->text('PARALLEL agents! brain docs → DocumentationMaster! Dense storage! Predefined tags! Fast init!');
+        }
     }
 }

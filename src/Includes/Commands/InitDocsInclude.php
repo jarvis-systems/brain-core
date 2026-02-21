@@ -305,15 +305,17 @@ class InitDocsInclude extends IncludeArchetype
         // REFERENCE GUIDELINES
         // =========================================================================
 
-        // Doc structure patterns
-        $this->guideline('doc-structure')
-            ->text('Standard documentation structure per type')
-            ->example('architecture: Overview → Components → Data Flow → Decisions → Dependencies')->key('architecture')
-            ->example('module: Purpose → API → Configuration → Examples → Related')->key('module')
-            ->example('api: Authentication → Endpoints → Request/Response → Errors → Rate Limits')->key('api')
-            ->example('guide: Prerequisites → Steps → Verification → Troubleshooting')->key('guide')
-            ->example('concept: Definition → Why → How → When → Gotchas')->key('concept')
-            ->example('reference: Format → Options → Defaults → Examples')->key('reference');
+        // Deep cognitive only: doc structure patterns
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('doc-structure')
+                ->text('Standard documentation structure per type')
+                ->example('architecture: Overview → Components → Data Flow → Decisions → Dependencies')->key('architecture')
+                ->example('module: Purpose → API → Configuration → Examples → Related')->key('module')
+                ->example('api: Authentication → Endpoints → Request/Response → Errors → Rate Limits')->key('api')
+                ->example('guide: Prerequisites → Steps → Verification → Troubleshooting')->key('guide')
+                ->example('concept: Definition → Why → How → When → Gotchas')->key('concept')
+                ->example('reference: Format → Options → Defaults → Examples')->key('reference');
+        }
 
         // Error Recovery (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')
@@ -338,20 +340,21 @@ class InitDocsInclude extends IncludeArchetype
             ->example('Gate 8: no file exceeds 500 lines')
             ->example('Gate 9: completion insight stored to vector memory');
 
-        // Example: Fresh init on Laravel project
-        $this->guideline('example-fresh-laravel')
-            ->scenario('Fresh documentation for Laravel project with no .docs/')
-            ->example()
-            ->phase('1', 'Pre-flight: no .docs/ → fresh init mode')
-            ->phase('2', 'Discovery: 3 parallel agents → modules, routes, config')
-            ->phase('3', 'Plan: 8 docs (1 architecture, 3 modules, 2 api, 1 guide, 1 reference)')
-            ->phase('4', 'Approval: auto-approved (-y flag)')
-            ->phase('5', 'Generation: 3 parallel DocumentationMaster → 8 docs written')
-            ->phase('6', 'Verification: brain docs indexes all 8, YAML valid, <500 lines each')
-            ->phase('7', 'Complete: 8 docs, ~1200 lines, 3 agents used');
+        // Deep cognitive only: example, directive
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('example-fresh-laravel')
+                ->scenario('Fresh documentation for Laravel project with no .docs/')
+                ->example()
+                ->phase('1', 'Pre-flight: no .docs/ → fresh init mode')
+                ->phase('2', 'Discovery: 3 parallel agents → modules, routes, config')
+                ->phase('3', 'Plan: 8 docs (1 architecture, 3 modules, 2 api, 1 guide, 1 reference)')
+                ->phase('4', 'Approval: auto-approved (-y flag)')
+                ->phase('5', 'Generation: 3 parallel DocumentationMaster → 8 docs written')
+                ->phase('6', 'Verification: brain docs indexes all 8, YAML valid, <500 lines each')
+                ->phase('7', 'Complete: 8 docs, ~1200 lines, 3 agents used');
 
-        // Directive
-        $this->guideline('directive')
-            ->text('PARALLEL agents! BATCH generation! YAML front matter! brain docs verification! Dense memory! No duplicates!');
+            $this->guideline('directive')
+                ->text('PARALLEL agents! BATCH generation! YAML front matter! brain docs verification! Dense memory! No duplicates!');
+        }
     }
 }

@@ -445,25 +445,24 @@ class InitTaskInclude extends IncludeArchetype
             ])
             ->phase('STOP: Do NOT execute any task. Return control to user.');
 
-        // ============================================
-        // REFERENCE: FORMATS
-        // ============================================
+        // Deep cognitive only: reference formats
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('epic-format')
+                ->text('Required epic structure')
+                ->example('title: Concise name (max 10 words)')->key('title')
+                ->example('content: Scope, objectives, deliverables, acceptance criteria')->key('content')
+                ->example('priority: critical | high | medium | low')->key('priority')
+                ->example('estimate: 8-40 hours (will be decomposed)')->key('estimate')
+                ->example('tags: [epic, {domain}, {stack}, {phase}]')->key('tags');
 
-        $this->guideline('epic-format')
-            ->text('Required epic structure')
-            ->example('title: Concise name (max 10 words)')->key('title')
-            ->example('content: Scope, objectives, deliverables, acceptance criteria')->key('content')
-            ->example('priority: critical | high | medium | low')->key('priority')
-            ->example('estimate: 8-40 hours (will be decomposed)')->key('estimate')
-            ->example('tags: [epic, {domain}, {stack}, {phase}]')->key('tags');
-
-        $this->guideline('estimation-guide')
-            ->text('Epic estimation guidelines')
-            ->example('8-16h: Focused, single domain')->key('small')
-            ->example('16-24h: Cross-component, moderate')->key('medium')
-            ->example('24-32h: Architectural, integrations')->key('large')
-            ->example('32-40h: Foundational, high complexity')->key('xlarge')
-            ->example('>40h: Split into multiple epics')->key('split');
+            $this->guideline('estimation-guide')
+                ->text('Epic estimation guidelines')
+                ->example('8-16h: Focused, single domain')->key('small')
+                ->example('16-24h: Cross-component, moderate')->key('medium')
+                ->example('24-32h: Architectural, integrations')->key('large')
+                ->example('32-40h: Foundational, high complexity')->key('xlarge')
+                ->example('>40h: Split into multiple epics')->key('split');
+        }
 
         // Error Recovery (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')
@@ -489,14 +488,17 @@ class InitTaskInclude extends IncludeArchetype
             ->example('Gate 9: task_create_bulk succeeded')
             ->example('Gate 10: completion insight stored to vector memory');
 
-        $this->guideline('parallel-pattern')
-            ->text('How to execute agents in parallel')
-            ->example('WRONG: forEach(areas) → sequential, slow, incomplete')
-            ->example('RIGHT: List multiple Task() calls in single response')
-            ->example('Brain executes all Task() calls simultaneously')
-            ->example('Each agent stores findings, then synthesize all');
+        // Deep cognitive only: parallel pattern, directive
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('parallel-pattern')
+                ->text('How to execute agents in parallel')
+                ->example('WRONG: forEach(areas) → sequential, slow, incomplete')
+                ->example('RIGHT: List multiple Task() calls in single response')
+                ->example('Brain executes all Task() calls simultaneously')
+                ->example('Each agent stores findings, then synthesize all');
 
-        $this->guideline('directive')
-            ->text('PARALLEL agents! EVERY corner! MAXIMUM coverage! Dense synthesis! User approval!');
+            $this->guideline('directive')
+                ->text('PARALLEL agents! EVERY corner! MAXIMUM coverage! Dense synthesis! User approval!');
+        }
     }
 }

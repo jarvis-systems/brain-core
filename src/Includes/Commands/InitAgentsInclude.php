@@ -402,16 +402,18 @@ class InitAgentsInclude extends IncludeArchetype
             ]))
             ->phase('Include cache performance metrics: {cache_hits}, {web_searches_performed}');
 
-        // Response Format (unified)
-        $this->guideline('response-format')
-            ->text('Response structure')
-            ->example('Header: Init Gap Analysis Complete | Mode: {search_mode}')
-            ->example('System Agents (protected): {system_count} | Variation: SystemMaster')
-            ->example('Project Agents Generated: {count} | Variation: Master')
-            ->example('Quality: confidence={avg}, alignment={avg}')
-            ->example('Performance: cache_hits={n}, parallel_batches={n}')
-            ->phase(['Created:', Runtime::NODE_DIRECTORY('Agents/'),'| Compiled:', Runtime::AGENTS_FOLDER])
-            ->phase(['Ready via:', TaskTool::agent('{name}', '...')]);
+        // Response Format (deep cognitive only)
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('response-format')
+                ->text('Response structure')
+                ->example('Header: Init Gap Analysis Complete | Mode: {search_mode}')
+                ->example('System Agents (protected): {system_count} | Variation: SystemMaster')
+                ->example('Project Agents Generated: {count} | Variation: Master')
+                ->example('Quality: confidence={avg}, alignment={avg}')
+                ->example('Performance: cache_hits={n}, parallel_batches={n}')
+                ->phase(['Created:', Runtime::NODE_DIRECTORY('Agents/'),'| Compiled:', Runtime::AGENTS_FOLDER])
+                ->phase(['Ready via:', TaskTool::agent('{name}', '...')]);
+        }
 
         // Error Recovery (supplements defineFailurePolicyRules from trait)
         $this->guideline('error-recovery')
@@ -437,19 +439,20 @@ class InitAgentsInclude extends IncludeArchetype
             ->example('Gate 10-11: make:master success, compile success')
             ->example(['Gate 12:', Runtime::AGENTS_FOLDER, 'populated with project agents']);
 
-        // Example: Parallel batch generation (PROJECT AGENTS ONLY)
-        $this->guideline('example-parallel-batch')
-            ->scenario('System: 8 protected (SystemMaster) | Project: 10 discovered → 4 batches → 4 parallel AgentMasters')
-            ->example()
-            ->phase('inventory', 'System agents (OFF LIMITS): AgentMaster, PromptMaster, CommitMaster, ExploreMaster, WebResearchMaster, DocumentationMaster, VectorMaster, ScriptMaster')
-            ->phase('gap', '10 missing PROJECT agents: API, Cache, Queue, Auth, Payment, Report, Search, Export, Import, Sync')
-            ->phase('variation', 'All new agents use Master variation (NOT SystemMaster)')
-            ->phase('batch', 'batch_1=[API,Cache,Queue], batch_2=[Auth,Payment,Report], batch_3=[Search,Export], batch_4=[Import,Sync]')
-            ->phase('parallel', 'Launch 4 Task(@agent-agent-master) in SINGLE message')
-            ->phase('result', 'All 10 PROJECT agents created with Master variation in ~1 AgentMaster cycle');
+        // Deep cognitive only: example, directive
+        if ($this->cognitiveAtLeast('deep')) {
+            $this->guideline('example-parallel-batch')
+                ->scenario('System: 8 protected (SystemMaster) | Project: 10 discovered → 4 batches → 4 parallel AgentMasters')
+                ->example()
+                ->phase('inventory', 'System agents (OFF LIMITS): AgentMaster, PromptMaster, CommitMaster, ExploreMaster, WebResearchMaster, DocumentationMaster, VectorMaster, ScriptMaster')
+                ->phase('gap', '10 missing PROJECT agents: API, Cache, Queue, Auth, Payment, Report, Search, Export, Import, Sync')
+                ->phase('variation', 'All new agents use Master variation (NOT SystemMaster)')
+                ->phase('batch', 'batch_1=[API,Cache,Queue], batch_2=[Auth,Payment,Report], batch_3=[Search,Export], batch_4=[Import,Sync]')
+                ->phase('parallel', 'Launch 4 Task(@agent-agent-master) in SINGLE message')
+                ->phase('result', 'All 10 PROJECT agents created with Master variation in ~1 AgentMaster cycle');
 
-        // Directive
-        $this->guideline('directive')
-            ->text('PROJECT agents ONLY! Master variation! NEVER touch system agents! DELEGATE to AgentMaster! PARALLEL batches! brain make:master! Compile!');
+            $this->guideline('directive')
+                ->text('PROJECT agents ONLY! Master variation! NEVER touch system agents! DELEGATE to AgentMaster! PARALLEL batches! brain make:master! Compile!');
+        }
     }
 }
