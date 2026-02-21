@@ -29,21 +29,21 @@ class ErrorHandlingInclude extends IncludeArchetype
                 ->text('Delegation to agent failed or rejected.')
                 ->example('Agent unavailable, context mismatch, or permission denied')->key('trigger')
                 ->example('Reassign task to AgentMaster for redistribution')->key('response')
-                ->example('Log delegation failure with agent_id, task_id, and error code')->key('action')
+                ->example('Report delegation failure details to user (agent name, task, error reason)')->key('action')
                 ->example('Try alternative agent from same domain if available')->key('fallback');
 
             $this->guideline('error-agent-timeout')
                 ->text('Agent exceeded execution time limit.')
                 ->example('Agent taking excessively long to respond or appears stuck')->key('trigger')
                 ->example('Abort agent execution and retrieve partial results if available')->key('response')
-                ->example('Log timeout event with agent_id and elapsed time')->key('action')
+                ->example('Report timeout to user with agent name and elapsed time')->key('action')
                 ->example('Retry with reduced scope or delegate to different agent')->key('fallback');
 
             $this->guideline('error-invalid-response')
                 ->text('Agent response failed validation checks.')
                 ->example('Response validation failed semantic, structural, or policy checks')->key('trigger')
                 ->example('Request agent clarification with specific validation failure details')->key('response')
-                ->example('Log validation failure with response_id and failure reasons')->key('action')
+                ->example('Report validation failure to user with specific failure reasons')->key('action')
                 ->example('Re-delegate task if clarification fails or response quality unrecoverable')->key('fallback');
 
             $this->guideline('error-context-loss')
@@ -66,7 +66,7 @@ class ErrorHandlingInclude extends IncludeArchetype
         $this->guideline('escalation-policy')
             ->text('Error escalation guidelines for Brain operations.')
             ->example('Standard errors: Log, apply fallback, continue operations')->key('standard')
-            ->example('Critical errors: Suspend operation, restore state, notify AgentMaster')->key('critical')
+            ->example('Critical errors: Pause current operation, inform user, request guidance')->key('critical')
             ->example('Unrecoverable errors: Abort task, notify user, trigger manual review')->key('unrecoverable');
     }
 }

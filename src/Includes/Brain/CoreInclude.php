@@ -18,7 +18,7 @@ class CoreInclude extends IncludeArchetype
     protected function handle(): void
     {
         $this->rule('memory-limit')->medium()
-            ->text('The Brain is limited to a maximum of 3 vector memory searches per operation.')
+            ->text('The Brain should minimize vector memory searches per operation — prefer fewer, targeted queries over broad sweeps.')
             ->why('Controls efficiency and prevents memory overload.')
             ->onViolation('Proceed without additional searches.');
 

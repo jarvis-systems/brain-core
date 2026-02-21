@@ -316,16 +316,28 @@ trait SharedCommandTrait
     // =========================================================================
 
     /**
-     * Define tag taxonomy rules and guidelines.
-     * Ensures all task tags, memory tags, and memory categories
-     * use ONLY predefined or project-custom values from constants and .env.
-     * Used by: ALL task and do commands that create tasks or store memories.
+     * Define ALL tag taxonomy rules and guidelines (backward-compatible wrapper).
+     * Calls all granular taxonomy methods: task tags, memory tags, safety escalation, cognitive level.
+     * Used by: Commands that both create tasks AND store memories (e.g., task:async, task:validate).
      */
     protected function defineTagTaxonomyRules(): void
     {
-        // Custom project tags from .env
+        $this->defineTaskTagTaxonomyRules();
+        $this->defineMemoryTagTaxonomyRules();
+        $this->defineSafetyEscalationRules();
+        $this->defineCognitiveLevelGuidelines();
+    }
+
+    /**
+     * Define task tag taxonomy rules and guidelines.
+     * Ensures task tags use ONLY predefined or project-custom values.
+     * Includes: task-tags-predefined-only rule, task-tag-selection guideline,
+     * mandatory-level-tags rule, batch-trivial rule (via defineBatchTrivialRule).
+     * Used by: Commands that CREATE tasks (task:create, task:decompose, init-task, init-agents).
+     */
+    protected function defineTaskTagTaxonomyRules(): void
+    {
         $customTaskTags = $this->parseCustomTags((string) $this->var('CUSTOM_TASK_TAGS', ''));
-        $customMemoryTags = $this->parseCustomTags((string) $this->var('CUSTOM_MEMORY_TAGS', ''));
 
         $taskTagsAll = implode(', ', array_merge(
             self::TASK_TAGS_WORKFLOW,
@@ -337,28 +349,12 @@ trait SharedCommandTrait
             $customTaskTags,
         ));
 
-        $memoryTagsAll = implode(', ', array_merge(
-            self::MEMORY_TAGS_CONTENT,
-            self::MEMORY_TAGS_SCOPE,
-            $customMemoryTags,
-        ));
-
         $this->rule('task-tags-predefined-only')->critical()
             ->text('Task tags MUST use ONLY predefined'.($customTaskTags ? ' or project-custom' : '').' values. FORBIDDEN: inventing new tags, synonyms, variations. Allowed: '.$taskTagsAll.'.')
             ->text(Operator::scenario('Project with 30 modules needs per-module filtering → use CUSTOM_TASK_TAGS in .env for project-specific tags, not 30 new constants in core.'))
             ->text(Operator::scenario('Task about "user login flow" → tag: auth (NOT: login, authentication, user-auth). MCP normalizes at storage, but use canonical form at reasoning time.'))
             ->why('Ad-hoc tags cause tag explosion ("user-auth", "authentication", "auth" = same concept, search finds none). Predefined'.($customTaskTags ? ' + project-custom' : '').' list = consistent search. MCP normalizes aliases at storage layer, but reasoning-time canonical usage prevents drift.')
             ->onViolation('Normalize via NOT-list (e.g. authentication→auth, db→database). No canonical match → skip tag, put context in task content. Silent fix, no memory storage.');
-
-        $this->rule('memory-tags-predefined-only')->critical()
-            ->text('Memory tags MUST use ONLY predefined'.($customMemoryTags ? ' or project-custom' : '').' values. Allowed: '.$memoryTagsAll.'.')
-            ->why('Unknown tags = unsearchable memories. Predefined'.($customMemoryTags ? ' + project-custom' : '').' = discoverable. MCP normalizes at storage, but use canonical form at reasoning time.')
-            ->onViolation('Normalize to closest canonical tag. No match → skip tag.');
-
-        $this->rule('memory-categories-predefined-only')->critical()
-            ->text('Memory category MUST be one of: '.implode(', ', self::MEMORY_CATEGORIES).'. FORBIDDEN: "other", "general", "misc", or unlisted.')
-            ->why('"other" is garbage nobody searches. Every memory needs meaningful category.')
-            ->onViolation('Choose most relevant from predefined list.');
 
         // Tag selection with NOT-format aliases
         $tagSelection = $this->guideline('task-tag-selection')
@@ -376,6 +372,40 @@ trait SharedCommandTrait
 
         $tagSelection->text('Formula: 1 TYPE + 1 DOMAIN + 0-2 WORKFLOW + 1 STRICT + 1 COGNITIVE'.($customTaskTags ? ' + 0-2 PROJECT' : '').'. Example: ["feature", "api", "strict:standard", "cognitive:standard"] or ["bugfix", "auth", "validation-fix", "strict:strict", "cognitive:deep"].');
 
+        // --- Mandatory level tags (CONSTITUTIONAL — always compiled) ---
+        $this->rule('mandatory-level-tags')->critical()
+            ->text('EVERY task MUST have exactly ONE strict:* tag AND ONE cognitive:* tag. Allowed strict: '.implode(', ', self::TASK_TAGS_STRICT).'. Allowed cognitive: '.implode(', ', self::TASK_TAGS_COGNITIVE).'. Missing level tags = assign based on task scope analysis.')
+            ->why('Level tags enable per-task compilation and cognitive load calibration. Without them, system defaults apply blindly regardless of task complexity.')
+            ->onViolation('Analyze task scope and assign: strict:{level} + cognitive:{level}. Simple rename = strict:relaxed + cognitive:minimal. Production auth = strict:strict + cognitive:deep.');
+    }
+
+    /**
+     * Define memory tag taxonomy rules and guidelines.
+     * Ensures memory tags and categories use ONLY predefined or project-custom values.
+     * Includes: memory-tags-predefined-only rule, memory-categories-predefined-only rule,
+     * memory-tag-selection guideline.
+     * Used by: Commands that STORE memories (init-vector, task:async, do:async, mem:store).
+     */
+    protected function defineMemoryTagTaxonomyRules(): void
+    {
+        $customMemoryTags = $this->parseCustomTags((string) $this->var('CUSTOM_MEMORY_TAGS', ''));
+
+        $memoryTagsAll = implode(', ', array_merge(
+            self::MEMORY_TAGS_CONTENT,
+            self::MEMORY_TAGS_SCOPE,
+            $customMemoryTags,
+        ));
+
+        $this->rule('memory-tags-predefined-only')->critical()
+            ->text('Memory tags MUST use ONLY predefined'.($customMemoryTags ? ' or project-custom' : '').' values. Allowed: '.$memoryTagsAll.'.')
+            ->why('Unknown tags = unsearchable memories. Predefined'.($customMemoryTags ? ' + project-custom' : '').' = discoverable. MCP normalizes at storage, but use canonical form at reasoning time.')
+            ->onViolation('Normalize to closest canonical tag. No match → skip tag.');
+
+        $this->rule('memory-categories-predefined-only')->critical()
+            ->text('Memory category MUST be one of: '.implode(', ', self::MEMORY_CATEGORIES).'. FORBIDDEN: "other", "general", "misc", or unlisted.')
+            ->why('"other" is garbage nobody searches. Every memory needs meaningful category.')
+            ->onViolation('Choose most relevant from predefined list.');
+
         // Memory tag selection
         $memorySelection = $this->guideline('memory-tag-selection')
             ->goal('Select 1-3 tags per memory. Combine dimensions.')
@@ -387,14 +417,16 @@ trait SharedCommandTrait
         }
 
         $memorySelection->text('Formula: 1 CONTENT + 0-1 SCOPE'.($customMemoryTags ? ' + 0-1 PROJECT' : '').'. Example: ["solution", "reusable"] or ["failure", "module-specific"]. Max 3 tags.');
+    }
 
-        // --- Mandatory level tags (CONSTITUTIONAL — always compiled) ---
-        $this->rule('mandatory-level-tags')->critical()
-            ->text('EVERY task MUST have exactly ONE strict:* tag AND ONE cognitive:* tag. Allowed strict: '.implode(', ', self::TASK_TAGS_STRICT).'. Allowed cognitive: '.implode(', ', self::TASK_TAGS_COGNITIVE).'. Missing level tags = assign based on task scope analysis.')
-            ->why('Level tags enable per-task compilation and cognitive load calibration. Without them, system defaults apply blindly regardless of task complexity.')
-            ->onViolation('Analyze task scope and assign: strict:{level} + cognitive:{level}. Simple rename = strict:relaxed + cognitive:minimal. Production auth = strict:strict + cognitive:deep.');
-
-        // --- Safety escalation (CONSTITUTIONAL — always compiled) ---
+    /**
+     * Define safety escalation rules for task-level protection.
+     * Ensures critical code areas get minimum protection levels regardless of task tags.
+     * Includes: safety-escalation-non-overridable rule, safety-escalation-patterns guideline.
+     * Used by: Commands that EXECUTE tasks with file-level changes.
+     */
+    protected function defineSafetyEscalationRules(): void
+    {
         $this->rule('safety-escalation-non-overridable')->critical()
             ->text('After loading task, check file paths in task.content/comment. If files match safety patterns → effective level MUST be >= pattern minimum, regardless of task tags or .env default. Agent tags are suggestions UPWARD only — can raise above safety floor, never lower below it.')
             ->text(Operator::scenario('Task tagged strict:relaxed touches auth/guards/LoginController.php → escalate to strict:strict minimum regardless of tag.'))
@@ -406,9 +438,6 @@ trait SharedCommandTrait
             ->goal('Automatic level escalation based on file patterns and context')
             ->text('File patterns → strict minimum: auth/, guards/, policies/, permissions/ → strict. payments/, billing/, stripe/, subscription/ → strict. .env, credentials, secrets, config/auth → paranoid. migrations/, schema → strict. composer.json, package.json, *.lock → standard. CI/, .github/, Dockerfile, docker-compose → strict. routes/, middleware/ → standard.')
             ->text('Context patterns → level minimum: priority=critical → strict+deep. tag hotfix or production → strict+standard. touches >10 files → standard+standard. tag breaking-change → strict+deep. Keywords security/encryption/auth/permission → strict. Keywords migration/schema/database/drop → strict.');
-
-        // --- Cognitive level guideline (CONSTITUTIONAL — always compiled) ---
-        $this->defineCognitiveLevelGuidelines();
     }
 
     // =========================================================================

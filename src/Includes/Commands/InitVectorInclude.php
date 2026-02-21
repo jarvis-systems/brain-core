@@ -24,14 +24,14 @@ class InitVectorInclude extends IncludeArchetype
     protected function handle(): void
     {
         // =========================================================================
-        // IRON RULES (from trait — universal safety)
+        // IRON RULES (from trait — universal safety, memory tags only: init-vector stores memories)
         // =========================================================================
         $this->defineIronExecutionRules();
         $this->defineSecretsPiiProtectionRules();
         $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
+        $this->defineMemoryTagTaxonomyRules();
         $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
+        $this->defineCognitiveLevelGuidelines();
 
         // =========================================================================
         // IRON RULES (command-specific)

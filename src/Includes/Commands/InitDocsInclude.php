@@ -24,14 +24,13 @@ class InitDocsInclude extends IncludeArchetype
     protected function handle(): void
     {
         // =========================================================================
-        // IRON RULES (from trait — universal safety)
+        // IRON RULES (from trait — universal safety, no tag taxonomy: init-docs doesn't create tasks)
         // =========================================================================
         $this->defineIronExecutionRules();
         $this->defineSecretsPiiProtectionRules();
         $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
         $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
+        $this->defineCognitiveLevelGuidelines();
 
         // =========================================================================
         // IRON RULES (command-specific)

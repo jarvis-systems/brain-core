@@ -26,13 +26,13 @@ class DelegationProtocolsInclude extends IncludeArchetype
         // === ALWAYS-ON: Iron rules ===
 
         $this->rule('delegation-limit')->critical()
-            ->text('Brain must not perform tasks independently, except for minor meta-operations (≤5% of session tokens).')
+            ->text('Brain must not perform tasks independently, except for trivial meta-operations (quick status checks, confirmations, brief clarifications).')
             ->why('Maintains strict separation between orchestration and execution.')
             ->onViolation('Delegate to appropriate agent immediately.');
 
         $this->rule('approval-chain')->high()
             ->text('Every delegation must follow the upward approval hierarchy.')
-            ->why('Architect approval required for delegation from Brain to Specialists.')
+            ->why('Brain selects agent by domain match; agent cannot re-delegate laterally.')
             ->onViolation('Reject and escalate to AgentMaster.');
 
         $this->rule('context-integrity')->high()
@@ -53,11 +53,11 @@ class DelegationProtocolsInclude extends IncludeArchetype
         // === ALWAYS-ON: Exploration delegation ===
 
         $this->guideline('exploration-delegation')
-            ->text('Brain must never execute Glob/Grep directly (governance violation). Delegate to Explore agent for codebase discovery.')
+            ->text('Brain should prefer Explore agent for multi-file codebase discovery. Targeted single-item lookups (known path, known class) may use Read/Glob directly.')
             ->example('Task(subagent_type="Explore", prompt="...")')->key('invocation')
             ->example('Multi-file patterns, keyword search, architecture discovery, "Where is X?" queries')->key('triggers')
             ->example('Glob patterns, Grep search, architecture analysis, codebase mapping')->key('capabilities')
-            ->example('Single specific file/class/function with known path may use Read directly')->key('exception');
+            ->example('Single specific file/class/function with known path may use Read or Glob directly')->key('exception');
 
         // === DEEP-COGNITIVE-ONLY: Authority levels, delegation types, workflows ===
 
