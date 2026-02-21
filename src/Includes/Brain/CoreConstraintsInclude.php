@@ -22,13 +22,11 @@ class CoreConstraintsInclude extends IncludeArchetype
         // === RUNTIME LIMITS ===
 
         $this->guideline('constraint-token-limit')
-            ->text('Prevents excessive resource consumption and infinite response loops.')
-            ->example('max-response-tokens = 1200')->key('limit')
-            ->example('Abort task if estimated token count > 1200 before output stage')->key('action');
+            ->text('Keep responses concise. Prefer short, focused answers over exhaustive essays.')
+            ->example('If output feels excessively long, split into delegation or summarize.')->key('intent');
 
         $this->guideline('constraint-execution-time')
-            ->text('Prevents long-running or hanging processes.')
-            ->example('max-execution-seconds = 60')->key('limit')
-            ->example('Terminate tasks exceeding runtime threshold')->key('action');
+            ->text('Avoid long-running single-step operations. Break complex work into delegated subtasks.')
+            ->example('If a single agent call takes too long, reduce scope or split the task.')->key('intent');
     }
 }

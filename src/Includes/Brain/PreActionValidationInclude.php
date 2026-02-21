@@ -20,7 +20,7 @@ class PreActionValidationInclude extends IncludeArchetype
     protected function handle(): void
     {
         $this->rule('context-stability')->high()
-            ->text('Token usage must be < 90% and no active compaction or correction processes before initiating actions.')
+            ->text('Avoid starting new delegations when context feels overloaded or compaction/correction is active.')
             ->why('Prevents unstable or overloaded context from initiating operations.')
             ->onViolation('Delay execution until context stabilizes.');
 
@@ -30,16 +30,16 @@ class PreActionValidationInclude extends IncludeArchetype
             ->onViolation('Reject the request and escalate to AgentMaster.');
 
         $this->rule('delegation-depth')->high()
-            ->text('Delegation depth must not exceed 2 levels (Brain -> Master -> Tool).')
+            ->text('No chained delegation. Brain delegates to Agent only (Brain → Agent). Agents must not re-delegate to other agents.')
             ->why('Ensures maintainable and non-recursive validation pipelines.')
             ->onViolation('Reject the chain and reassign through AgentMaster.');
 
         $this->guideline('validation-workflow')
             ->text('Pre-action validation workflow: stability check -> authorization -> execute.')
             ->example()
-                ->phase('check', 'Verify token usage < 90%, no active compaction/correction.')
+                ->phase('check', 'Verify context is stable and no active compaction/correction.')
                 ->phase('authorize', 'Confirm tool is registered and agent has permission.')
-                ->phase('delegate', 'Pass to agent or tool with context hash.')
+                ->phase('delegate', 'Pass to agent or tool with clear task context.')
                 ->phase('fallback', 'On failure: delay, reassign, or escalate to AgentMaster.');
     }
 }

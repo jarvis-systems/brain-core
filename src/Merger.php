@@ -277,24 +277,6 @@ class Merger
     }
 
     /**
-     * Find matching child index for merge.
-     *
-     * @param  array<int, array<string, mixed>>  $children
-     * @param  array<string, mixed>  $incoming
-     * @return int|null
-     */
-    protected function findMatchingChildIndex(array $children, array $incoming): int|null
-    {
-        foreach ($children as $index => $child) {
-            if ($this->canMergeChildren($child, $incoming)) {
-                return $index;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Determine where to insert a new child to keep logical ordering.
      *
      * @param  array<int, array<string, mixed>>  $current
@@ -318,58 +300,6 @@ class Merger
         }
 
         return $lastSameElementIndex !== null ? $lastSameElementIndex + 1 : null;
-    }
-
-    /**
-     * Determine if two child nodes should be merged.
-     *
-     * @param  array<string, mixed>  $current
-     * @param  array<string, mixed>  $incoming
-     * @return bool
-     */
-    protected function canMergeChildren(array $current, array $incoming): bool
-    {
-        if (($current['element'] ?? null) !== ($incoming['element'] ?? null)) {
-            return false;
-        }
-
-        $hasIdentifier = false;
-
-        foreach (['id', 'name', 'order', 'key'] as $identifier) {
-            $currentHas = array_key_exists($identifier, $current);
-            $incomingHas = array_key_exists($identifier, $incoming);
-
-            if (! $currentHas && ! $incomingHas) {
-                continue;
-            }
-
-            $currentValue = $currentHas ? $current[$identifier] : null;
-            $incomingValue = $incomingHas ? $incoming[$identifier] : null;
-
-            $currentSet = $this->isNonEmptyScalar($currentValue);
-            $incomingSet = $this->isNonEmptyScalar($incomingValue);
-
-            if ($currentSet && $incomingSet) {
-                $hasIdentifier = true;
-
-                if ($currentValue === $incomingValue) {
-                    return true;
-                }
-
-                return false;
-            }
-
-            if ($currentSet xor $incomingSet) {
-                $hasIdentifier = true;
-                return false;
-            }
-        }
-
-        if ($hasIdentifier) {
-            return false;
-        }
-
-        return $this->hasChildren($current) && $this->hasChildren($incoming);
     }
 
     protected function isNonEmptyScalar(mixed $value): bool

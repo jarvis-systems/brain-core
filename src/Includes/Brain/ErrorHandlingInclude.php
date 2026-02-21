@@ -34,7 +34,7 @@ class ErrorHandlingInclude extends IncludeArchetype
 
             $this->guideline('error-agent-timeout')
                 ->text('Agent exceeded execution time limit.')
-                ->example('Agent execution time > max-execution-seconds from constraints')->key('trigger')
+                ->example('Agent taking excessively long to respond or appears stuck')->key('trigger')
                 ->example('Abort agent execution and retrieve partial results if available')->key('response')
                 ->example('Log timeout event with agent_id and elapsed time')->key('action')
                 ->example('Retry with reduced scope or delegate to different agent')->key('fallback');
@@ -48,17 +48,17 @@ class ErrorHandlingInclude extends IncludeArchetype
 
             $this->guideline('error-context-loss')
                 ->text('Brain context corrupted or lost during delegation.')
-                ->example('Context hash mismatch, memory desync, or state corruption detected')->key('trigger')
-                ->example('Restore context from last stable checkpoint in vector memory')->key('response')
-                ->example('Validate restored context integrity before resuming operations')->key('action')
+                ->example('Conversation compacted unexpectedly, or agent returned incoherent state')->key('trigger')
+                ->example('Re-read critical context from source files or vector memory')->key('response')
+                ->example('Verify understanding of current task before resuming')->key('action')
                 ->example('Abort current task and notify user if context unrecoverable')->key('fallback');
 
             $this->guideline('error-resource-exceeded')
-                ->text('Brain exceeded resource limits during operation.')
-                ->example('Token usage ≥ 90%, memory usage > threshold, or constraint violation')->key('trigger')
-                ->example('Trigger compaction policy to preserve critical reasoning')->key('response')
+                ->text('Brain context feels overloaded during operation.')
+                ->example('Context window filling up, responses becoming incoherent, or repeated failures')->key('trigger')
+                ->example('Summarize progress and reduce active context')->key('response')
                 ->example('Commit partial progress and defer remaining work')->key('action')
-                ->example('Resume from checkpoint after resource limits restored')->key('fallback');
+                ->example('Resume after context freed up or in new session')->key('fallback');
         }
 
         // === ALWAYS-ON: Escalation policy ===

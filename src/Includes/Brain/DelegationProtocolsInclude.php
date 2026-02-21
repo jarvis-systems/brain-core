@@ -32,7 +32,7 @@ class DelegationProtocolsInclude extends IncludeArchetype
 
         $this->rule('approval-chain')->high()
             ->text('Every delegation must follow the upward approval hierarchy.')
-            ->why('Architect approval required for delegation from Brain to Specialists. Brain logs every delegated session with timestamp and agent_id.')
+            ->why('Architect approval required for delegation from Brain to Specialists.')
             ->onViolation('Reject and escalate to AgentMaster.');
 
         $this->rule('context-integrity')->high()
@@ -47,8 +47,8 @@ class DelegationProtocolsInclude extends IncludeArchetype
 
         $this->rule('accountability')->high()
             ->text('Responsibility always remains with the original delegator.')
-            ->why('Each result must carry traceable origin tag (origin_agent_id).')
-            ->onViolation('If trace missing, mark output as unverified and route to AgentMaster.');
+            ->why('Brain owns the final result regardless of which agent produced it.')
+            ->onViolation('If result quality unclear, re-validate or escalate to AgentMaster.');
 
         // === ALWAYS-ON: Exploration delegation ===
 
@@ -110,15 +110,14 @@ class DelegationProtocolsInclude extends IncludeArchetype
 
             $this->guideline('validation-delegation')
                 ->text('Delegation validation criteria.')
-                ->example('Delegation depth ≤ 2 (Brain → Architect → Specialist).')->key('criterion-1')
-                ->example('Each delegation requires explicit confirmation token.')->key('criterion-2')
-                ->example('Task context, vector refs, and reasoning state must match delegation source.')->key('criterion-3');
+                ->example('No chained delegation (Brain → Agent only).')->key('criterion-1')
+                ->example('Task context and requirements must be clearly passed to the agent.')->key('criterion-2');
 
             $this->guideline('fallback-delegation')
                 ->text('Delegation failure fallback procedures.')
                 ->example('If delegation rejected, reassign task to AgentMaster for redistribution.')->key('action-1')
                 ->example('If delegation chain breaks, restore pending tasks to Brain queue.')->key('action-2')
-                ->example('If unauthorized delegation detected, suspend agent and trigger audit.')->key('action-3');
+                ->example('If unauthorized delegation detected, reject and escalate to user.')->key('action-3');
 
             // Workflow phases
             $this->guideline('workflow-request-analysis')
@@ -133,7 +132,7 @@ class DelegationProtocolsInclude extends IncludeArchetype
                 ->text('Select optimal agent based on task domain and capabilities.')
                 ->example()
                     ->phase('step-1', 'Match task domain to agent expertise areas')
-                    ->phase('step-2', 'Check agent availability and trust index')
+                    ->phase('step-2', 'Check agent availability and capability match')
                     ->phase('step-3', 'Prepare delegation context and parameters')
                     ->phase('fallback', 'Escalate to AgentMaster if no suitable match');
 

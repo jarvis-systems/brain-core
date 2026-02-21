@@ -105,12 +105,23 @@ class RuntimeTest extends TestCase
     }
 
     /**
-     * __callStatic handles dynamic constant access.
+     * __callStatic resolves defined constants via defined()/constant().
+     */
+    public function testCallStaticResolvesDefinedConstants(): void
+    {
+        // DATE_TIME is a real constant with no explicit method — must resolve via __callStatic
+        $this->assertSame('{{ DATE_TIME }}', Runtime::DATE_TIME());
+        $this->assertSame('{{ TIMESTAMP }}', Runtime::TIMESTAMP());
+        $this->assertSame('{{ UNIQUE_ID }}', Runtime::UNIQUE_ID());
+    }
+
+    /**
+     * __callStatic falls through to print() for unknown constants.
      */
     public function testCallStaticReturnsTemplateForUnknown(): void
     {
-        // Unknown constants fall through to print()
         $this->assertSame('{{ UNKNOWN_CONST }}', Runtime::UNKNOWN_CONST());
+        $this->assertSame('{{ CUSTOM_VARIABLE }}', Runtime::CUSTOM_VARIABLE());
     }
 
     /**

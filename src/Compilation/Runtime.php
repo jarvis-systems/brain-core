@@ -79,9 +79,14 @@ class Runtime
         return static::SKILLS_FOLDER . (count($append) ? implode('/', $append) : '');
     }
 
-    public static function __callStatic(string $name, array $arguments)
+    public static function __callStatic(string $name, array $arguments): string
     {
-        if (isset(self::${$name})) return self::${$name};
+        $const = static::class . '::' . strtoupper($name);
+
+        if (defined($const)) {
+            return constant($const);
+        }
+
         return static::print($name);
     }
 }

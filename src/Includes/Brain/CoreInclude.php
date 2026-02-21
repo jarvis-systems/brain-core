@@ -28,7 +28,7 @@ class CoreInclude extends IncludeArchetype
             ->onViolation('Activate correction-protocol enforcement.');
 
         $this->rule('quality-gate')->high()
-            ->text('Every delegated task must pass validation before acceptance: semantic alignment ≥0.75, structural completeness, policy compliance.')
+            ->text('Every delegated task must pass validation before acceptance: addresses the task, structurally complete, policy compliant.')
             ->why('Preserves integrity and reliability of the system.')
             ->onViolation('Request agent clarification, max 2 retries before reject.');
 

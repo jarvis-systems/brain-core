@@ -51,7 +51,6 @@
     "illuminate/validation": "^v12.0",
     "illuminate/view": "^v12.0",
     "composer/composer": "^2.8",
-    "symfony/var-dumper": "^7.3",
     "yosymfony/toml": "^1.0",
     "bfg/dto": "^1.9",
     "symfony/var-exporter": "^7.3",
@@ -59,7 +58,8 @@
   },
   "require-dev": {
     "phpunit/phpunit": "^11",
-    "phpstan/phpstan": "^2.0"
+    "phpstan/phpstan": "^2.0",
+    "symfony/var-dumper": "^7.3"
   },
   "scripts": {
     "test": "phpunit",
