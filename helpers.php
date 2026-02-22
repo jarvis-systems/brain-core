@@ -81,7 +81,7 @@ if (!function_exists('puzzle_replace')) {
         return tag_replace($text, [
             ...compact('value'),
             ...Brain::getVariables(),
-            ...getenv(),
+            ...Brain::allEnv(),
         ], "{{ * }}");
     }
 }
