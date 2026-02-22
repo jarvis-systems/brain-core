@@ -7,6 +7,7 @@ namespace BrainCore\Console\Commands;
 use Bfg\Dto\Dto;
 use BrainCore\Abstracts\ArchitectureAbstract;
 use BrainCore\Architectures\ArchetypeArchitecture;
+use BrainCore\Core;
 use BrainCore\Merger;
 use BrainCore\Support\Brain;
 use BrainCore\TomlBuilder;
@@ -188,7 +189,7 @@ class ConvertCommand extends Command
 
         $cmdTime = (microtime(true) - $cmdStart) * 1000;
 
-        if (getenv('BRAIN_PROFILE') === '1') {
+        if (Core::env('BRAIN_PROFILE') === 1) {
             // Log profiling to stderr
             error_log(sprintf(
                 "PROFILE: Total=%.2fms | Parse=%.2fms (%.1f%%) | fromEmpty=%.2fms (%.1f%%) | Merger=%.2fms (%.1f%%) | Builder=%.2fms (%.1f%%) | Other=%.2fms (%.1f%%)",

@@ -8,6 +8,22 @@ use Bfg\Dto\Dto;
 
 class Core
 {
+    /**
+     * Env key prefixes that may influence compilation.
+     * Process env vars outside these namespaces are treated as absent
+     * by the strict static accessor Core::env().
+     */
+    public const ALLOWED_ENV_PREFIXES = [
+        'BRAIN_',
+    ];
+
+    /**
+     * Non-prefixed env keys explicitly allowed by Core::env().
+     */
+    public const ALLOWED_ENV_KEYS = [
+        'DEBUG',
+    ];
+
     protected string|null $versionCache = null;
 
     protected array $variables = [];
@@ -101,6 +117,51 @@ class Core
             || !! $this->getEnv('DEBUG');
     }
 
+    /**
+     * Check if an env key is in the compile-time allowlist.
+     *
+     * Matches ALLOWED_ENV_PREFIXES (prefix) or ALLOWED_ENV_KEYS (exact).
+     */
+    public static function isAllowedEnvKey(string $key): bool
+    {
+        $key = strtoupper($key);
+
+        if (in_array($key, self::ALLOWED_ENV_KEYS, true)) {
+            return true;
+        }
+
+        foreach (self::ALLOWED_ENV_PREFIXES as $prefix) {
+            if (str_starts_with($key, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Strict env accessor with allowlist gate.
+     *
+     * Only reads env keys matching ALLOWED_ENV_PREFIXES or
+     * listed in ALLOWED_ENV_KEYS. Unknown keys return $default.
+     * Use for direct env reads outside the var() resolution chain.
+     */
+    public static function env(string $key, mixed $default = null): mixed
+    {
+        $key = strtoupper($key);
+
+        if (! self::isAllowedEnvKey($key)) {
+            return $default;
+        }
+
+        $value = getenv($key);
+        if ($value === false) {
+            return $default;
+        }
+
+        return self::castEnvValue($value);
+    }
+
     public function hasEnv(string $name): bool
     {
         return getenv(strtoupper($name)) !== false;
@@ -110,6 +171,9 @@ class Core
     {
         $envs = [];
         foreach (getenv() as $key => $value) {
+            if (! self::isAllowedEnvKey($key)) {
+                continue;
+            }
             if ($findName !== null && ! str_starts_with($key, $findName)) {
                 continue;
             }
@@ -125,6 +189,15 @@ class Core
         if ($value === false) {
             return null;
         }
+
+        return self::castEnvValue($value);
+    }
+
+    /**
+     * Cast raw env string to typed PHP value.
+     */
+    private static function castEnvValue(string $value): mixed
+    {
         if ($value === 'null') {
             return null;
         }

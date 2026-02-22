@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace BrainCore\Compilation\Traits;
 
+use BrainCore\Core;
+
 /**
  * Compile-time debug logging for graceful degradation events.
  *
@@ -27,7 +29,7 @@ trait LogDegradationTrait
 
     protected static function logDegradation(string $context, \Throwable $e): void
     {
-        if (getenv('BRAIN_COMPILE_DEBUG')) {
+        if (Core::env('BRAIN_COMPILE_DEBUG')) {
             $message = str_replace(["\r\n", "\n", "\r"], ' ', $e->getMessage());
 
             if (mb_strlen($message) > self::MAX_MESSAGE_LENGTH) {
