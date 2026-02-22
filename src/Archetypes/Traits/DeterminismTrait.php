@@ -13,6 +13,7 @@ trait DeterminismTrait
      */
     public function determinism(): Determinism
     {
+        /** @var Determinism */
         return $this->findOrCreateChild(Determinism::class);
     }
 }

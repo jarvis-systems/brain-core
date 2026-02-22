@@ -13,6 +13,7 @@ trait ResponseTrait
      */
     public function response(): Response
     {
+        /** @var Response */
         return $this->findOrCreateChild(Response::class);
     }
 }

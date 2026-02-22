@@ -30,6 +30,7 @@ class IronRules extends CortexArchitecture
      */
     public function rule(string|null $id = null): IronRule
     {
+        /** @var IronRule */
         return $this->findOrCreateChild(IronRule::class, $id);
     }
 }

@@ -16,6 +16,7 @@ trait GuidelinesTrait
      */
     public function guidelines(): Guidelines
     {
+        /** @var Guidelines */
         return $this->findOrCreateChild(Guidelines::class);
     }
 

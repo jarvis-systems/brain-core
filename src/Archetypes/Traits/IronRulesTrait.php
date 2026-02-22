@@ -16,6 +16,7 @@ trait IronRulesTrait
      */
     public function ironRules(): IronRules
     {
+        /** @var IronRules */
         return $this->findOrCreateChild(IronRules::class);
     }
 
