@@ -180,8 +180,13 @@ class CoreTest extends TestCase
     public function testVersionReadsComposerJson(): void
     {
         $version = $this->core->version();
-        // core/composer.json version must match root — currently v0.2.0
-        $this->assertSame('v0.2.0', $version);
+
+        // Read expected version from composer.json (single source of truth)
+        $composerPath = dirname(__DIR__) . '/composer.json';
+        $expected = json_decode(file_get_contents($composerPath), true)['version'];
+
+        $this->assertSame($expected, $version);
+        $this->assertMatchesRegularExpression('/^v\d+\.\d+\.\d+$/', $version);
     }
 
     public function testVersionCachesResult(): void

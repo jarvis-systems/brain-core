@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
  *
  * If a test fails after an intentional rendering change:
  * 1. Verify the new output is correct
- * 2. Run: php tests/update-snapshots.php (or manually replace fixture)
+ * 2. Manually replace the fixture file with the new correct output
  * 3. Commit updated fixture with the rendering change
  */
 class SnapshotTest extends TestCase
@@ -157,7 +157,7 @@ class SnapshotTest extends TestCase
         $actual = XmlBuilder::from($this->merge($structure));
 
         $goldenPath = self::FIXTURES_DIR . '/golden-standard.txt';
-        $this->assertFileExists($goldenPath, 'Golden file missing: run tests/update-snapshots.php');
+        $this->assertFileExists($goldenPath, 'Golden file missing: copy actual output to ' . $goldenPath);
 
         $expected = file_get_contents($goldenPath);
         $this->assertSame(
