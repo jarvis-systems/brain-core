@@ -7,11 +7,13 @@ namespace BrainCore\Architectures;
 use BrainCore\Abstracts\ArchitectureAbstract;
 use BrainCore\Architectures\Traits\ExtractMetaAttributesTrait;
 use BrainCore\Attributes\Meta;
+use BrainCore\Compilation\Traits\LogDegradationTrait;
 use Symfony\Component\VarExporter\VarExporter;
 
 abstract class McpArchitecture extends ArchitectureAbstract
 {
     use ExtractMetaAttributesTrait;
+    use LogDegradationTrait;
 
     /**
      * Track which classes have already registered their 'created' event listener.
@@ -42,9 +44,7 @@ abstract class McpArchitecture extends ArchitectureAbstract
             try {
                 $args[$index] = VarExporter::export($arg);
             } catch (\Throwable $e) {
-                if (getenv('BRAIN_COMPILE_DEBUG')) {
-                    error_log("[brain-compile] McpArchitecture::call: " . $e->getMessage());
-                }
+                static::logDegradation('McpArchitecture::call', $e);
                 $args[$index] = '"unserializable_argument"';
             }
         }
@@ -85,9 +85,7 @@ abstract class McpArchitecture extends ArchitectureAbstract
             try {
                 $args[$index] = VarExporter::export($arg);
             } catch (\Throwable $e) {
-                if (getenv('BRAIN_COMPILE_DEBUG')) {
-                    error_log("[brain-compile] McpArchitecture::id: " . $e->getMessage());
-                }
+                static::logDegradation('McpArchitecture::id', $e);
                 $args[$index] = '"unserializable_argument"';
             }
         }

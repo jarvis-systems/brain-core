@@ -15,16 +15,7 @@ use Symfony\Component\VarExporter\VarExporter;
  */
 trait CompileStandardsTrait
 {
-    /**
-     * Log graceful degradation event when VarExporter fails.
-     * Gated by BRAIN_COMPILE_DEBUG env — silent by default.
-     */
-    protected static function logDegradation(string $context, \Throwable $e): void
-    {
-        if (getenv('BRAIN_COMPILE_DEBUG')) {
-            error_log("[brain-compile] $context: " . $e->getMessage());
-        }
-    }
+    use LogDegradationTrait;
 
     protected static function generateOperator(
         string $name,

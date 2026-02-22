@@ -12,6 +12,7 @@ use BrainCore\Archetypes\Traits\GuidelinesTrait;
 use BrainCore\Architectures\ArchetypeArchitecture;
 use BrainCore\Archetypes\Traits\ExtractCommandAttributesTrait;
 use BrainCore\Attributes\Meta;
+use BrainCore\Compilation\Traits\LogDegradationTrait;
 use Illuminate\Support\Str;
 use Symfony\Component\VarExporter\VarExporter;
 
@@ -23,6 +24,7 @@ abstract class CommandArchetype extends ArchetypeArchitecture
     use IronRulesTrait;
     use GuidelinesTrait;
     use ExtractCommandAttributesTrait;
+    use LogDegradationTrait;
 
     /**
      * Default element name.
@@ -73,9 +75,7 @@ abstract class CommandArchetype extends ArchetypeArchitecture
             try {
                 $args[$index] = VarExporter::export($arg);
             } catch (\Throwable $e) {
-                if (getenv('BRAIN_COMPILE_DEBUG')) {
-                    error_log("[brain-compile] CommandArchetype::id: " . $e->getMessage());
-                }
+                static::logDegradation('CommandArchetype::id', $e);
                 unset($args[$index]);
             }
         }
