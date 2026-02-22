@@ -540,7 +540,6 @@ class NodeIntegrityTest extends TestCase
 
         $expected = [
             'Context7Mcp.php',
-            'GithubMcp.php',
             'LaravelBoostMcp.php',
             'SequentialThinkingMcp.php',
             'VectorMemoryMcp.php',
