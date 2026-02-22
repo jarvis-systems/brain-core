@@ -144,6 +144,78 @@ class VarExporterDegradationTest extends TestCase
     }
 
     /**
+     * logDegradation truncates pathologically long exception messages.
+     *
+     * Enterprise invariant: bounded output prevents unbounded log growth.
+     * Hard cap at 500 chars + truncation marker. Output remains single-line.
+     */
+    public function testLogDegradationTruncatesLongMessages(): void
+    {
+        $traitUser = new class {
+            use LogDegradationTrait {
+                logDegradation as public;
+            }
+        };
+
+        $logFile = tempnam(sys_get_temp_dir(), 'brain_test_');
+        $oldLog = ini_set('error_log', $logFile);
+        putenv('BRAIN_COMPILE_DEBUG=1');
+
+        // 1200-char message with embedded newlines to test both sanitization + truncation
+        $longMessage = str_repeat("abcdefghij\n", 120); // 1320 chars with newlines
+        $traitUser::logDegradation('truncation-test', new \RuntimeException($longMessage));
+
+        putenv('BRAIN_COMPILE_DEBUG=');
+        ini_set('error_log', $oldLog ?: '');
+
+        $logContent = file_get_contents($logFile);
+        unlink($logFile);
+
+        $messagePortion = substr($logContent, strpos($logContent, '[brain-compile]'));
+
+        // Single-line invariant preserved after truncation
+        $this->assertStringNotContainsString("\n", rtrim($messagePortion));
+        $this->assertStringNotContainsString("\r", $messagePortion);
+
+        // Truncation marker present
+        $this->assertStringContainsString('[...truncated]', $logContent);
+
+        // Total message length bounded: prefix "[brain-compile] truncation-test: " (34)
+        // + 500 chars + " [...truncated]" (15) = 549 max payload
+        $payloadLength = mb_strlen(rtrim($messagePortion));
+        $this->assertLessThanOrEqual(560, $payloadLength, 'Log output must be bounded');
+    }
+
+    /**
+     * logDegradation does NOT truncate messages within the cap.
+     */
+    public function testLogDegradationPreservesShortMessages(): void
+    {
+        $traitUser = new class {
+            use LogDegradationTrait {
+                logDegradation as public;
+            }
+        };
+
+        $logFile = tempnam(sys_get_temp_dir(), 'brain_test_');
+        $oldLog = ini_set('error_log', $logFile);
+        putenv('BRAIN_COMPILE_DEBUG=1');
+
+        $shortMessage = 'Short error message under cap';
+        $traitUser::logDegradation('short-test', new \RuntimeException($shortMessage));
+
+        putenv('BRAIN_COMPILE_DEBUG=');
+        ini_set('error_log', $oldLog ?: '');
+
+        $logContent = file_get_contents($logFile);
+        unlink($logFile);
+
+        // Full message preserved — no truncation
+        $this->assertStringContainsString($shortMessage, $logContent);
+        $this->assertStringNotContainsString('[...truncated]', $logContent);
+    }
+
+    /**
      * Operator::note handles closure without crash.
      */
     public function testOperatorNoteHandlesClosure(): void

@@ -17,15 +17,23 @@ namespace BrainCore\Compilation\Traits;
  *   Only context label + exception message are emitted.
  * - Output is single-line: newlines in exception messages are
  *   replaced with spaces for deterministic log parsing.
- * - No length cap: error_log() system-level truncation (syslog ~1 KiB)
- *   is sufficient for debug-only VarExporter failure messages.
+ * - Hard cap at 500 chars: prevents pathological exception messages
+ *   from producing unbounded log output. Truncated messages get
+ *   a "[…truncated]" suffix for visibility.
  */
 trait LogDegradationTrait
 {
+    private const MAX_MESSAGE_LENGTH = 500;
+
     protected static function logDegradation(string $context, \Throwable $e): void
     {
         if (getenv('BRAIN_COMPILE_DEBUG')) {
             $message = str_replace(["\r\n", "\n", "\r"], ' ', $e->getMessage());
+
+            if (mb_strlen($message) > self::MAX_MESSAGE_LENGTH) {
+                $message = mb_substr($message, 0, self::MAX_MESSAGE_LENGTH) . ' [...truncated]';
+            }
+
             error_log("[brain-compile] $context: " . $message);
         }
     }
