@@ -174,7 +174,7 @@ class ConvertCommand extends Command
                     fwrite(STDERR, json_encode([
                         ...$defaultData,
                         'structure' => $structure,
-                    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL);
+                    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . PHP_EOL);
                     $result = false;
                 }
             } else {
@@ -202,7 +202,7 @@ class ConvertCommand extends Command
             ));
         } else {
             if ($result) {
-                echo json_encode($result, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+                echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
             }
         }
 
