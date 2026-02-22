@@ -169,7 +169,7 @@ if (! function_exists('to_string')) {
         if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
-        $value = is_callable($value) ? call_user_func($value) : $value;
+        $value = $value instanceof \Closure ? $value() : $value;
         return is_scalar($value)
             ? (string) $value
             : (is_array($value) || is_object($value)
@@ -191,7 +191,7 @@ if (! function_exists('to_int')) {
         if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
-        $value = is_callable($value) ? call_user_func($value) : $value;
+        $value = $value instanceof \Closure ? $value() : $value;
         return is_scalar($value) ? (int) $value : $default;
     }
 }
@@ -209,7 +209,7 @@ if (! function_exists('to_float')) {
         if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
-        $value = is_callable($value) ? call_user_func($value) : $value;
+        $value = $value instanceof \Closure ? $value() : $value;
         return is_scalar($value) ? (float) $value : $default;
     }
 }
@@ -227,7 +227,7 @@ if (! function_exists('to_bool')) {
         if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
-        $value = is_callable($value) ? call_user_func($value) : $value;
+        $value = $value instanceof \Closure ? $value() : $value;
         return is_scalar($value)
             ? !! $value
             : $default;
@@ -247,7 +247,7 @@ if (! function_exists('to_array')) {
         if ($value instanceof BackedEnum) {
             $value = $value->value;
         }
-        $value = is_callable($value) ? call_user_func($value) : $value;
+        $value = $value instanceof \Closure ? $value() : $value;
         return is_array($value)
             ? $value
             : ($value instanceof Arrayable
