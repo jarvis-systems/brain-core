@@ -62,7 +62,7 @@ class Example extends BlueprintArchitecture
      * Set Other Next Example
      *
      * @param  non-empty-string|array|null  $text
-     * @return Example
+     * @return static
      */
     public function example(string|array|null $text = null): static
     {

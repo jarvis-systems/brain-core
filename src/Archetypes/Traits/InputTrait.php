@@ -17,7 +17,9 @@ trait InputTrait
      */
     public function globalInput(string|array $text): Input
     {
-        return $this->findOrCreateChild(Input::class)
-            ->text(is_array($text) ? MD::fromArray($text) : $text);
+        /** @var Input $input */
+        $input = $this->findOrCreateChild(Input::class);
+
+        return $input->text(is_array($text) ? MD::fromArray($text) : $text);
     }
 }

@@ -17,7 +17,9 @@ trait ContextTrait
      */
     public function globalContext(string|array $text): Context
     {
-        return $this->findOrCreateChild(Context::class)
-            ->text(is_array($text) ? MD::fromArray($text) : $text);
+        /** @var Context $context */
+        $context = $this->findOrCreateChild(Context::class);
+
+        return $context->text(is_array($text) ? MD::fromArray($text) : $text);
     }
 }

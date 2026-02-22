@@ -33,7 +33,7 @@ class Store
             if (is_string($item)) {
                 return $item;
             }
-            return static::exportValue($item);
+            return self::exportValue($item);
         }, $appropriate);
 
         return 'STORE-AS(' . $varName . ' = ' . implode(' + ', $values) . ')';

@@ -137,7 +137,7 @@ class XmlBuilder
                 => $ruleText !== null ? MD::autoCode($ruleText) : null,
                 $ruleChildren
             ], $sccNext);
-        } elseif (! isset(static::$cache['iron_rules_exists'])) {
+        } elseif (! isset(self::$cache['iron_rules_exists'])) {
             $lines[] = '<' . $element . $attributes . '>';
         }
 
@@ -197,11 +197,11 @@ class XmlBuilder
                 }
             } elseif ($element !== 'rule') {
                 if ($iron_rules_exists) {
-                    static::$cache['iron_rules_exists'] = true;
+                    self::$cache['iron_rules_exists'] = true;
                 }
                 $lines[] = $this->renderNode($child, false, $i + 1);
                 if ($iron_rules_exists) {
-                    unset(static::$cache['iron_rules_exists']);
+                    unset(self::$cache['iron_rules_exists']);
                 }
             }
             $firstChildRendered = true;
@@ -224,7 +224,7 @@ class XmlBuilder
         ) {
             //$lines[] = '---';
             $lines[] = '';
-        } elseif (! isset(static::$cache['iron_rules_exists'])) {
+        } elseif (! isset(self::$cache['iron_rules_exists'])) {
             $lines[] = '</' . $element . '>';
         }
 

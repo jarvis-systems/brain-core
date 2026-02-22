@@ -17,7 +17,9 @@ trait InstructionsTrait
      */
     public function instructions(string|array $text): Instructions
     {
-        return $this->findOrCreateChild(Instructions::class)
-            ->text(is_array($text) ? MD::fromArray($text) : $text);
+        /** @var Instructions $instructions */
+        $instructions = $this->findOrCreateChild(Instructions::class);
+
+        return $instructions->text(is_array($text) ? MD::fromArray($text) : $text);
     }
 }
