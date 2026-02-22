@@ -62,7 +62,7 @@ class XmlBuilder
             return '';
         }
         try {
-            $withoutMeta = Brain::getEnv('BRAIN_COMPILE_WITHOUT_META');
+            $withoutMeta = Brain::resolveCompileEnv('BRAIN_COMPILE_WITHOUT_META');
         } catch (\RuntimeException) {
             $withoutMeta = false;
         }

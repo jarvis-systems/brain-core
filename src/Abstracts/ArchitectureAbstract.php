@@ -18,8 +18,8 @@ abstract class ArchitectureAbstract extends Dto
      */
     public function var(string $name, mixed $default = null): mixed
     {
-        if (Brain::hasEnv($name)) {
-            return Brain::getEnv($name);
+        if (Brain::hasCompileEnv($name)) {
+            return Brain::resolveCompileEnv($name);
         }
 
         return Brain::getVariable($name, function () use ($name, $default) {

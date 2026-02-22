@@ -88,8 +88,8 @@ class ConvertCommand extends Command
                 ->last();
 
             if (
-                Brain::getEnv($className . '_DISABLE')
-                || Brain::getEnv($groupName . '_DISABLE')
+                Brain::resolveCompileEnv($className . '_DISABLE')
+                || Brain::resolveCompileEnv($groupName . '_DISABLE')
             ) {
                 if ($dumpFormat) {
                     $format = $dumpFormat;
@@ -101,7 +101,7 @@ class ConvertCommand extends Command
             if (is_subclass_of($class, ArchitectureAbstract::class)) {
                 if (
                     $class::disableByDefault()
-                    && ! Brain::getEnv($className . '_ENABLE')
+                    && ! Brain::resolveCompileEnv($className . '_ENABLE')
                 ) {
                     if ($dumpFormat) {
                         $format = $dumpFormat;

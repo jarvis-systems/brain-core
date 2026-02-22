@@ -9,19 +9,34 @@ use Bfg\Dto\Dto;
 class Core
 {
     /**
-     * Env key prefixes that may influence compilation.
-     * Process env vars outside these namespaces are treated as absent
-     * by the strict static accessor Core::env().
+     * Env key prefixes allowed through the filtered Core::env() / allEnv() surface.
+     * Process env vars outside these namespaces are treated as absent.
+     * Compile-time node keys (MCP_*_DISABLE, AGENTS_*_ENABLE, etc.) are covered
+     * by namespace-derived prefixes.
      */
     public const ALLOWED_ENV_PREFIXES = [
         'BRAIN_',
+        'MCP_',
+        'AGENTS_',
+        'COMMANDS_',
+        'SKILLS_',
+        'INCLUDES_',
     ];
 
     /**
-     * Non-prefixed env keys explicitly allowed by Core::env().
+     * Non-prefixed env keys explicitly allowed by Core::env() / allEnv().
+     * These are canonical project knobs from .brain/.env that don't follow
+     * the BRAIN_ prefix convention.
      */
     public const ALLOWED_ENV_KEYS = [
         'DEBUG',
+        'LANGUAGE',
+        'STRICT_MODE',
+        'COGNITIVE_LEVEL',
+        'VERBOSITY',
+        'SELF_DEV_MODE',
+        'QUALITY_COMMAND_TEST',
+        'QUALITY_COMMAND_PHPSTAN',
     ];
 
     protected string|null $versionCache = null;
@@ -113,8 +128,8 @@ class Core
 
     public function isDebug(): bool
     {
-        return !! $this->getEnv('BRAIN_CORE_DEBUG')
-            || !! $this->getEnv('DEBUG');
+        return !! self::env('BRAIN_CORE_DEBUG')
+            || !! self::env('DEBUG');
     }
 
     /**
@@ -162,7 +177,20 @@ class Core
         return self::castEnvValue($value);
     }
 
+    /**
+     * @deprecated Use hasCompileEnv() for compile-time resolution.
+     * @internal Unfiltered — delegates to hasCompileEnv().
+     */
     public function hasEnv(string $name): bool
+    {
+        return $this->hasCompileEnv($name);
+    }
+
+    /**
+     * @internal Compile-time env presence check — reads process env without allowlist.
+     * Used by the var() resolution chain and node enable/disable logic.
+     */
+    public function hasCompileEnv(string $name): bool
     {
         return getenv(strtoupper($name)) !== false;
     }
@@ -177,12 +205,26 @@ class Core
             if ($findName !== null && ! str_starts_with($key, $findName)) {
                 continue;
             }
-            $envs[$key] = $this->getEnv($key);
+            $envs[$key] = $this->resolveCompileEnv($key);
         }
         return $envs;
     }
 
+    /**
+     * @deprecated Use Core::env() for filtered access or resolveCompileEnv() for compile-time resolution.
+     * @internal Unfiltered — delegates to resolveCompileEnv().
+     */
     public function getEnv(string $name): mixed
+    {
+        return $this->resolveCompileEnv($name);
+    }
+
+    /**
+     * @internal Compile-time env resolution — reads process env without allowlist filtering.
+     * Used by the var() resolution chain and node enable/disable logic.
+     * Not for templating or output — values may contain secrets.
+     */
+    public function resolveCompileEnv(string $name): mixed
     {
         $name = strtoupper($name);
         $value = getenv($name);

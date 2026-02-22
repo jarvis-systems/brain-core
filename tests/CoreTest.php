@@ -304,6 +304,103 @@ class CoreTest extends TestCase
     }
 
     // ──────────────────────────────────────────────
+    // Env allowlist + compile-resolve split
+    // ──────────────────────────────────────────────
+
+    public function testEnvAllowlistBlocksGenericKeys(): void
+    {
+        $this->setEnv('HOME_TEST_SENTINEL', '/tmp/nope');
+        $this->setEnv('PATH_TEST_SENTINEL', '/usr/bin');
+
+        // Static filtered accessor must reject non-allowlisted keys
+        $this->assertNull(Core::env('HOME_TEST_SENTINEL'));
+        $this->assertNull(Core::env('PATH_TEST_SENTINEL'));
+    }
+
+    public function testEnvAllowlistPassesProjectKeys(): void
+    {
+        $this->setEnv('LANGUAGE', 'Ukrainian');
+        $this->setEnv('STRICT_MODE', 'paranoid');
+        $this->setEnv('COGNITIVE_LEVEL', 'exhaustive');
+        $this->setEnv('VERBOSITY', 'medium');
+        $this->setEnv('SELF_DEV_MODE', 'true');
+        $this->setEnv('QUALITY_COMMAND_TEST', 'composer test');
+        $this->setEnv('QUALITY_COMMAND_PHPSTAN', 'composer analyse');
+
+        $this->assertSame('Ukrainian', Core::env('LANGUAGE'));
+        $this->assertSame('paranoid', Core::env('STRICT_MODE'));
+        $this->assertSame('exhaustive', Core::env('COGNITIVE_LEVEL'));
+        $this->assertSame('medium', Core::env('VERBOSITY'));
+        $this->assertTrue(Core::env('SELF_DEV_MODE'));
+        $this->assertSame('composer test', Core::env('QUALITY_COMMAND_TEST'));
+        $this->assertSame('composer analyse', Core::env('QUALITY_COMMAND_PHPSTAN'));
+    }
+
+    public function testEnvAllowlistPassesNamespacePrefixes(): void
+    {
+        $this->setEnv('MCP_TEST_NODE_DISABLE', '1');
+        $this->setEnv('AGENTS_TEST_MASTER_ENABLE', '1');
+
+        $this->assertSame(1, Core::env('MCP_TEST_NODE_DISABLE'));
+        $this->assertSame(1, Core::env('AGENTS_TEST_MASTER_ENABLE'));
+    }
+
+    public function testAllEnvIncludesProjectKeys(): void
+    {
+        $this->setEnv('LANGUAGE', 'Ukrainian');
+        $this->setEnv('STRICT_MODE', 'paranoid');
+
+        $all = $this->core->allEnv();
+        $this->assertArrayHasKey('LANGUAGE', $all);
+        $this->assertArrayHasKey('STRICT_MODE', $all);
+    }
+
+    public function testAllEnvExcludesGenericSystemVars(): void
+    {
+        // HOME/PATH are typically set; they must NOT appear in allEnv
+        $all = $this->core->allEnv();
+        $this->assertArrayNotHasKey('HOME', $all);
+        $this->assertArrayNotHasKey('PATH', $all);
+        $this->assertArrayNotHasKey('USER', $all);
+        $this->assertArrayNotHasKey('SHELL', $all);
+    }
+
+    public function testResolveCompileEnvReadsArbitraryKeys(): void
+    {
+        $key = 'XYZZY_COMPILE_TEST_' . strtoupper(substr(uniqid(), -4));
+        $this->setEnv($key, 'magic');
+
+        // resolveCompileEnv is unfiltered — must read any process env
+        $this->assertSame('magic', $this->core->resolveCompileEnv($key));
+    }
+
+    public function testHasCompileEnvReadsArbitraryKeys(): void
+    {
+        $key = 'XYZZY_HAS_TEST_' . strtoupper(substr(uniqid(), -4));
+        $this->assertFalse($this->core->hasCompileEnv($key));
+
+        $this->setEnv($key, 'present');
+        $this->assertTrue($this->core->hasCompileEnv($key));
+    }
+
+    public function testResolveCompileEnvReturnsNullForMissing(): void
+    {
+        $this->assertNull($this->core->resolveCompileEnv('BRAIN_NONEXISTENT_' . uniqid()));
+    }
+
+    public function testDeprecatedGetEnvDelegatesToResolveCompileEnv(): void
+    {
+        $key = 'BRAIN_COMPAT_TEST_' . strtoupper(substr(uniqid(), -4));
+        $this->setEnv($key, '42');
+
+        // Deprecated wrapper must return same result
+        $this->assertSame(
+            $this->core->resolveCompileEnv($key),
+            $this->core->getEnv($key)
+        );
+    }
+
+    // ──────────────────────────────────────────────
     // CompileDto
     // ──────────────────────────────────────────────
 
