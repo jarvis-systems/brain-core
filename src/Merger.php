@@ -174,7 +174,7 @@ class Merger
         $index = $this->buildChildrenIndex($current);
 
         foreach ($incoming as $incomingChild) {
-            if (! is_array($incomingChild)) {
+            if (! is_array($incomingChild)) { // @phpstan-ignore function.alreadyNarrowedType (defensive: runtime data may not match PHPDoc)
                 continue;
             }
 

@@ -1,5 +1,5 @@
 parameters:
-    level: 3
+    level: 4
     paths:
         - src
     bootstrapFiles:
@@ -29,6 +29,12 @@ parameters:
         # external extension — the pattern is intentional.
         -
             identifier: new.static
+
+        # McpSchemaTrait is consumed by the brain-node package (VectorMemoryMcp,
+        # VectorTaskMcp). PHPStan sees core in isolation → reports unused.
+        -
+            identifier: trait.unused
+            path: src/Mcp/Traits/McpSchemaTrait.php
 
         # Brain Facade proxies to BrainCore\Core via __callStatic() magic.
         # Methods (hasEnv, getEnv, getVariable, basePath, etc.) exist on Core

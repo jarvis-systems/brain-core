@@ -21,7 +21,7 @@ trait ExtractMetaAttributesTrait
         foreach ($metaAttributes as $attribute) {
             /** @var Meta $metaInstance */
             $metaInstance = $attribute->newInstance();
-            if (method_exists($this, 'metas')) {
+            if (method_exists($this, 'metas')) { // @phpstan-ignore function.alreadyNarrowedType (guard needed: AgentArchetype, McpArchitecture lack metas())
                 $this->metas()->meta($metaInstance->name)
                     ->text($metaInstance->getText());
             }
