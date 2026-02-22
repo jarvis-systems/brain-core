@@ -14,6 +14,7 @@ use BrainCore\Architectures\Traits\FactoryHelpersTrait;
  * @property-write string|null $id
  * @property-write string $element
  * @property-write DtoCollection<int, Dto> $child
+ * @property-write string|null $text
  */
 abstract class CortexArchitecture extends ArchitectureAbstract
 {
@@ -23,6 +24,7 @@ abstract class CortexArchitecture extends ArchitectureAbstract
     protected static array $extends = [
         'id' => ['string', 'null'],
         'element' => 'string',
+        'text' => ['string', 'null'],
         'child' => DtoCollection::class,
     ];
 

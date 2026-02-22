@@ -1,7 +1,9 @@
 parameters:
-    level: 0
+    level: 1
     paths:
         - src
+    bootstrapFiles:
+        - phpstan-bootstrap.php
     ignoreErrors:
         # Core intentionally references BrainNode\* classes via compile-time
         # forward references. These resolve at runtime when core is installed
@@ -27,3 +29,10 @@ parameters:
         # external extension — the pattern is intentional.
         -
             identifier: new.static
+
+        # Brain Facade proxies to BrainCore\Core via __callStatic() magic.
+        # Methods (hasEnv, getEnv, getVariable, basePath, etc.) exist on Core
+        # class but are invisible to PHPStan without Larastan extension.
+        -
+            identifier: staticMethod.notFound
+            message: '#Brain::#'

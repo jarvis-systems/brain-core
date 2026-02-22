@@ -16,6 +16,11 @@ abstract class ArchetypeArchitecture extends ArchitectureAbstract
     use CompilationHelpersTrait;
 
     /**
+     * Compiled text content populated via addText() from CompilationHelpersTrait.
+     */
+    protected string $text = '';
+
+    /**
      * Track which classes have already registered their 'created' event listener.
      * This prevents registering the same listener multiple times.
      * @var array<string, bool>
