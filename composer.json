@@ -3,7 +3,7 @@
   "description": "The Brain Core for Agent Management",
   "keywords": ["jarvis", "brain", "core"],
   "type": "library",
-  "version": "v0.2.0",
+  "version": "v0.2.2",
   "license": "MIT",
   "authors": [
     {
