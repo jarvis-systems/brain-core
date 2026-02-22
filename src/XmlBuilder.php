@@ -32,7 +32,7 @@ class XmlBuilder
     public static function from(array $structure): string
     {
         // Cache by structure hash for identical structures
-        $cacheKey = md5(serialize($structure));
+        $cacheKey = md5(json_encode($structure, JSON_THROW_ON_ERROR));
 
         if (isset(self::$buildCache[$cacheKey])) {
             return self::$buildCache[$cacheKey];

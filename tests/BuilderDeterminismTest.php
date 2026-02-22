@@ -19,7 +19,7 @@ class BuilderDeterminismTest extends TestCase
 {
     /**
      * XmlBuilder::from() must produce identical output for identical input.
-     * Tests the md5(serialize()) cache mechanism AND idempotency.
+     * Tests the md5(json_encode()) cache mechanism AND idempotency.
      */
     public function testXmlBuilderIdempotency(): void
     {
@@ -121,6 +121,52 @@ class BuilderDeterminismTest extends TestCase
         $this->assertNotFalse($middlePos);
         $this->assertLessThan($alphaPos, $zebraPos, 'Keys must appear in insertion order');
         $this->assertLessThan($middlePos, $alphaPos, 'Keys must appear in insertion order');
+    }
+
+    /**
+     * Cache key determinism proof: json_encode hash is stable
+     * for identical structures across independent constructions.
+     * Guards the md5(json_encode()) cache key contract in XmlBuilder::from().
+     */
+    public function testXmlCacheKeyStableAcrossSeparateConstructions(): void
+    {
+        $buildStructure = static function (): array {
+            return [
+                'element' => 'system',
+                'single' => false,
+                'child' => [
+                    [
+                        'element' => 'purpose',
+                        'text' => 'Determinism proof',
+                        'single' => false,
+                        'child' => [],
+                    ],
+                    [
+                        'element' => 'rule',
+                        'id' => 'cache-test',
+                        'severity' => 'critical',
+                        'text' => 'Cache key must be stable',
+                        'single' => false,
+                        'child' => [
+                            ['element' => 'why', 'text' => 'Compile-time determinism', 'single' => false, 'child' => []],
+                        ],
+                    ],
+                ],
+            ];
+        };
+
+        $structureA = $buildStructure();
+        $structureB = $buildStructure();
+
+        // Direct hash proof: json_encode produces identical hashes
+        $hashA = md5(json_encode($structureA, JSON_THROW_ON_ERROR));
+        $hashB = md5(json_encode($structureB, JSON_THROW_ON_ERROR));
+        $this->assertSame($hashA, $hashB, 'json_encode cache key must be identical for equivalent structures');
+
+        // Output proof: both structures produce identical XmlBuilder output
+        $outputA = XmlBuilder::from($structureA);
+        $outputB = XmlBuilder::from($structureB);
+        $this->assertSame($outputA, $outputB, 'Separately constructed identical structures must produce same builder output');
     }
 
     /**
