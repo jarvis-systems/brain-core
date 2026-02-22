@@ -150,4 +150,170 @@ class MergerInvariantsTest extends TestCase
             'Merger must produce identical output for identical input'
         );
     }
+
+    // ──────────────────────────────────────────────
+    // Contiguous grouping: resolveInsertionIndex
+    // ──────────────────────────────────────────────
+
+    /**
+     * Contiguous grouping: when two includes contribute children of the
+     * same element types, resolveInsertionIndex() must insert them
+     * adjacent to existing same-type siblings, not at the end.
+     *
+     * Covers: resolveInsertionIndex() + array_splice + index rebuild
+     * for the case of interleaved element types from multiple includes.
+     */
+    public function testContiguousGroupingWithInterleavedIncludes(): void
+    {
+        $structure = [
+            'element' => 'system',
+            'single' => false,
+            'child' => [],
+            'includes' => [
+                [
+                    'element' => 'system',
+                    'single' => false,
+                    'child' => [
+                        ['element' => 'provides', 'text' => 'Feature A', 'child' => [], 'single' => false],
+                        ['element' => 'guideline', 'id' => 'g1', 'single' => false, 'child' => [
+                            ['element' => 'text', 'text' => 'Guideline 1', 'child' => [], 'single' => false],
+                        ]],
+                        ['element' => 'constraint', 'id' => 'c1', 'text' => 'Constraint 1', 'child' => [], 'single' => false],
+                    ],
+                    'includes' => [],
+                ],
+                [
+                    'element' => 'system',
+                    'single' => false,
+                    'child' => [
+                        ['element' => 'provides', 'text' => 'Feature B', 'child' => [], 'single' => false],
+                        ['element' => 'guideline', 'id' => 'g2', 'single' => false, 'child' => [
+                            ['element' => 'text', 'text' => 'Guideline 2', 'child' => [], 'single' => false],
+                        ]],
+                        ['element' => 'constraint', 'id' => 'c2', 'text' => 'Constraint 2', 'child' => [], 'single' => false],
+                    ],
+                    'includes' => [],
+                ],
+            ],
+        ];
+
+        $result = $this->merge($structure);
+        $elements = array_column($result['child'], 'element');
+
+        $this->assertSame(
+            ['provides', 'provides', 'guideline', 'guideline', 'constraint', 'constraint'],
+            $elements,
+            'Same-element children from different includes must remain contiguously grouped'
+        );
+    }
+
+    /**
+     * Contiguous grouping with 3 includes and a pre-existing base child.
+     *
+     * Verifies that resolveInsertionIndex correctly handles the case
+     * where base already has children and 3 includes contribute
+     * overlapping element types in different order.
+     */
+    public function testContiguousGroupingThreeIncludes(): void
+    {
+        $structure = [
+            'element' => 'system',
+            'single' => false,
+            'child' => [
+                ['element' => 'purpose', 'text' => 'Base purpose', 'child' => [], 'single' => false],
+            ],
+            'includes' => [
+                [
+                    'element' => 'system',
+                    'single' => false,
+                    'child' => [
+                        ['element' => 'provides', 'text' => 'P1', 'child' => [], 'single' => false],
+                        ['element' => 'constraint', 'id' => 'x1', 'text' => 'X1', 'child' => [], 'single' => false],
+                    ],
+                    'includes' => [],
+                ],
+                [
+                    'element' => 'system',
+                    'single' => false,
+                    'child' => [
+                        ['element' => 'purpose', 'text' => 'Extra purpose', 'child' => [], 'single' => false],
+                        ['element' => 'provides', 'text' => 'P2', 'child' => [], 'single' => false],
+                    ],
+                    'includes' => [],
+                ],
+                [
+                    'element' => 'system',
+                    'single' => false,
+                    'child' => [
+                        ['element' => 'constraint', 'id' => 'x2', 'text' => 'X2', 'child' => [], 'single' => false],
+                        ['element' => 'provides', 'text' => 'P3', 'child' => [], 'single' => false],
+                    ],
+                    'includes' => [],
+                ],
+            ],
+        ];
+
+        $result = $this->merge($structure);
+        $elements = array_column($result['child'], 'element');
+
+        // Each group must occupy contiguous indices (max - min + 1 === count)
+        $purposeIndices = array_keys(array_filter($elements, fn ($e) => $e === 'purpose'));
+        $providesIndices = array_keys(array_filter($elements, fn ($e) => $e === 'provides'));
+        $constraintIndices = array_keys(array_filter($elements, fn ($e) => $e === 'constraint'));
+
+        $this->assertCount(2, $purposeIndices);
+        $this->assertSame(1, max($purposeIndices) - min($purposeIndices), 'purpose must be contiguous');
+
+        $this->assertCount(3, $providesIndices);
+        $this->assertSame(2, max($providesIndices) - min($providesIndices), 'provides must be contiguous');
+
+        $this->assertCount(2, $constraintIndices);
+        $this->assertSame(1, max($constraintIndices) - min($constraintIndices), 'constraint must be contiguous');
+    }
+
+    /**
+     * Edge case: array_splice in mergeChildren shifts all positions
+     * after the splice point. buildChildrenIndex must rebuild correctly
+     * so subsequent insertions land in the right place.
+     *
+     * Regression guard for Merger.php lines 189-192:
+     * array_splice($current, $insertIndex, 0, [$incomingChild]);
+     * $index = $this->buildChildrenIndex($current);
+     */
+    public function testSpliceIndexRebuildDoesNotCorruptSubsequentInsertions(): void
+    {
+        $structure = [
+            'element' => 'system',
+            'single' => false,
+            'child' => [
+                ['element' => 'alpha', 'id' => 'a1', 'text' => 'A1', 'child' => [], 'single' => false],
+                ['element' => 'beta', 'id' => 'b1', 'text' => 'B1', 'child' => [], 'single' => false],
+                ['element' => 'gamma', 'id' => 'g1', 'text' => 'G1', 'child' => [], 'single' => false],
+            ],
+            'includes' => [
+                [
+                    'element' => 'system',
+                    'single' => false,
+                    'child' => [
+                        ['element' => 'alpha', 'id' => 'a2', 'text' => 'A2', 'child' => [], 'single' => false],
+                        ['element' => 'beta', 'id' => 'b2', 'text' => 'B2', 'child' => [], 'single' => false],
+                        ['element' => 'gamma', 'id' => 'g2', 'text' => 'G2', 'child' => [], 'single' => false],
+                    ],
+                    'includes' => [],
+                ],
+            ],
+        ];
+
+        $result = $this->merge($structure);
+        $elements = array_map(
+            fn (array $c): string => $c['element'] . ':' . $c['id'],
+            $result['child']
+        );
+
+        $this->assertSame(
+            ['alpha:a1', 'alpha:a2', 'beta:b1', 'beta:b2', 'gamma:g1', 'gamma:g2'],
+            $elements,
+            'After splice+rebuild, each new element must insert directly after its same-type sibling'
+        );
+    }
 }
