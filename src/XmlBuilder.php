@@ -240,7 +240,7 @@ class XmlBuilder
 
     /**
      * @param  array<string, mixed>  $node
-     * @return array{0: string, 1: array<string, mixed>}
+     * @return array{0: string, 1: array<string, mixed>, 2: array<string, mixed>}
      */
     protected function extractAttributes(array $node): array
     {

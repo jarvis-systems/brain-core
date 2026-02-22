@@ -63,7 +63,7 @@ class Sections extends BlueprintArchitecture
     /**
      * @param  string  $brief
      * @param  bool  $required
-     * @return $this
+     * @return static
      */
     public function plan(string $brief, bool $required = false): static
     {
@@ -73,7 +73,7 @@ class Sections extends BlueprintArchitecture
     /**
      * @param  string  $brief
      * @param  bool  $required
-     * @return $this
+     * @return static
      */
     public function patches(string $brief, bool $required = false): static
     {
@@ -83,7 +83,7 @@ class Sections extends BlueprintArchitecture
     /**
      * @param  string  $brief
      * @param  bool  $required
-     * @return $this
+     * @return static
      */
     public function validation(string $brief, bool $required = false): static
     {
@@ -93,7 +93,7 @@ class Sections extends BlueprintArchitecture
     /**
      * @param  string  $brief
      * @param  bool  $required
-     * @return $this
+     * @return static
      */
     public function result(string $brief, bool $required = false): static
     {
@@ -103,7 +103,7 @@ class Sections extends BlueprintArchitecture
     /**
      * @param  string  $brief
      * @param  bool  $required
-     * @return $this
+     * @return static
      */
     public function clarificationsNeeded(string $brief, bool $required = false): static
     {

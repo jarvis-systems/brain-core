@@ -46,6 +46,7 @@ class Phase extends BlueprintArchitecture
         /** @var \BrainCore\Blueprints\Guideline\Example|null $parent */
         $parent = $this->getMeta('parentDto');
 
+        /** @var static */
         return $parent->phase($name, $text);
     }
 

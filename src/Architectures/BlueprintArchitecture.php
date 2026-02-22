@@ -23,7 +23,7 @@ abstract class BlueprintArchitecture extends ArchitectureAbstract
     use CompilationHelpersTrait;
 
     /**
-     * @var array<string, class-string|array<int, class-string>|string>
+     * @var array<string, list<string>|string>
      */
     #[DtoMutateFrom('mutateToString', 'text')]
     protected static array $extends = [

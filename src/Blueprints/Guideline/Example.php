@@ -69,6 +69,7 @@ class Example extends BlueprintArchitecture
         /** @var \BrainCore\Blueprints\Guideline|null $parent */
         $parent = $this->getMeta('parentDto');
 
+        /** @var static */
         return $parent->example($text);
     }
 
