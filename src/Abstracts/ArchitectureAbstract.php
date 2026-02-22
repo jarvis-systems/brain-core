@@ -26,7 +26,7 @@ abstract class ArchitectureAbstract extends Dto
             $value = $this->getMeta($name, $default);
 
             if (method_exists($this, $name)) {
-                return call_user_func([$this, $name], $value);
+                return $this->{$name}($value);
             }
 
             return $value;
