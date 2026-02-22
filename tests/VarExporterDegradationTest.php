@@ -6,7 +6,7 @@ namespace BrainCore\Tests;
 
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
-use BrainCore\Compilation\Traits\CompileStandardsTrait;
+use BrainCore\Compilation\Traits\LogDegradationTrait;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -59,35 +59,40 @@ class VarExporterDegradationTest extends TestCase
     }
 
     /**
-     * logDegradation helper is callable and does not throw.
+     * logDegradation helper is callable and produces zero output when gate is off.
      */
     public function testLogDegradationDoesNotThrow(): void
     {
-        // Create anonymous class to test the trait method
         $traitUser = new class {
-            use CompileStandardsTrait {
+            use LogDegradationTrait {
                 logDegradation as public;
             }
         };
 
-        // Without BRAIN_COMPILE_DEBUG — should silently pass
+        $logFile = tempnam(sys_get_temp_dir(), 'brain_test_');
+        $oldLog = ini_set('error_log', $logFile);
         putenv('BRAIN_COMPILE_DEBUG=');
+
         $traitUser::logDegradation('test-context', new \RuntimeException('test error'));
-        $this->assertTrue(true, 'logDegradation must not throw without debug env');
+
+        ini_set('error_log', $oldLog ?: '');
+        $logContent = file_get_contents($logFile);
+        unlink($logFile);
+
+        $this->assertEmpty($logContent, 'Gate off must produce zero output');
     }
 
     /**
-     * logDegradation emits to error_log when debug is enabled.
+     * logDegradation emits single-line output to error_log when debug is enabled.
      */
     public function testLogDegradationEmitsWhenDebugEnabled(): void
     {
         $traitUser = new class {
-            use CompileStandardsTrait {
+            use LogDegradationTrait {
                 logDegradation as public;
             }
         };
 
-        // Capture error_log output
         $logFile = tempnam(sys_get_temp_dir(), 'brain_test_');
         $oldLog = ini_set('error_log', $logFile);
         putenv('BRAIN_COMPILE_DEBUG=1');
@@ -103,6 +108,39 @@ class VarExporterDegradationTest extends TestCase
         $this->assertStringContainsString('[brain-compile]', $logContent);
         $this->assertStringContainsString('VarExporter', $logContent);
         $this->assertStringContainsString('Cannot export closure', $logContent);
+
+        // Single-line invariant: log entry must not contain raw newlines in message portion
+        $messagePortion = substr($logContent, strpos($logContent, '[brain-compile]'));
+        $this->assertStringNotContainsString("\n", rtrim($messagePortion));
+    }
+
+    /**
+     * logDegradation sanitizes newlines in exception messages to single-line.
+     */
+    public function testLogDegradationSanitizesNewlines(): void
+    {
+        $traitUser = new class {
+            use LogDegradationTrait {
+                logDegradation as public;
+            }
+        };
+
+        $logFile = tempnam(sys_get_temp_dir(), 'brain_test_');
+        $oldLog = ini_set('error_log', $logFile);
+        putenv('BRAIN_COMPILE_DEBUG=1');
+
+        $traitUser::logDegradation('multi-line', new \RuntimeException("line1\nline2\r\nline3"));
+
+        putenv('BRAIN_COMPILE_DEBUG=');
+        ini_set('error_log', $oldLog ?: '');
+
+        $logContent = file_get_contents($logFile);
+        unlink($logFile);
+
+        $messagePortion = substr($logContent, strpos($logContent, '[brain-compile]'));
+        $this->assertStringNotContainsString("\n", rtrim($messagePortion));
+        $this->assertStringNotContainsString("\r", $messagePortion);
+        $this->assertStringContainsString('line1 line2 line3', $logContent);
     }
 
     /**
