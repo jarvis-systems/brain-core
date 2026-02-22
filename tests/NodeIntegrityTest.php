@@ -521,7 +521,45 @@ class NodeIntegrityTest extends TestCase
         );
     }
 
-    // ── Test 13: pins.json structure ──────────────────────────────────────
+    // ── Test 13: MCP file manifest (guard against untracked required files) ──
+
+    /**
+     * Asserts the exact set of expected MCP PHP files in node/Mcp/.
+     *
+     * This is a recurrence guard: if a required MCP file is missing
+     * (e.g. excluded via .git/info/exclude or .gitignore), this test fails
+     * with a diagnostic message pointing to the root cause.
+     *
+     * Update $expected when adding or removing MCP classes.
+     */
+    public function testMcpFileManifestIsComplete(): void
+    {
+        $mcpDir = self::$nodeDir . '/Mcp';
+        $files = array_map('basename', self::phpFiles($mcpDir));
+        sort($files);
+
+        $expected = [
+            'Context7Mcp.php',
+            'GithubMcp.php',
+            'LaravelBoostMcp.php',
+            'SequentialThinkingMcp.php',
+            'VectorMemoryMcp.php',
+            'VectorTaskMcp.php',
+        ];
+
+        $this->assertSame(
+            $expected,
+            $files,
+            "MCP file manifest mismatch.\n"
+            . "Expected: " . implode(', ', $expected) . "\n"
+            . "Actual:   " . implode(', ', $files) . "\n"
+            . "If you added/removed an MCP class, update this test manifest.\n"
+            . "If files are unexpectedly missing, check .git/info/exclude and .gitignore — "
+            . "required source files MUST be tracked in git."
+        );
+    }
+
+    // ── Test 14: pins.json structure ──────────────────────────────────────
 
     public function testPinsJsonStructure(): void
     {
