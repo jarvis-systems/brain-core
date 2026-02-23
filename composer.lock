@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "08d1c96da214a97c3f7494922c660fa7",
+    "content-hash": "380609adc7086c83bb6de2053cccb061",
     "packages": [
         {
             "name": "bfg/dto",
