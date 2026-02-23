@@ -73,23 +73,21 @@ class ConvertCommand extends Command
                 continue;
             }
             $classBasename = class_basename($class);
-            $className = Str::of($class)
-                ->replace("BrainNode\\", '')
-                ->replace("\\", '_')
+            $className = Str::of($classBasename)
                 ->snake()
-                ->replace("__", '_')
                 ->upper()
-                ->trim()
-                ->trim('_')
                 ->toString();
 
-            $groupName = Str::of($class)->upper()
-                ->explode("\\", 2)
-                ->last();
+            $namespace = Str::of($class)
+                ->after("BrainNode\\")
+                ->beforeLast("\\")
+                ->upper()
+                ->toString();
 
             if (
                 Brain::resolveCompileEnv($className . '_DISABLE')
-                || Brain::resolveCompileEnv($groupName . '_DISABLE')
+                || Brain::resolveCompileEnv($namespace . '_' . $className . '_DISABLE')
+                || Brain::resolveCompileEnv($namespace . '_DISABLE')
             ) {
                 if ($dumpFormat) {
                     $format = $dumpFormat;
