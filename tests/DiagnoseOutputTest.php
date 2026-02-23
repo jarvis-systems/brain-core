@@ -153,10 +153,19 @@ class DiagnoseOutputTest extends TestCase
             'DiagnoseCommand must encode output as JSON'
         );
 
-        // self_dev_source enum: exactly three allowed values
-        $this->assertStringContainsString("'env'", $content, 'Must define env source');
-        $this->assertStringContainsString("'autodetect'", $content, 'Must define autodetect source');
-        $this->assertStringContainsString("'off'", $content, 'Must define off source');
+        // DiagnoseCommand delegates to SelfDevResolver for self-dev detection
+        $this->assertStringContainsString(
+            'SelfDevResolver',
+            $content,
+            'DiagnoseCommand must use SelfDevResolver'
+        );
+
+        // self_dev_source enum: three allowed values (defined in resolver)
+        $resolverFile = self::$projectRoot . '/cli/src/Services/SelfDev/SelfDevResolver.php';
+        $resolverContent = (string) file_get_contents($resolverFile);
+        $this->assertStringContainsString("'env'", $resolverContent, 'Resolver must define env source');
+        $this->assertStringContainsString("'autodetect'", $resolverContent, 'Resolver must define autodetect source');
+        $this->assertStringContainsString("'off'", $resolverContent, 'Resolver must define off source');
 
         // Nested arrays: autodetect_signals and version must be array-valued
         $this->assertMatchesRegularExpression(
