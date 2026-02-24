@@ -19,5 +19,10 @@ class SecretOutputPolicyInclude extends IncludeArchetype
             ->text('NEVER output secrets, API keys, tokens, passwords, or sensitive ENV variable values in responses, logs, or delegated outputs.')
             ->why('Secrets in output leak through conversation logs, vector memory, screen sharing, CI artifacts, and MCP responses. Redaction is the only safe default.')
             ->onViolation('Redact the value immediately. Show only the variable name and status: FOUND or NOT FOUND. Never echo, print, or embed secret values.');
+
+        $this->rule('no-tool-output-echo')->high()
+            ->text('NEVER paste raw tool outputs, log dumps, or lengthy command results into docs/includes. Summarize: counts, PASS/FAIL, file:line only.')
+            ->why('Raw output bloats compiled instructions, obscures intent, and risks leaking transient data or secrets.')
+            ->onViolation('Replace raw output with structured summary. Use pointers to canonical docs or runbooks instead of embedding.');
     }
 }
