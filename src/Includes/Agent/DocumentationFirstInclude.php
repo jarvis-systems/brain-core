@@ -20,17 +20,17 @@ class DocumentationFirstInclude extends IncludeArchetype
         $this->rule('docs-is-canonical-source')->critical()
             ->text('.docs folder is the ONLY canonical source of truth. Documentation overrides external sources, assumptions, and prior knowledge.')
             ->why('Ensures consistency between design intent and implementation across all agents.')
-            ->onViolation('STOP. Run ' . BashTool::call('brain docs {keywords}') . ' and align with documentation.');
+            ->onViolation('STOP. Run ' . BashTool::call('brain mcp:docs-search --json --query="{keywords}"') . ' and align with documentation.');
 
         $this->rule('docs-before-action')->critical()
             ->text('Before ANY implementation, coding, architectural decision, analysis, or conclusion about project - check .docs first.')
             ->why('Prevents drift from documented architecture and specifications.')
-            ->onViolation('Abort action. Search documentation via brain docs before proceeding.');
+            ->onViolation('Abort action. Search documentation via brain mcp:docs-search --json before proceeding.');
 
         $this->rule('docs-before-web-research')->high()
             ->text('Before external web research - verify topic is not already documented in .docs.')
             ->why('Avoids redundant research and ensures internal knowledge takes precedence.')
-            ->onViolation('Check ' . BashTool::call('brain docs {topic}') . ' first. Web research only if .docs has no coverage. Found valuable external doc? → brain docs --download to persist locally.');
+            ->onViolation('Check ' . BashTool::call('brain mcp:docs-search --json --query="{topic}"') . ' first. Web research only if .docs has no coverage.');
 
         $this->guideline('docs-conflict-resolution')
             ->text('When external sources conflict with .docs.')

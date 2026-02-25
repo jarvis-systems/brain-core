@@ -553,8 +553,8 @@ trait SharedCommandTrait
             ->example()
             ->phase('Generate 3-5 keyword variations: split CamelCase, strip suffixes (Test, Controller, Service, Repository, Handler), extract domain words, try parent context keywords')
             ->phase('Search ORDER: most specific → most general. Minimum 3 attempts before concluding "no docs"')
-            ->phase('WRONG: brain docs "UserAuthServiceTest" → not found → done')
-            ->phase('RIGHT: brain docs "UserAuthServiceTest" → brain docs "UserAuth" → brain docs "Authentication" → FOUND!')
+            ->phase('WRONG: brain mcp:docs-search --json --query="UserAuthServiceTest" → not found → done')
+            ->phase('RIGHT: brain mcp:docs-search --json --query="UserAuthServiceTest" → brain mcp:docs-search --json --query="UserAuth" → FOUND!')
             ->phase('STILL not found after 3+ attempts? → brain docs --undocumented → check if class exists but lacks documentation');
     }
 

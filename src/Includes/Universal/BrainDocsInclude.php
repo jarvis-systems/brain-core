@@ -13,17 +13,17 @@ class BrainDocsInclude extends IncludeArchetype
     protected function handle(): void
     {
         $this->guideline('brain-docs-tool')
-            ->text('brain docs — PRIMARY tool for .docs/ project documentation discovery and search. Self-documenting: brain docs --help for usage, -v for examples, -vv for best practices. Key capabilities: --download=<url> persists external docs locally (lossless, zero tokens vs vector memory summaries), --undocumented finds code without docs. Always use brain docs BEFORE any project-related reasoning: research, analysis, conclusions, recommendations, implementation. One check — zero overhead — prevents costly rework.');
+            ->text('brain mcp:docs-search — PRIMARY tool for .docs/ project documentation discovery and search. Returns structured JSON with paths, matches, and scores. Always use brain mcp:docs-search --json BEFORE any project-related reasoning: research, analysis, conclusions, recommendations, implementation. One check — zero overhead — prevents costly rework.');
 
         $this->guideline('brain-docs-invocation')
-            ->text('For programmatic docs access, use BrainToolInvoker::docsSearch(query, limit, headers). Backend: CLI today, MCP wrapper future. See .docs/architecture/brain-tool-surface-contract.md § Programmatic Tool Invocation.')
+            ->text('For programmatic docs access, use BrainToolInvoker::docsSearch(query, limit, headers). Backend: brain mcp:docs-search --json.')
             ->example('BrainToolInvoker::docsSearch("authentication") → structured array with files, matches, scores')
-            ->example('Fallback (backend detail): brain docs "query" --json');
+            ->example('Fallback (backend detail): brain mcp:docs-search --json --query="query"');
 
         $this->rule('no-manual-indexing')->critical()
             ->text('NEVER create index.md or README.md for documentation indexing. brain docs handles all indexing automatically.')
             ->why('Manual indexing creates maintenance burden and becomes stale.')
-            ->onViolation('Remove manual index files. Use brain docs exclusively.');
+            ->onViolation('Remove manual index files. Use brain mcp:docs-search --json exclusively.');
 
         $this->rule('markdown-only')->critical()
             ->text('ALL documentation MUST be markdown format with *.md extension. No other formats allowed.')
