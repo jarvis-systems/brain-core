@@ -32,10 +32,10 @@ abstract class StdioMcp extends McpArchitecture
     /**
      * @return non-empty-string
      */
-    abstract protected static function defaultCommand(): string;
+    abstract public static function defaultCommand(): string;
 
     /**
      * @return array<int, string>
      */
-    abstract protected static function defaultArgs(): array;
+    abstract public static function defaultArgs(): array;
 }

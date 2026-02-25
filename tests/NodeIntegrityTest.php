@@ -266,7 +266,7 @@ class NodeIntegrityTest extends TestCase
 
             // StdioMcp classes must have defaultCommand()
             if (str_contains($content, 'extends StdioMcp')) {
-                if (!preg_match('/protected\s+static\s+function\s+defaultCommand\(\)\s*:\s*string/', $content)) {
+                if (!preg_match('/(public|protected)\s+static\s+function\s+defaultCommand\(\)\s*:\s*string/', $content)) {
                     $failures[] = "$relative: missing defaultCommand() method";
                 } elseif (preg_match("/function defaultCommand\(\)\s*:\s*string\s*\{\s*return\s*['\"]([^'\"]*)['\"];/", $content, $m)) {
                     if (empty(trim($m[1]))) {
@@ -303,7 +303,7 @@ class NodeIntegrityTest extends TestCase
 
             // StdioMcp classes must have defaultArgs() returning array
             if (str_contains($content, 'extends StdioMcp')) {
-                if (!preg_match('/protected\s+static\s+function\s+defaultArgs\(\)\s*:\s*array/', $content)) {
+                if (!preg_match('/(public|protected)\s+static\s+function\s+defaultArgs\(\)\s*:\s*array/', $content)) {
                     $failures[] = "$relative: missing defaultArgs(): array method";
                 }
             }
@@ -541,6 +541,7 @@ class NodeIntegrityTest extends TestCase
         $expected = [
             'Context7Mcp.php',
             'LaravelBoostMcp.php',
+            'MockEchoMcp.php',
             'SequentialThinkingMcp.php',
             'VectorMemoryMcp.php',
             'VectorTaskMcp.php',
