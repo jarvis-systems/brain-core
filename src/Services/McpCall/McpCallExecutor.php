@@ -26,15 +26,22 @@ final class McpCallExecutor
     /**
      * Execute an MCP call.
      */
-    public function execute(McpCallRequest $request): McpCallResult
+    public function execute(McpCallRequest $request, bool $trace = false): McpCallResult
     {
+        $requestId = null;
+        if ($trace) {
+            $stableInput = json_encode($request->input, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $requestId = substr(hash('sha256', $request->serverId . '|' . $request->tool . '|' . $stableInput), 0, 16);
+        }
+
         // 1. Kill-switch check
         if (! $this->policyResolver->isEnabled()) {
             return McpCallResult::error(
                 $request->serverId, $request->tool,
                 'MCP_DISABLED', 'kill_switch_active',
                 'MCP operations are disabled via BRAIN_DISABLE_MCP.',
-                'Unset BRAIN_DISABLE_MCP to enable.'
+                'Unset BRAIN_DISABLE_MCP to enable.',
+                $requestId
             );
         }
 
@@ -46,7 +53,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_REGISTRY_ERROR', 'resolution_failed',
                 $e->getMessage(),
-                'Ensure the registry file exists and is valid.'
+                'Ensure the registry file exists and is valid.',
+                $requestId
             );
         }
 
@@ -64,7 +72,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_SERVER_NOT_FOUND', 'registry_missing_id',
                 "Server '{$request->serverId}' not found in registry.",
-                'Check mcp-registry.json for available servers.'
+                'Check mcp-registry.json for available servers.',
+                $requestId
             );
         }
 
@@ -73,7 +82,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_SERVER_DISABLED', 'server_not_enabled',
                 "Server '{$request->serverId}' is disabled in registry.",
-                'Enable the server in mcp-registry.json.'
+                'Enable the server in mcp-registry.json.',
+                $requestId
             );
         }
 
@@ -83,7 +93,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_CALL_BLOCKED', 'tool_not_allowed',
                 "Tool '{$request->tool}' on server '{$request->serverId}' is not in the external tools allowlist.",
-                "Run: brain mcp:list ; brain mcp:describe --server={$request->serverId}"
+                "Run: brain mcp:list ; brain mcp:describe --server={$request->serverId}",
+                $requestId
             );
         }
 
@@ -98,7 +109,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_CLASS_NOT_FOUND', 'autoload_failure',
                 "Class '{$class}' for server '{$request->serverId}' not found.",
-                'Ensure the class is autoloadable.'
+                'Ensure the class is autoloadable.',
+                $requestId
             );
         }
 
@@ -107,7 +119,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_UNSUPPORTED_TYPE', 'only_stdio_supported',
                 "Server '{$request->serverId}' does not use StdioMcp.",
-                'Currently only stdio-based servers are supported for mcp:call.'
+                'Currently only stdio-based servers are supported for mcp:call.',
+                $requestId
             );
         }
 
@@ -128,8 +141,7 @@ final class McpCallExecutor
 
         // Ensure we are in project root for execution
         $process = new Process([$command, ...$args], $this->projectRoot);
-        $process->setInput(json_encode($rpcRequest, JSON_THROW_ON_ERROR) . "
-");
+        $process->setInput(json_encode($rpcRequest, JSON_THROW_ON_ERROR) . "\n");
         
         try {
             $process->run();
@@ -138,7 +150,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_EXECUTION_FAILED', 'process_spawn_error',
                 $e->getMessage(),
-                'Check if the server command is available in PATH.'
+                'Check if the server command is available in PATH.',
+                $requestId
             );
         }
 
@@ -147,15 +160,15 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_SERVER_ERROR', 'process_exit_non_zero',
                 trim($process->getErrorOutput() ?: "Process exited with code {$process->getExitCode()}"),
-                'Check server logs for details.'
+                'Check server logs for details.',
+                $requestId
             );
         }
 
         $output = trim($process->getOutput());
         
         // MCP servers might output multiple lines, we look for the JSON-RPC response
-        $lines = explode("
-", $output);
+        $lines = explode("\n", $output);
         $rpcResponse = null;
         foreach (array_reverse($lines) as $line) {
             try {
@@ -174,7 +187,8 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_INVALID_RESPONSE', 'json_rpc_not_found',
                 "Server output did not contain a valid JSON-RPC response. Raw: " . substr($output, 0, 100),
-                'Ensure the MCP server follows the JSON-RPC spec.'
+                'Ensure the MCP server follows the JSON-RPC spec.',
+                $requestId
             );
         }
 
@@ -184,19 +198,22 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_TOOL_ERROR', 'server_returned_json_rpc_error',
                 $rpcResponse['error']['message'] ?? 'Unknown error',
-                'Check tool arguments and server state.'
+                'Check tool arguments and server state.',
+                $requestId
             );
         }
 
         // Redact and return
         $resultData = $rpcResponse['result'] ?? [];
-        $redactedData = $this->redact(is_array($resultData) ? $resultData : ['value' => $resultData]);
+        $resultData = is_array($resultData) ? $resultData : ['value' => $resultData];
+        [$redactedData, $redactionsApplied] = $this->redact($resultData);
 
-        return McpCallResult::success($request->serverId, $request->tool, $redactedData);
+        return McpCallResult::success($request->serverId, $request->tool, $redactedData, $requestId, $redactionsApplied);
     }
 
     /**
      * Redact sensitive information from the result.
+     * @return array{0: array, 1: bool}
      */
     private function redact(array $data): array
     {
@@ -205,15 +222,19 @@ final class McpCallExecutor
             'CONTEXT7_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'
         ];
 
-        array_walk_recursive($data, function (&$value, $key) use ($sensitiveKeys) {
+        $applied = false;
+        array_walk_recursive($data, function (&$value, $key) use ($sensitiveKeys, &$applied) {
             foreach ($sensitiveKeys as $sensitive) {
                 if (is_string($key) && stripos($key, $sensitive) !== false) {
-                    $value = '[REDACTED]';
+                    if ($value !== '[REDACTED]') {
+                        $value = '[REDACTED]';
+                        $applied = true;
+                    }
                 }
             }
         });
 
-        return $data;
+        return [$data, $applied];
     }
 
     /**
