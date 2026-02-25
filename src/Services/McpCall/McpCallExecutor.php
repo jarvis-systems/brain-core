@@ -83,7 +83,7 @@ final class McpCallExecutor
                 $request->serverId, $request->tool,
                 'MCP_CALL_BLOCKED', 'tool_not_allowed',
                 "Tool '{$request->tool}' on server '{$request->serverId}' is not in the external tools allowlist.",
-                'Add the tool to .brain-config/mcp-external-tools.allowlist.json.'
+                "Run: brain mcp:list ; brain mcp:describe --server={$request->serverId}"
             );
         }
 
