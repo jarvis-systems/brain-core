@@ -7,7 +7,7 @@ namespace BrainCore\Services\McpCall;
 use BrainCore\Contracts\McpCall\McpCallRequest;
 use BrainCore\Contracts\McpCall\McpCallResult;
 use BrainCore\Contracts\McpRegistry\McpRegistryResolver;
-use BrainCore\Contracts\McpToolPolicy\McpToolPolicyResolver;
+use BrainCore\Contracts\McpExternalToolsPolicy\McpExternalToolsPolicyResolver;
 use BrainCore\Mcp\StdioMcp;
 use Symfony\Component\Process\Process;
 use RuntimeException;
@@ -19,7 +19,7 @@ final class McpCallExecutor
 {
     public function __construct(
         private readonly McpRegistryResolver $registryResolver,
-        private readonly McpToolPolicyResolver $policyResolver,
+        private readonly McpExternalToolsPolicyResolver $policyResolver,
         private readonly string $projectRoot,
     ) {}
 
@@ -78,21 +78,12 @@ final class McpCallExecutor
         }
 
         // 4. Policy check
-        if (! $this->policyResolver->isAllowed($request->tool)) {
+        if (! $this->policyResolver->isAllowed($request->serverId, $request->tool)) {
             return McpCallResult::error(
                 $request->serverId, $request->tool,
                 'MCP_CALL_BLOCKED', 'tool_not_allowed',
-                "Tool '{$request->tool}' is not in the allowlist.",
-                'Add the tool to mcp-tools.allowlist.json.'
-            );
-        }
-
-        if ($this->policyResolver->isNever($request->tool)) {
-            return McpCallResult::error(
-                $request->serverId, $request->tool,
-                'MCP_CALL_BLOCKED', 'tool_explicitly_forbidden',
-                "Tool '{$request->tool}' is explicitly forbidden.",
-                'Check the "never" section in mcp-tools.allowlist.json.'
+                "Tool '{$request->tool}' on server '{$request->serverId}' is not in the external tools allowlist.",
+                'Add the tool to .brain-config/mcp-external-tools.allowlist.json.'
             );
         }
 
