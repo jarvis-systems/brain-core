@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace BrainCore\Tests;
 
+use BrainCore\Mcp\Schemas\Context7Schema;
+use BrainCore\Mcp\Schemas\SequentialThinkingSchema;
 use BrainCore\Mcp\Schemas\VectorMemorySchema;
 use BrainCore\Mcp\Schemas\VectorTaskSchema;
 use PHPUnit\Framework\TestCase;
@@ -26,6 +28,8 @@ class McpSchemaDeterminismTest extends TestCase
     public static function schemaProvider(): array
     {
         return [
+            'Context7Schema' => [Context7Schema::class, 'Context7Schema'],
+            'SequentialThinkingSchema' => [SequentialThinkingSchema::class, 'SequentialThinkingSchema'],
             'VectorMemorySchema' => [VectorMemorySchema::class, 'VectorMemorySchema'],
             'VectorTaskSchema' => [VectorTaskSchema::class, 'VectorTaskSchema'],
         ];

@@ -9,73 +9,8 @@ final class VectorMemorySchema
     public static function get(): array
     {
         return [
-            'search_memories' => [
-                'required' => [],
-                'allowed' => ['query', 'limit', 'category', 'offset', 'tags'],
-                'types' => [
-                    'query' => 'string',
-                    'limit' => 'integer',
-                    'category' => 'string',
-                    'offset' => 'integer',
-                    'tags' => 'array',
-                ],
-            ],
-            'store_memory' => [
-                'required' => ['content'],
-                'allowed' => ['content', 'category', 'tags'],
-                'types' => [
-                    'content' => 'string',
-                    'category' => 'string',
-                    'tags' => 'array',
-                ],
-            ],
-            'get_by_memory_id' => [
-                'required' => ['memory_id'],
-                'allowed' => ['memory_id'],
-                'types' => [
-                    'memory_id' => 'integer',
-                ],
-            ],
-            'delete_by_memory_id' => [
-                'required' => ['memory_id'],
-                'allowed' => ['memory_id'],
-                'types' => [
-                    'memory_id' => 'integer',
-                ],
-            ],
-            'list_recent_memories' => [
-                'required' => [],
-                'allowed' => ['limit'],
-                'types' => [
-                    'limit' => 'integer',
-                ],
-            ],
-            'get_unique_tags' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'get_canonical_tags' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'get_tag_frequencies' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'get_tag_weights' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'get_memory_stats' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
             'clear_old_memories' => [
+                'description' => 'Remove old memories by age and retention limit',
                 'required' => [],
                 'allowed' => ['days_old', 'max_to_keep'],
                 'types' => [
@@ -84,18 +19,123 @@ final class VectorMemorySchema
                 ],
             ],
             'cookbook' => [
+                'description' => 'Retrieve cookbook cases for memory operations',
                 'required' => [],
-                'allowed' => ['include', 'level', 'case_category', 'query', 'priority', 'cognitive', 'strict', 'limit', 'offset'],
+                'allowed' => ['case_category', 'cognitive', 'include', 'level', 'limit', 'offset', 'priority', 'query', 'strict'],
                 'types' => [
+                    'case_category' => 'string',
+                    'cognitive' => 'string',
                     'include' => 'string',
                     'level' => 'integer',
-                    'case_category' => 'string',
-                    'query' => 'string',
-                    'priority' => 'string',
-                    'cognitive' => 'string',
-                    'strict' => 'string',
                     'limit' => 'integer',
                     'offset' => 'integer',
+                    'priority' => 'string',
+                    'query' => 'string',
+                    'strict' => 'string',
+                ],
+            ],
+            'delete_by_memory_id' => [
+                'description' => 'Delete a specific memory by its ID',
+                'required' => ['memory_id'],
+                'allowed' => ['memory_id'],
+                'types' => [
+                    'memory_id' => 'integer',
+                ],
+            ],
+            'get_by_memory_id' => [
+                'description' => 'Retrieve a specific memory by its ID',
+                'required' => ['memory_id'],
+                'allowed' => ['memory_id'],
+                'types' => [
+                    'memory_id' => 'integer',
+                ],
+            ],
+            'get_canonical_tags' => [
+                'description' => 'List all canonical tag mappings',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'get_memory_stats' => [
+                'description' => 'Retrieve memory system statistics',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'get_tag_frequencies' => [
+                'description' => 'Get tag usage frequencies across memories',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'get_tag_weights' => [
+                'description' => 'Get computed tag weights',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'get_unique_tags' => [
+                'description' => 'List all unique tags in the memory store',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'list_recent_memories' => [
+                'description' => 'List most recent memories with optional limit',
+                'required' => [],
+                'allowed' => ['limit'],
+                'types' => [
+                    'limit' => 'integer',
+                ],
+            ],
+            'search' => [
+                'description' => 'Search memories by query using semantic similarity',
+                'required' => ['query'],
+                'allowed' => ['category', 'limit', 'offset', 'query', 'tags'],
+                'types' => [
+                    'category' => 'string',
+                    'limit' => 'integer',
+                    'offset' => 'integer',
+                    'query' => 'string',
+                    'tags' => 'array',
+                ],
+            ],
+            'search_memories' => [
+                'description' => 'Search memories by query, category, or tags',
+                'required' => [],
+                'allowed' => ['category', 'limit', 'offset', 'query', 'tags'],
+                'types' => [
+                    'category' => 'string',
+                    'limit' => 'integer',
+                    'offset' => 'integer',
+                    'query' => 'string',
+                    'tags' => 'array',
+                ],
+            ],
+            'stats' => [
+                'description' => 'Get memory system statistics and health status',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'store_memory' => [
+                'description' => 'Store a new memory with optional category and tags',
+                'required' => ['content'],
+                'allowed' => ['category', 'content', 'tags'],
+                'types' => [
+                    'category' => 'string',
+                    'content' => 'string',
+                    'tags' => 'array',
+                ],
+            ],
+            'upsert' => [
+                'description' => 'Store or update a memory with optional category and tags',
+                'required' => ['content'],
+                'allowed' => ['category', 'content', 'tags'],
+                'types' => [
+                    'category' => 'string',
+                    'content' => 'string',
+                    'tags' => 'array',
                 ],
             ],
         ];
