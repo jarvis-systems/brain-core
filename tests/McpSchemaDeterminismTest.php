@@ -152,4 +152,26 @@ class McpSchemaDeterminismTest extends TestCase
             }
         }
     }
+
+    /**
+     * Vector-task specific: verify exposed tools have complete metadata.
+     */
+    public function testVectorTaskExposedToolsHaveCompleteMetadata(): void
+    {
+        $schema = VectorTaskSchema::get();
+        $exposedTools = ['task_create', 'task_get', 'task_list'];
+
+        foreach ($exposedTools as $toolName) {
+            $this->assertArrayHasKey($toolName, $schema, "VectorTaskSchema.$toolName: missing from schema");
+
+            $meta = $schema[$toolName];
+            $description = $meta['description'] ?? '';
+
+            $this->assertNotEmpty($description, "VectorTaskSchema.$toolName: description must not be empty");
+            $this->assertNotEquals('No description available.', $description, "VectorTaskSchema.$toolName: description must not be placeholder");
+            $this->assertArrayHasKey('required', $meta, "VectorTaskSchema.$toolName: missing 'required'");
+            $this->assertArrayHasKey('allowed', $meta, "VectorTaskSchema.$toolName: missing 'allowed'");
+            $this->assertArrayHasKey('types', $meta, "VectorTaskSchema.$toolName: missing 'types'");
+        }
+    }
 }
