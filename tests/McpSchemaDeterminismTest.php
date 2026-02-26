@@ -174,4 +174,26 @@ class McpSchemaDeterminismTest extends TestCase
             $this->assertArrayHasKey('types', $meta, "VectorTaskSchema.$toolName: missing 'types'");
         }
     }
+
+    /**
+     * Vector-memory specific: verify exposed tools have complete metadata.
+     */
+    public function testVectorMemoryExposedToolsHaveCompleteMetadata(): void
+    {
+        $schema = VectorMemorySchema::get();
+        $exposedTools = ['search', 'stats', 'upsert'];
+
+        foreach ($exposedTools as $toolName) {
+            $this->assertArrayHasKey($toolName, $schema, "VectorMemorySchema.$toolName: missing from schema");
+
+            $meta = $schema[$toolName];
+            $description = $meta['description'] ?? '';
+
+            $this->assertNotEmpty($description, "VectorMemorySchema.$toolName: description must not be empty");
+            $this->assertNotEquals('No description available.', $description, "VectorMemorySchema.$toolName: description must not be placeholder");
+            $this->assertArrayHasKey('required', $meta, "VectorMemorySchema.$toolName: missing 'required'");
+            $this->assertArrayHasKey('allowed', $meta, "VectorMemorySchema.$toolName: missing 'allowed'");
+            $this->assertArrayHasKey('types', $meta, "VectorMemorySchema.$toolName: missing 'types'");
+        }
+    }
 }
