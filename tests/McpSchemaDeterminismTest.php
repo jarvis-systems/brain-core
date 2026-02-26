@@ -111,4 +111,45 @@ class McpSchemaDeterminismTest extends TestCase
             }
         }
     }
+
+    /**
+     * @dataProvider schemaProvider
+     */
+    public function testDescriptionsAreNonEmpty(string $class, string $label): void
+    {
+        $schema = $class::get();
+
+        foreach ($schema as $toolName => $meta) {
+            $description = $meta['description'] ?? '';
+            $this->assertNotEmpty($description, "$label.$toolName: description must not be empty");
+            $this->assertNotEquals('No description available.', $description, "$label.$toolName: description must not be placeholder");
+            $this->assertIsString($description, "$label.$toolName: description must be string");
+        }
+    }
+
+    /**
+     * @dataProvider schemaProvider
+     */
+    public function testInputSchemaStructureIsValid(string $class, string $label): void
+    {
+        $schema = $class::get();
+
+        foreach ($schema as $toolName => $meta) {
+            $types = $meta['types'] ?? [];
+            $required = $meta['required'] ?? [];
+            $allowed = $meta['allowed'] ?? [];
+
+            // Properties must match types keys
+            $propertiesKeys = array_keys($types);
+            sort($propertiesKeys);
+            $allowedSorted = $allowed;
+            sort($allowedSorted);
+            $this->assertSame($allowedSorted, $propertiesKeys, "$label.$toolName: types keys must match allowed keys");
+
+            // Required must be subset of allowed
+            foreach ($required as $req) {
+                $this->assertContains($req, $allowed, "$label.$toolName: required '$req' must be in allowed");
+            }
+        }
+    }
 }
