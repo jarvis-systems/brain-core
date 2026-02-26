@@ -418,7 +418,7 @@ class NodeIntegrityTest extends TestCase
             }
         }
 
-        $duplicates = array_filter($ids, fn (array $files): bool => count($files) > 1);
+        $duplicates = array_filter($ids, fn(array $files): bool => count($files) > 1);
         $messages = [];
         foreach ($duplicates as $id => $dupeFiles) {
             $messages[] = "$id: " . implode(', ', $dupeFiles);
@@ -449,7 +449,7 @@ class NodeIntegrityTest extends TestCase
             }
         }
 
-        $duplicates = array_filter($ids, fn (array $files): bool => count($files) > 1);
+        $duplicates = array_filter($ids, fn(array $files): bool => count($files) > 1);
         $messages = [];
         foreach ($duplicates as $id => $dupeFiles) {
             $messages[] = "$id: " . implode(', ', $dupeFiles);
@@ -540,7 +540,6 @@ class NodeIntegrityTest extends TestCase
 
         $expected = [
             'Context7Mcp.php',
-            'LaravelBoostMcp.php',
             'MockEchoMcp.php',
             'SequentialThinkingMcp.php',
             'VectorMemoryMcp.php',
@@ -577,7 +576,7 @@ class NodeIntegrityTest extends TestCase
         // Must have at least one package entry (not _meta)
         $packages = array_filter(
             array_keys($data),
-            fn (string $key): bool => $key !== '_meta'
+            fn(string $key): bool => $key !== '_meta'
         );
         $this->assertNotEmpty($packages, 'pins.json has no package entries');
 
