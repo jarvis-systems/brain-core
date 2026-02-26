@@ -196,4 +196,48 @@ class McpSchemaDeterminismTest extends TestCase
             $this->assertArrayHasKey('types', $meta, "VectorMemorySchema.$toolName: missing 'types'");
         }
     }
+
+    /**
+     * Context7 specific: verify exposed tools have complete metadata.
+     */
+    public function testContext7ExposedToolsHaveCompleteMetadata(): void
+    {
+        $schema = Context7Schema::get();
+        $exposedTools = ['search'];
+
+        foreach ($exposedTools as $toolName) {
+            $this->assertArrayHasKey($toolName, $schema, "Context7Schema.$toolName: missing from schema");
+
+            $meta = $schema[$toolName];
+            $description = $meta['description'] ?? '';
+
+            $this->assertNotEmpty($description, "Context7Schema.$toolName: description must not be empty");
+            $this->assertNotEquals('No description available.', $description, "Context7Schema.$toolName: description must not be placeholder");
+            $this->assertArrayHasKey('required', $meta, "Context7Schema.$toolName: missing 'required'");
+            $this->assertArrayHasKey('allowed', $meta, "Context7Schema.$toolName: missing 'allowed'");
+            $this->assertArrayHasKey('types', $meta, "Context7Schema.$toolName: missing 'types'");
+        }
+    }
+
+    /**
+     * Sequential-thinking specific: verify exposed tools have complete metadata.
+     */
+    public function testSequentialThinkingExposedToolsHaveCompleteMetadata(): void
+    {
+        $schema = SequentialThinkingSchema::get();
+        $exposedTools = ['think'];
+
+        foreach ($exposedTools as $toolName) {
+            $this->assertArrayHasKey($toolName, $schema, "SequentialThinkingSchema.$toolName: missing from schema");
+
+            $meta = $schema[$toolName];
+            $description = $meta['description'] ?? '';
+
+            $this->assertNotEmpty($description, "SequentialThinkingSchema.$toolName: description must not be empty");
+            $this->assertNotEquals('No description available.', $description, "SequentialThinkingSchema.$toolName: description must not be placeholder");
+            $this->assertArrayHasKey('required', $meta, "SequentialThinkingSchema.$toolName: missing 'required'");
+            $this->assertArrayHasKey('allowed', $meta, "SequentialThinkingSchema.$toolName: missing 'allowed'");
+            $this->assertArrayHasKey('types', $meta, "SequentialThinkingSchema.$toolName: missing 'types'");
+        }
+    }
 }
