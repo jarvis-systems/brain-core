@@ -33,14 +33,18 @@ final class McpCallResult
         return new self(true, $serverId, $tool, $data, null, $requestId, $redactionsApplied);
     }
 
-    public static function error(string $serverId, string $tool, string $code, string $reason, string $message, string $hint, ?string $requestId = null): self
+    public static function error(string $serverId, string $tool, string $code, string $reason, string $message, string $hint, ?string $requestId = null, bool $redactionsApplied = false, ?array $debug = null): self
     {
-        return new self(false, $serverId, $tool, [], [
+        $error = [
             'code' => $code,
             'reason' => $reason,
             'message' => $message,
             'hint' => $hint,
-        ], $requestId);
+        ];
+        if ($debug !== null) {
+            $error['debug'] = $debug;
+        }
+        return new self(false, $serverId, $tool, [], $error, $requestId, $redactionsApplied);
     }
 
     /**
