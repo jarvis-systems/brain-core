@@ -553,9 +553,9 @@ trait SharedCommandTrait
             ->example()
             ->phase('Generate 3-5 keyword variations: split CamelCase, strip suffixes (Test, Controller, Service, Repository, Handler), extract domain words, try parent context keywords')
             ->phase('Search ORDER: most specific → most general. Minimum 3 attempts before concluding "no docs"')
-            ->phase('WRONG: brain mcp:docs-search --json --query="UserAuthServiceTest" → not found → done')
-            ->phase('RIGHT: brain mcp:docs-search --json --query="UserAuthServiceTest" → brain mcp:docs-search --json --query="UserAuth" → FOUND!')
-            ->phase('STILL not found after 3+ attempts? → brain docs --undocumented → check if class exists but lacks documentation');
+            ->phase('WRONG: ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => 'UserAuthServiceTest']) . ' → not found → done')
+            ->phase('RIGHT: ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => 'UserAuthServiceTest']) . ' → ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => 'UserAuth']) . ' → FOUND!')
+            ->phase('STILL not found after 3+ attempts? → ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '--undocumented']) . ' → check if class exists but lacks documentation');
     }
 
     // =========================================================================
@@ -626,7 +626,7 @@ trait SharedCommandTrait
             ->onViolation('Follow 5-step sequence. Max 1 retry for same tool call. Always store failure to memory. Status → pending, NEVER stopped.');
 
         $this->rule('failure-policy-missing-docs')->high()
-            ->text('MISSING DOCS: 1) Apply aggressive-docs-search (3+ keyword variations). 2) All variations exhausted → conclude "no docs". 3) Proceed using: task.content (primary spec) + vector memory context + parent task context. 4) Log in task comment: "No documentation found after {N} search attempts. Proceeding with task.content.", append_comment: true. NOT a blocker — absence of docs is information, not failure.')
+            ->text('MISSING DOCS: 1) Apply aggressive docs_search (3+ keyword variations). 2) All variations exhausted → conclude "no docs". 3) Proceed using: task.content (primary spec) + vector memory context + parent task context. 4) Log in task comment: "No documentation found after {N} search attempts. Proceeding with task.content.", append_comment: true. NOT a blocker — absence of docs is information, not failure.')
             ->why('Missing docs must not block execution. task.content is the minimum viable specification. Blocking on missing docs causes pipeline stalls for tasks that never had docs.')
             ->onViolation('Never block on missing docs. Search aggressively, then proceed with available context.');
 
@@ -916,9 +916,9 @@ trait SharedCommandTrait
         }
 
         $this->rule('docs-during-execution')->high()
-            ->text('After implementation: NEW feature/module/API without .docs/ → CREATE doc. Changed behavior with existing docs → UPDATE. Bugfix/refactor/trivial → SKIP. Use brain docs to check existing. YAML format: brain docs --help -v.')
-            ->why('Documentation is declared "law" but executors never create it. Executor understands the code best — creating docs during execution costs near zero.')
-            ->onViolation('Before completing: run brain docs for feature keywords. New feature without docs → create .docs/{feature}.md.');
+            ->text('After implementation: NEW feature/module/API without .docs/ → CREATE doc. Changed behavior with existing docs → UPDATE. Bugfix/refactor/trivial → SKIP. Use ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' to check existing. YAML format: see .docs/ examples.')
+            ->why('Documentation keeps code maintainable. New features need docs. Changed behavior needs doc updates.')
+            ->onViolation('Before completing: run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' for feature keywords. New feature without docs → create .docs/{feature}.md.');
 
         $this->guideline('docs-during-execution')
             ->goal('Decide whether to create/update documentation after implementation')
@@ -926,10 +926,10 @@ trait SharedCommandTrait
             ->phase('1. Task adds NEW feature/module/API? → CHECK docs')
             ->phase('2. Task CHANGES BEHAVIOR? → CHECK docs')
             ->phase('3. Bugfix/refactor/trivial (no behavior change)? → SKIP')
-            ->phase('CHECK: ' . BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → docs found?')
+            ->phase('CHECK: ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' → docs found?')
             ->phase('  YES + behavior changed → READ doc, UPDATE relevant sections')
-            ->phase('  NO + new feature → CREATE .docs/{feature-name}.md (YAML format: brain docs --help -v)')
+            ->phase('  NO + new feature → CREATE .docs/{feature-name}.md (YAML format: see .docs/ examples)')
             ->phase('  NO + minor change → SKIP')
-            ->phase('POST-IMPLEMENTATION: ' . BashTool::call(BrainCLI::DOCS('--undocumented')) . ' → new undocumented classes? → flag in task comment');
+            ->phase('POST-IMPLEMENTATION: ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '--undocumented']) . ' → new undocumented classes? → flag in task comment');
     }
 }

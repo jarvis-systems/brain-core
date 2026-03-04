@@ -152,7 +152,7 @@ class TaskTestValidateInclude extends IncludeArchetype
                 Store::get('TASK') . '.parent_id',
                 VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$TASK.parent_id', 'limit' => 20]) . ' → check sibling comments for failed test attempts'
             ))
-            ->phase(BashTool::call(BrainCLI::DOCS('{TASK keywords}')) . ' → ' . Store::as('DOCS'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{TASK keywords}']) . ' → ' . Store::as('DOCS'))
             ->phase(Operator::if('unknown testing pattern', Context7Mcp::callJson('query-docs', ['query' => '{pattern}']) . ' → understand first'))
 
             // 4. TDD MODE (pending tasks)

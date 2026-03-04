@@ -52,19 +52,6 @@ final class McpCallExecutor
             );
         }
 
-        // 1.5 Portability rule: block mock-echo in normal mode
-        if ($request->serverId === 'mock-echo' && getenv('BRAIN_TEST_MODE') !== '1') {
-            return McpCallResult::error(
-                $request->serverId,
-                $request->tool,
-                'MCP_SERVER_NOT_FOUND',
-                'test_server_not_available',
-                'Server mock-echo is a test stub and is not available in normal execution mode.',
-                'Run: brain mcp:list ; brain mcp:describe --server=<server>',
-                $requestId
-            );
-        }
-
         // 2. Budget check
         $budget = $this->budget ?? McpCallBudget::create($this->projectRoot);
         if ($budget->isExhausted()) {

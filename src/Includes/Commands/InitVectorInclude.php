@@ -16,7 +16,7 @@ use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
 use BrainNode\Mcp\VectorMemoryMcp;
 
-#[Purpose('Vector memory initialization: parallel project scanning, dense knowledge storage, brain docs integration. Populates vector memory with project structure, code, docs, and config insights for agent context.')]
+#[Purpose('Vector memory initialization: parallel project scanning, dense knowledge storage, docs_search MCP tool integration. Populates vector memory with project structure, code, docs, and config insights for agent context.')]
 class InitVectorInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -42,9 +42,9 @@ class InitVectorInclude extends IncludeArchetype
             ->onViolation('Group independent areas, launch simultaneously');
 
         $this->rule('brain-docs-then-document-master')->critical()
-            ->text('Use brain docs for INDEX, then DocumentationMaster agents to ANALYZE content')
-            ->why('brain docs = metadata index, DocumentationMaster = content analysis + vector storage')
-            ->onViolation('brain docs → group docs → parallel DocumentationMaster agents');
+            ->text('Use ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']) . ' for INDEX, then DocumentationMaster agents to ANALYZE content')
+            ->why('docs_search MCP tool = metadata index, DocumentationMaster = content analysis + vector storage')
+            ->onViolation(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']) . ' → group docs → parallel DocumentationMaster agents');
 
         $this->rule('dense-storage')->critical()
             ->text('Store compact JSON-like format: {key:value} pairs, no verbose prose')
@@ -137,11 +137,11 @@ class InitVectorInclude extends IncludeArchetype
 
         // Phase 3b: Documentation - Index + Analyze
         $this->guideline('phase3-documentation')
-            ->goal('Index .docs/ via brain docs, then analyze content via DocumentationMaster agents')
+            ->goal('Index .docs/ via ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']) . ', then analyze content via DocumentationMaster agents')
             ->example()
             ->phase('STEP 1 - Get documentation index:')
             ->do([
-                BashTool::call(BrainCLI::DOCS),
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']),
                 Store::as('DOCS_INDEX', '[{path, name, description, type}]'),
             ])
             ->phase('STEP 2 - Adaptive batching based on doc count:')
@@ -206,7 +206,7 @@ class InitVectorInclude extends IncludeArchetype
         $this->guideline('phase4-synthesis')
             ->goal('Synthesize all findings into project-wide architecture')
             ->example()
-            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'project structure architecture stack patterns', 'limit' => 20, 'category' => self::CAT_ARCHITECTURE]))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['keywords' => 'project structure architecture stack patterns', 'limit' => 20, 'category' => self::CAT_ARCHITECTURE]))
             ->phase(Store::as('ALL_FINDINGS'))
             ->phase(
                 VectorMemoryMcp::callValidatedJson('store_memory', [
@@ -250,9 +250,9 @@ class InitVectorInclude extends IncludeArchetype
                 ->phase('Wait for all to complete, then synthesize');
 
             $this->guideline('brain-docs-usage')
-                ->text('brain docs for INDEX (metadata), then DocumentationMaster agents for CONTENT analysis')
-                ->example(BashTool::call(BrainCLI::DOCS))->key('list-all')
-                ->example(BashTool::call(BrainCLI::DOCS('keyword1,keyword2')))->key('search');
+                ->text('docs_search MCP tool for INDEX (metadata), then DocumentationMaster agents for CONTENT analysis')
+                ->example(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']))->key('list-all')
+                ->example(BrainCLI::MCP__DOCS_SEARCH(['keywords' => 'keyword']))->key('search');
         }
 
         // Error Handling (supplements defineFailurePolicyRules from trait)
@@ -281,14 +281,14 @@ class InitVectorInclude extends IncludeArchetype
                 ->phase('1', 'Memory: 0 entries → fresh init')
                 ->phase('2', 'Structure scan: 5 areas (src, tests, config, .docs, build)')
                 ->phase('3a', 'PARALLEL: ExploreMaster(src/) + ExploreMaster(tests/) → 2 agents')
-                ->phase('3b', 'brain docs → 8 docs found → batch into 3+3+2')
+                ->phase('3b', BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']) . ' → 8 docs found → batch into 3+3+2')
                 ->phase('3b-parallel', 'PARALLEL: 3x DocumentationMaster agents')
                 ->phase('3c', 'PARALLEL: ExploreMaster(config/) + ExploreMaster(build/) → 2 agents')
                 ->phase('4', 'Synthesis: search architecture memories → project-wide summary')
                 ->phase('5', 'Complete: 15 memories, 7 agents (4 Explore + 3 DocMaster)');
 
             $this->guideline('directive')
-                ->text('PARALLEL agents! brain docs → DocumentationMaster! Dense storage! Predefined tags! Fast init!');
+                ->text('PARALLEL agents! docs_search MCP tool → DocumentationMaster! Dense storage! Predefined tags! Fast init!');
         }
     }
 }

@@ -323,7 +323,7 @@ class TaskValidateInclude extends IncludeArchetype
             ))
             ->phase('Extract from ' . Store::get('SIBLING_TASKS') . ' comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked')
             ->phase(Store::as('FAILURE_PATTERNS', 'solutions that were tried and failed (from sibling comments + sibling memories + debugging memories)'))
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' ' . Store::as('DOCS_INDEX'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from task}']) . ' ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if('unknown library/pattern in task scope', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand API before validating'))
 
             // 3. Approval (skip if -y)
@@ -406,7 +406,7 @@ MISSION: COMPLETION CHECK
 8. Fix cosmetic issues inline (whitespace, formatting) — BUT IN PARALLEL CONTEXT: check SIBLING_SCOPES first. File in active sibling scope → DO NOT fix, record as "DEFERRED COSMETIC: {file}:{line} — {issue}"
 9. FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
 10. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → before ANY Edit, verify file is NOT in their scope. Deferred cosmetics are NOT failures.
-11. DOCUMENTATION CHECK: IF task adds NEW feature/module/API → run brain docs "{keywords}" to verify .docs/ documentation exists. No docs for new feature = cosmetic issue (executor should have created). Create basic .docs/{feature}.md inline with YAML front matter (name, description, type, date, version) + brief markdown description. If parallel context and doc file could conflict → defer to comment.
+11. DOCUMENTATION CHECK: IF task adds NEW feature/module/API → run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']) . ' to verify .docs/ documentation exists. No docs for new feature = cosmetic issue (executor should have created). Create basic .docs/{feature}.md inline with YAML front matter (name, description, type, date, version) + brief markdown description. If parallel context and doc file could conflict → defer to comment.
 
 Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: [], cosmetic_deferred: [], docs_coverage: {new_features: [], has_docs: bool, docs_created: []}}')
 ,

@@ -234,7 +234,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
                     Store::as('FAILURE_PATTERNS', 'known failed approaches from siblings + debugging memories'),
                 ]
             ))
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from task}']) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION') . ' (COMPLETE spec)'))
             ->phase(Operator::if('unknown library/pattern', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand before validating'))
 
@@ -279,7 +279,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
             ->phase('4.5 CLEANUP: Scan for unused imports, dead code, orphaned helpers, debug statements')
 
-            ->phase('4.6 DOCS COVERAGE: IF task adds NEW feature/module/API → ' . BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → check if .docs/ entry exists. No docs for new feature = minor cosmetic issue. Create basic .docs/{feature}.md inline (YAML front matter + brief description). Bugfix/refactor = SKIP.')
+            ->phase('4.6 DOCS COVERAGE: IF task adds NEW feature/module/API → ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{feature keywords}']) . ' → check if .docs/ entry exists. No docs for new feature = minor cosmetic issue. Create basic .docs/{feature}.md inline (YAML front matter + brief description). Bugfix/refactor = SKIP.')
 
             ->phase('During validation: cosmetic found → check SIBLING_SCOPES (if parallel) → file in active sibling scope? → DEFER to comment. File safe? → Edit → fix → COSMETIC_FIXES++ → continue')
             ->phase(Operator::if(Store::get('KNOWN_FAILURES') . ' not empty', 'Before creating fix-task: verify proposed fix is NOT in known failures. Match → research alternative.'))

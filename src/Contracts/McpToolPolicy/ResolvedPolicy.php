@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace BrainCore\Contracts\McpToolPolicy;
 
+use BrainCore\Support\StableJsonTrait;
+
 final readonly class ResolvedPolicy
 {
+    use StableJsonTrait;
+
     public function __construct(
         public bool $enabled,
         public string $version,
@@ -27,5 +31,23 @@ final readonly class ResolvedPolicy
             clients: [],
             resolvedPath: null,
         );
+    }
+
+    /**
+     * Export to a stable array representation for MCP protocol responses.
+     *
+     * @return array{enabled: bool, kill_switch_env: string, schema_version: string, allowed: string[], never: string[], clients: array, resolved_path: string|null}
+     */
+    public function toStableArray(): array
+    {
+        return $this->stabilizeArray([
+            'allowed' => $this->allowed,
+            'clients' => $this->clients,
+            'enabled' => $this->enabled,
+            'kill_switch_env' => $this->killSwitchEnv,
+            'never' => $this->never,
+            'resolved_path' => $this->resolvedPath,
+            'schema_version' => $this->version,
+        ]);
     }
 }

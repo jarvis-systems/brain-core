@@ -69,7 +69,7 @@ trait DoCommandCommonTrait
     protected function defineEntryPointBlockingRule(string $commandType): void
     {
         $this->rule('entry-point-blocking')->critical()
-            ->text('ON RECEIVING $RAW_INPUT: Your FIRST output MUST be "=== DO:'.$commandType.' ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except brain list:masters), code generation, file analysis.')
+            ->text('ON RECEIVING $RAW_INPUT: Your FIRST output MUST be "=== DO:'.$commandType.' ACTIVATED ===" followed by Phase 0. ANY other first action is VIOLATION. FORBIDDEN first actions: Glob, Grep, Read, Edit, Write, WebSearch, WebFetch, Bash (except ' . BrainCLI::MCP__LIST_MASTERS() . '), code generation, file analysis.')
             ->why('Without explicit entry point, Brain skips workflow and executes directly. Entry point forces workflow compliance.')
             ->onViolation('STOP IMMEDIATELY. Delete any tool calls. Output "=== DO:'.$commandType.' ACTIVATED ===" and restart from Phase 0.');
     }
@@ -442,9 +442,11 @@ trait DoCommandCommonTrait
                 '',
                 '=== PHASE 1: '.$validationType.' PREVIEW ===',
             ]))
-            ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'Get available agents with capabilities'))
+            ->phase('Get available agents with capabilities')
+            ->phase(BrainCLI::MCP__LIST_MASTERS())
             ->phase(Store::as('AVAILABLE_AGENTS', '{agent_id: description mapping}'))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from '.Store::var('TASK_DESCRIPTION').'}'), 'Get documentation INDEX preview'))
+            ->phase('Get documentation INDEX preview')
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from '.Store::var('TASK_DESCRIPTION').'}']))
             ->phase(Store::as('DOCS_PREVIEW', 'Documentation files available'))
             ->phase(Operator::output([
                 'Task: {'.Store::var('TASK_DESCRIPTION').'}',
@@ -529,7 +531,8 @@ trait DoCommandCommonTrait
                 '',
                 '=== PHASE 3: DOCUMENTATION REQUIREMENTS ===',
             ]))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from '.Store::var('TASK_DESCRIPTION').'}'), 'Get documentation INDEX'))
+            ->phase('Get documentation INDEX')
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from '.Store::var('TASK_DESCRIPTION').'}']))
             ->phase(Store::as('DOCS_INDEX', 'Documentation file paths'))
             ->phase(Operator::if('{'.Store::var('DOCS_INDEX').'} not empty', [
                 TaskTool::agent('documentation-master', $extractionDetails),

@@ -17,14 +17,15 @@ final class McpDiscoveryService
     public function __construct(
         private readonly McpRegistryResolver $registryResolver,
         private readonly McpExternalToolsPolicyResolver $policyResolver,
-    ) {}
+    ) {
+    }
 
     /**
      * List all servers and their allowed tools.
      */
     public function listServers(): array
     {
-        if (! $this->policyResolver->isEnabled()) {
+        if (!$this->policyResolver->isEnabled()) {
             return [];
         }
 
@@ -36,8 +37,9 @@ final class McpDiscoveryService
 
         foreach ($registry->servers as $server) {
             $serverId = $server['id'];
+
             $isEnabled = $server['enabled'] && ($policy->servers[$serverId]['enabled'] ?? false);
-            
+
             $allowedTools = $policy->servers[$serverId]['tools_allowed'] ?? [];
             sort($allowedTools);
 
@@ -70,12 +72,12 @@ final class McpDiscoveryService
      */
     public function describeServer(string $serverId): array
     {
-        if (! $this->policyResolver->isEnabled()) {
+        if (!$this->policyResolver->isEnabled()) {
             throw new RuntimeException("MCP operations are disabled via kill-switch.");
         }
-
         $registry = $this->registryResolver->resolve();
         $serverEntry = null;
+
         foreach ($registry->servers as $server) {
             if ($server['id'] === $serverId) {
                 $serverEntry = $server;
@@ -84,18 +86,18 @@ final class McpDiscoveryService
         }
 
         if ($serverEntry === null) {
-            throw new RuntimeException("code=MCP_SERVER_NOT_FOUND reason=registry_missing_id message='Server {$serverId} not found in registry.'");
+            throw new RuntimeException("code=MCP_SERVER_NOT_FOUND reason=registry_missing_id message=\"Server '{$serverId}' not found in registry.\"");
         }
 
         $policy = $this->policyResolver->resolve();
         $serverPolicy = $policy->servers[$serverId] ?? null;
 
-        if (! ($serverEntry['enabled']) || ! ($serverPolicy['enabled'] ?? false)) {
-             throw new RuntimeException("code=MCP_SERVER_DISABLED reason=server_not_enabled message='Server {$serverId} is disabled.'");
+        if (!($serverEntry['enabled']) || !($serverPolicy['enabled'] ?? false)) {
+            throw new RuntimeException("code=MCP_SERVER_DISABLED reason=server_not_enabled message=\"Server '{$serverId}' is disabled.\"");
         }
 
         $allowedTools = $serverPolicy['tools_allowed'] ?? [];
-        
+
         $class = $serverEntry['class'];
         $tools = [];
 
@@ -106,21 +108,27 @@ final class McpDiscoveryService
                 foreach ($allowedTools as $toolName) {
                     if (isset($fullSchema[$toolName])) {
                         $toolMetadata = $fullSchema[$toolName];
+                        $required = $toolMetadata['required'] ?? [];
+                        sort($required);
                         $tools[] = [
                             'name' => $toolName,
                             'description' => $toolMetadata['description'] ?? "No description available.",
                             'input_schema' => [
                                 'type' => 'object',
                                 'properties' => $this->formatProperties($toolMetadata['types'] ?? []),
-                                'required' => $toolMetadata['required'] ?? [],
+                                'required' => $required,
                             ]
                         ];
                     } else {
                         // Tool allowed in policy but missing in schema
                         $tools[] = [
                             'name' => $toolName,
-                            'description' => "Tool found in policy but schema is missing in class.",
-                            'input_schema' => ['type' => 'object']
+                            'description' => "No description available.",
+                            'input_schema' => [
+                                'type' => 'object',
+                                'properties' => (object) [],
+                                'required' => [],
+                            ]
                         ];
                     }
                 }
@@ -129,13 +137,17 @@ final class McpDiscoveryService
                 foreach ($allowedTools as $toolName) {
                     $tools[] = [
                         'name' => $toolName,
-                        'description' => "Tool found in policy but server class does not provide static metadata.",
-                        'input_schema' => ['type' => 'object']
+                        'description' => "No description available.",
+                        'input_schema' => [
+                            'type' => 'object',
+                            'properties' => (object) [],
+                            'required' => [],
+                        ]
                     ];
                 }
             }
         } else {
-             throw new RuntimeException("code=MCP_CLASS_NOT_FOUND reason=autoload_failure message='Class {$class} for server {$serverId} not found.'");
+            throw new RuntimeException("code=MCP_CLASS_NOT_FOUND reason=autoload_failure message='Class {$class} for server {$serverId} not found.'");
         }
 
         usort($tools, fn($a, $b) => strcmp($a['name'], $b['name']));
@@ -147,8 +159,11 @@ final class McpDiscoveryService
         ];
     }
 
-    private function formatProperties(array $types): array
+    private function formatProperties(array $types): array|object
     {
+        if (empty($types)) {
+            return (object) [];
+        }
         $properties = [];
         foreach ($types as $name => $type) {
             $properties[$name] = ['type' => $type];

@@ -6,28 +6,30 @@ namespace BrainCore\Includes\Universal;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\BrainCLI;
 
-#[Purpose('brain docs CLI protocol — self-documenting tool for .docs/ indexing and search. Iron rules for documentation quality.')]
+#[Purpose('docs_search MCP tool protocol — PRIMARY tool for .docs/ indexing and search. Iron rules for documentation quality.')]
 class BrainDocsInclude extends IncludeArchetype
 {
     protected function handle(): void
     {
         $this->guideline('brain-docs-tool')
-            ->text('brain mcp:docs-search — PRIMARY tool for .docs/ project documentation discovery and search. Returns structured JSON with paths, matches, and scores. Always use brain mcp:docs-search --json BEFORE any project-related reasoning: research, analysis, conclusions, recommendations, implementation. One check — zero overhead — prevents costly rework.');
+            ->text('docs_search MCP tool — PRIMARY tool for .docs/ project documentation discovery and search. Returns structured JSON with paths, matches, and scores. Always use ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' BEFORE any project-related reasoning: research, analysis, conclusions, recommendations, implementation. One check — zero overhead — prevents costly rework.')
+            ->example('Fallback: IF tooling disabled via env, Brain will automatically use legacy CLI internally.');
 
         $this->guideline('brain-docs-invocation')
-            ->text('For programmatic docs access, use BrainToolInvoker::docsSearch(query, limit, headers). Backend: brain mcp:docs-search --json.')
+            ->text('For programmatic docs access, use BrainToolInvoker::docsSearch(query, limit, headers). Backend: docs_search MCP tool.')
             ->example('BrainToolInvoker::docsSearch("authentication") → structured array with files, matches, scores')
-            ->example('Fallback (backend detail): brain mcp:docs-search --json --query="query"');
+            ->example('Fallback (backend detail): ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => 'query']));
 
         $this->rule('no-manual-indexing')->critical()
-            ->text('NEVER create index.md or README.md for documentation indexing. brain docs handles all indexing automatically.')
+            ->text('NEVER create index.md or README.md for documentation indexing. docs_search MCP tool handles all indexing automatically.')
             ->why('Manual indexing creates maintenance burden and becomes stale.')
-            ->onViolation('Remove manual index files. Use brain mcp:docs-search --json exclusively.');
+            ->onViolation('Remove manual index files. Use ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' exclusively.');
 
         $this->rule('markdown-only')->critical()
             ->text('ALL documentation MUST be markdown format with *.md extension. No other formats allowed.')
-            ->why('Consistency, parseability, brain docs indexing requires markdown format.')
+            ->why('Consistency, parseability, docs_search MCP tool indexing requires markdown format.')
             ->onViolation('Convert non-markdown files to *.md or reject them from documentation.');
 
         $this->rule('documentation-not-codebase')->critical()
@@ -42,12 +44,12 @@ class BrainDocsInclude extends IncludeArchetype
 
         $this->rule('yaml-front-matter')->critical()
             ->text('ALL .docs/ files MUST start with YAML front matter: ---\nname: "Title"\ndescription: "Brief description"\n---. Required fields: name (unique), description (>= 10 chars). Optional: type, date, version, status, url.')
-            ->why('brain docs --validate enforces front matter. Without it: search ranking broken, validation fails, indexing degraded.')
-            ->onViolation('Prepend YAML front matter BEFORE H1 header. Run Bash(\'brain docs --validate\') to verify.');
+            ->why(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '--validate']) . ' enforces front matter. Without it: search ranking broken, validation fails, indexing degraded.')
+            ->onViolation('Prepend YAML front matter BEFORE H1 header. Run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '--validate']) . ' to verify.');
 
         $this->rule('validate-before-commit')->high()
-            ->text('Run brain docs --validate BEFORE committing documentation changes. All files must pass with 0 errors and 0 warnings.')
+            ->text('Run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '--validate']) . ' BEFORE committing documentation changes. All files must pass with 0 errors and 0 warnings.')
             ->why('Catches missing front matter, duplicate names, empty content before they pollute the repository.')
-            ->onViolation('Bash(\'brain docs --validate\') → fix all errors/warnings → re-validate → commit.');
+            ->onViolation(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '--validate']) . ' → fix all errors/warnings → re-validate → commit.');
     }
 }

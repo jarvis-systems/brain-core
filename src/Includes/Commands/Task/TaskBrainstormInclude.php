@@ -85,13 +85,13 @@ class TaskBrainstormInclude extends IncludeArchetype
             ->phase('WAIT for user topic → ' . Store::as('TOPIC'))
 
             // 2. Context gathering (DOCS FIRST - provide constraints for ideas)
-            ->phase(BashTool::call(BrainCLI::DOCS('{TOPIC} {TASK.title}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{TOPIC} {TASK.title}']) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
                 ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
                 'DOCUMENTATION provides: constraints, existing decisions, rejected alternatives. Ideas MUST respect documented architecture.',
             ]))
-            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{TASK.title} {TOPIC}', 'limit' => 5]) . ' → ' . Store::as('MEMORY'))
-            ->phase(Operator::if('unknown library/tech in TOPIC', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand first'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['keywords' => '{TASK.title} {TOPIC}', 'limit' => 5]) . ' → ' . Store::as('MEMORY'))
+            ->phase(Operator::if('unknown library/tech in TOPIC', Context7Mcp::callJson('query-docs', ['keywords' => '{library}']) . ' → understand first'))
             ->phase(Operator::if('needs codebase analysis', TaskTool::agent('explore', 'Analyze codebase for {TOPIC}. Find: relevant files, patterns, implementations.') . ' → ' . Store::as('CODE_CONTEXT')))
             ->phase(Operator::if('needs external research', TaskTool::agent('web-research-master', 'Research {TOPIC}: best practices, patterns, pitfalls.') . ' → ' . Store::as('WEB_RESEARCH')))
 
@@ -120,7 +120,7 @@ class TaskBrainstormInclude extends IncludeArchetype
 
             // 5a. Invite specialist (optional)
             ->phase(Operator::if('user wants specialist', [
-                BashTool::call(BrainCLI::LIST_MASTERS) . ' → show available',
+                BrainCLI::MCP__LIST_MASTERS() . ' → show available',
                 'WAIT for selection',
                 TaskTool::agent('{selected}', 'Specialist perspective on {TOPIC} for task {TASK.title}. Current approaches: {summary}. Provide: alternatives, issues, recommendations.'),
                 'Present specialist input, continue brainstorm',

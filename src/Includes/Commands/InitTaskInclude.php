@@ -223,11 +223,11 @@ class InitTaskInclude extends IncludeArchetype
         // ============================================
 
         $this->guideline('phase4-documentation')
-            ->goal('Index docs via brain docs, then PARALLEL DocumentationMaster analysis')
+            ->goal('Index docs via '.BrainCLI::MCP__DOCS_SEARCH().', then PARALLEL DocumentationMaster analysis')
             ->example()
             ->phase('STEP 1 - Get documentation index:')
             ->do([
-                BashTool::call(BrainCLI::DOCS),
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']),
                 Store::as('DOCS_INDEX', '[{path, name, description, type}]'),
             ])
             ->phase('STEP 2 - Adaptive batching based on doc count:')

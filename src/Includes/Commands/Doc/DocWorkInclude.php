@@ -36,9 +36,9 @@ class DocWorkInclude extends IncludeArchetype
             ->onViolation('If interactive: STOP and ask clarifying question. If auto-approve: infer from input and proceed.');
 
         $this->rule('discovery-before-creation')->critical()
-            ->text('ALWAYS search existing docs via brain docs CLI BEFORE creating new files. Flow: brain docs "{keywords}" → found? → READ existing → UPDATE. Not found? → apply aggressive-docs-search (3+ keyword variations). Still not found → CREATE new. NEVER create duplicate documentation for same topic.')
+            ->text('ALWAYS search existing docs via docs_search MCP tool BEFORE creating new files. Flow: ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' → found? → READ existing → UPDATE. Not found? → apply aggressive docs_search (3+ keyword variations). Still not found → CREATE new. NEVER create duplicate documentation for same topic.')
             ->why('Duplicate docs diverge over time. One source of truth per topic. Updating existing is faster and preserves history.')
-            ->onViolation('Run brain docs first. Found → update. Not found after 3+ searches → create new.');
+            ->onViolation('Run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' first. Found → update. Not found after 3+ searches → create new.');
 
         $this->rule('evidence-based')->critical()
             ->text('ALL documentation content MUST be based on: 1) actual codebase reading (Read tool, Explore agent), 2) vector memory search, 3) existing .docs/ content, 4) verified web research. NEVER write documentation from assumptions or "common knowledge". Every technical claim must be verifiable against source code.')
@@ -51,9 +51,9 @@ class DocWorkInclude extends IncludeArchetype
             ->onViolation('Split content. Add part field to YAML. Add cross-references between parts.');
 
         $this->rule('yaml-front-matter-mandatory')->critical()
-            ->text('EVERY .docs/ file MUST start with valid YAML front matter. brain docs indexes ONLY files with valid YAML. Format: brain docs --help -v.')
-            ->why('brain docs CLI parses YAML for index and search. Docs without front matter are undiscoverable.')
-            ->onViolation('Add YAML front matter before any markdown content. Verify with brain docs after writing.');
+            ->text('EVERY .docs/ file MUST start with valid YAML front matter. docs_search MCP tool indexes ONLY files with valid YAML. Format: see .docs/ examples.')
+            ->why('docs_search MCP tool parses YAML for index and search. Docs without front matter are undiscoverable.')
+            ->onViolation('Add YAML front matter before any markdown content. Verify with ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' after writing.');
 
         $this->rule('text-first-code-last')->critical()
             ->text('Documentation is DESCRIPTION for humans. Minimize code to absolute minimum. Include code ONLY when: 1) text explanation would cost more tokens, AND 2) no other representation works. NEVER dump code blocks as documentation. Prefer: textual description > text-based diagram > minimal code snippet.')
@@ -87,7 +87,7 @@ class DocWorkInclude extends IncludeArchetype
         $this->defineAggressiveDocsSearchGuideline();
 
         $this->rule('external-docs-via-context7')->high()
-            ->text('When documenting features that use external packages/libraries: resolve library via '.Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package}']).' then query docs via '.Context7Mcp::callJson('query-docs', ['libraryId' => '{resolved_id}', 'query' => '{specific_topic}']).'. Use Context7 for KNOWN packages (composer/npm dependencies). Use web-research-master for broader context or unknown sources. NEVER guess external API behavior — verify against official docs.')
+            ->text('When documenting features that use external packages/libraries: resolve library via ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package}']) . ' then query docs via ' . Context7Mcp::callJson('query-docs', ['libraryId' => '{resolved_id}', 'query' => '{specific_topic}']) . '. Use Context7 for KNOWN packages (composer/npm dependencies). Use web-research-master for broader context or unknown sources. NEVER guess external API behavior — verify against official docs.')
             ->why('Documentation referencing external packages must be accurate. Guessing package behavior = docs become lies on first version bump. Context7 provides indexed, version-aware library docs.')
             ->onViolation('Identify external dependencies from codebase research. Resolve and query via Context7 before writing docs about them.');
 
@@ -132,63 +132,63 @@ class DocWorkInclude extends IncludeArchetype
 
             // Phase 1: Capture input & discover existing docs
             ->phase('=== PHASE 1: CAPTURE & DISCOVER ===')
-            ->phase(Store::as('RAW_INPUT', '$ARGUMENTS'))
-            ->phase(Store::as('HAS_AUTO_APPROVE', '{true if -y or --yes in RAW_INPUT}'))
-            ->phase(Store::as('CLEAN_ARGS', '{RAW_INPUT with flags removed}'))
-            ->phase(Store::as('DOC_TARGET', '{extract target from CLEAN_ARGS}'))
-            ->phase(Store::as('TARGET_TYPE', '{detect type from CLEAN_ARGS}'))
+            ->phase(Store:: as('RAW_INPUT', '$ARGUMENTS'))
+            ->phase(Store:: as('HAS_AUTO_APPROVE', '{true if -y or --yes in RAW_INPUT}'))
+            ->phase(Store:: as('CLEAN_ARGS', '{RAW_INPUT with flags removed}'))
+            ->phase(Store:: as('DOC_TARGET', '{extract target from CLEAN_ARGS}'))
+            ->phase(Store:: as('TARGET_TYPE', '{detect type from CLEAN_ARGS}'))
 
             // 1.1: Discovery via Brain Docs CLI
-            ->phase(BashTool::call(BrainCLI::DOCS('{DOC_TARGET keywords}')).' → '.Store::as('EXISTING_DOCS'))
-            ->phase(Operator::if(Store::get('EXISTING_DOCS').' is empty', [
-                'Apply aggressive-docs-search: 3+ keyword variations (split CamelCase, strip suffixes, domain words)',
-                BashTool::call(BrainCLI::DOCS('{variation_1}')),
-                BashTool::call(BrainCLI::DOCS('{variation_2}')),
-                BashTool::call(BrainCLI::DOCS('{variation_3}')),
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{DOC_TARGET keywords}']) . ' → ' . Store:: as('EXISTING_DOCS'))
+            ->phase(Operator::if(Store::get('EXISTING_DOCS') . ' is empty', [
+                'Apply aggressive-docs_search: 3+ keyword variations (split CamelCase, strip suffixes, domain words)',
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{variation_1}']),
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{variation_2}']),
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{variation_3}']),
             ]))
 
             // 1.2: Determine mode
-            ->phase(Operator::if(Store::get('EXISTING_DOCS').' found', [
-                ReadTool::call('{existing doc paths}').' → '.Store::as('CURRENT_CONTENT'),
-                Store::as('DOC_MODE', 'update'),
+            ->phase(Operator::if(Store::get('EXISTING_DOCS') . ' found', [
+                ReadTool::call('{existing doc paths}') . ' → ' . Store:: as('CURRENT_CONTENT'),
+                Store:: as('DOC_MODE', 'update'),
                 'Show: "Found existing docs: {paths}. Mode: UPDATE."',
             ]))
-            ->phase(Operator::if(Store::get('EXISTING_DOCS').' NOT found after all searches', [
-                Store::as('DOC_MODE', 'create'),
+            ->phase(Operator::if(Store::get('EXISTING_DOCS') . ' NOT found after all searches', [
+                Store:: as('DOC_MODE', 'create'),
                 'Show: "No existing docs for {DOC_TARGET}. Mode: CREATE."',
             ]))
 
             // 1.3: Vector memory context
-            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$DOC_TARGET', 'limit' => 5]).' → '.Store::as('MEMORY_CONTEXT'))
-            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$DOC_TARGET architecture design', 'limit' => 3]).' → append to '.Store::get('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$DOC_TARGET', 'limit' => 5]) . ' → ' . Store:: as('MEMORY_CONTEXT'))
+            ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '$DOC_TARGET architecture design', 'limit' => 3]) . ' → append to ' . Store::get('MEMORY_CONTEXT'))
 
             // 1.4: Scope clarification (interactive or auto-inferred)
             ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
                 'AskUserQuestion: What aspects to cover? Depth (overview/detailed/reference)? Target audience (developer/user/admin)?',
-                Store::as('USER_REQUIREMENTS', '{user answers: aspects, depth, audience, special_requests}'),
+                Store:: as('USER_REQUIREMENTS', '{user answers: aspects, depth, audience, special_requests}'),
             ]))
             ->phase(Operator::if('$HAS_AUTO_APPROVE', [
-                Store::as('USER_REQUIREMENTS', '{inferred from $CLEAN_ARGS context: depth=detailed, audience=developer, aspects=all relevant}'),
+                Store:: as('USER_REQUIREMENTS', '{inferred from $CLEAN_ARGS context: depth=detailed, audience=developer, aspects=all relevant}'),
                 'Auto-inferred scope from input. Proceeding autonomously.',
             ]))
 
             // Phase 2: Research (evidence gathering)
             ->phase('=== PHASE 2: EVIDENCE GATHERING ===')
-            ->phase(TaskTool::agent('explore', 'CODEBASE RESEARCH for documenting {$DOC_TARGET}: 1) Find all related source files (classes, traits, interfaces, configs). 2) Identify public API: method signatures, parameters, return types. 3) Find existing tests (test behavior = specification). 4) Check inline comments, PHPDoc, README fragments. 5) Map dependencies and relationships. Return: {source_files: [], public_api: [], config_options: [], test_files: [], inline_docs: [], dependencies: []}.').' → '.Store::as('CODEBASE_RESEARCH'))
+            ->phase(TaskTool::agent('explore', 'CODEBASE RESEARCH for documenting {$DOC_TARGET}: 1) Find all related source files (classes, traits, interfaces, configs). 2) Identify public API: method signatures, parameters, return types. 3) Find existing tests (test behavior = specification). 4) Check inline comments, PHPDoc, README fragments. 5) Map dependencies and relationships. Return: {source_files: [], public_api: [], config_options: [], test_files: [], inline_docs: [], dependencies: []}.') . ' → ' . Store:: as('CODEBASE_RESEARCH'))
             // 2.2: External package docs via Context7 (if dependencies detected)
             ->phase(Operator::if('$CODEBASE_RESEARCH reveals external packages/libraries', [
                 'For each significant dependency: resolve library ID',
-                Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package_name}']).' → '.Store::as('LIBRARY_ID'),
-                Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{relevant_topic}']).' → append to '.Store::get('CODEBASE_RESEARCH'),
+                Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package_name}']) . ' → ' . Store:: as('LIBRARY_ID'),
+                Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{relevant_topic}']) . ' → append to ' . Store::get('CODEBASE_RESEARCH'),
             ]))
             // 2.3: Broader context via web research (if needed beyond package docs)
             ->phase(Operator::if('external context needed beyond package docs (architecture patterns, industry practices)', [
-                TaskTool::agent('web-research-master', 'Research {$DOC_TARGET} context: best practices, standard approaches, related documentation patterns').' → '.Store::as('EXTERNAL_CONTEXT'),
+                TaskTool::agent('web-research-master', 'Research {$DOC_TARGET} context: best practices, standard approaches, related documentation patterns') . ' → ' . Store:: as('EXTERNAL_CONTEXT'),
             ]))
 
             // Phase 3: Structure proposal (CHECKPOINT 1 — interactive only)
             ->phase('=== PHASE 3: STRUCTURE PROPOSAL ===')
-            ->phase(Store::as('DOC_PLAN', '{proposed_path, sections_outline, estimated_lines, split_plan}'))
+            ->phase(Store:: as('DOC_PLAN', '{proposed_path, sections_outline, estimated_lines, split_plan}'))
             ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
                 'Present to user (CHECKPOINT 1):',
                 '  Path: .docs/{TARGET_TYPE}/{doc-name}.md',
@@ -226,7 +226,7 @@ class DocWorkInclude extends IncludeArchetype
             ->phase('  - All cross-references valid')
             ->phase('  - No secrets or PII')
             ->phase('  - Code examples minimal and accurate')
-            ->phase(Operator::if(Store::get('DOC_MODE').' === "update"', 'Diff: show what changed vs original'))
+            ->phase(Operator::if(Store::get('DOC_MODE') . ' === "update"', 'Diff: show what changed vs original'))
             ->phase(Operator::if('NOT $HAS_AUTO_APPROVE', [
                 'Present final to user (CHECKPOINT 3)',
                 'AskUserQuestion → WAIT for final approval',
@@ -234,10 +234,10 @@ class DocWorkInclude extends IncludeArchetype
             ->phase(Operator::if('$HAS_AUTO_APPROVE', 'Self-review passed. Writing files.'))
             ->phase(Operator::if('approved OR $HAS_AUTO_APPROVE', [
                 'Write files to .docs/',
-                BashTool::call(BrainCLI::DOCS('{DOC_TARGET keywords}')).' → verify files indexed by brain docs',
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']) . ' → verify files indexed by docs_search MCP tool',
                 Operator::if('NOT indexed', 'Check YAML front matter format. Fix and retry.'),
                 VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Documentation {created|updated}: {DOC_TARGET}. Path: {file_paths}. Sections: {section_names}. Based on: {source_files}.', 'category' => self::CAT_PROJECT_CONTEXT, 'tags' => [self::MTAG_INSIGHT, self::MTAG_REUSABLE]]),
-                'RESULT: Documentation {DOC_MODE}d at {paths}. Indexed in brain docs.',
+                'RESULT: Documentation {DOC_MODE}d at {paths}. Indexed in docs_search MCP tool.',
             ]));
 
         // =========================================================================
@@ -265,7 +265,7 @@ class DocWorkInclude extends IncludeArchetype
         // ERROR HANDLING
         // =========================================================================
         $this->guideline('error-handling')->example()
-            ->phase(Operator::if('brain docs CLI unavailable', 'Fallback: Glob(".docs/**/*.md") + Read YAML headers manually'))
+            ->phase(Operator::if('docs_search MCP tool unavailable', 'Fallback: Glob(".docs/**/*.md") + Read YAML headers manually'))
             ->phase(Operator::if('no source code found for topic', 'AskUserQuestion: is this conceptual-only or should match code? Conceptual → proceed with user input. Code-based → verify topic name and search again.'))
             ->phase(Operator::if('user rejects structure at checkpoint', 'Revise based on specific feedback. Re-propose. Max 2 revisions, then AskUserQuestion for precise direction.'))
             ->phase(Operator::if('content exceeds 500 lines mid-writing', 'STOP writing. Propose split plan. Get approval. Split and continue.'))
