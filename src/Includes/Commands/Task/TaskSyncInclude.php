@@ -271,7 +271,7 @@ class TaskSyncInclude extends IncludeArchetype
             ]))
 
             // 1.7 Documentation check (MANDATORY before any work)
-            ->phase(BashTool::call(BrainCLI::DOCS('{task keywords}')) . ' ' . Store::as('TASK_DOCS'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{task keywords}']) . ' ' . Store::as('TASK_DOCS'))
             ->phase(Operator::if(Store::get('TASK_DOCS') . ' found', [
                 ReadTool::call('{doc_paths}') . ' ' . Store::as('DOCUMENTATION'),
                 'Documentation is LAW. All execution MUST follow docs. No alternatives unless docs are ambiguous.',
@@ -326,7 +326,7 @@ class TaskSyncInclude extends IncludeArchetype
                     'If planned solution matches blocked approach → STOP, research alternative or escalate',
                 ]
             ))
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' → project docs')
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']) . ' → project docs')
             ->phase(Operator::if('docs found', ReadTool::call('{doc.path}')))
 
             // 4.5 Codebase similarity search (reuse > reinvent)
@@ -484,7 +484,7 @@ class TaskSyncInclude extends IncludeArchetype
 
             // 7.5 DOCUMENTATION: Create/update .docs/ if new feature/module
             ->phase(Operator::if('task adds NEW feature/module/API (not bugfix/refactor/trivial)', [
-                BashTool::call(BrainCLI::DOCS('{feature keywords}')) . ' → check if docs exist',
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{feature keywords}']) . ' → check if docs exist',
                 Operator::if('no docs found for this feature', [
                     'CREATE .docs/{feature-name}.md with YAML front matter (name, description, type, date, version) + markdown (purpose, usage, key concepts, API/interface)',
                     'Append doc file to ' . Store::get('CHANGED_FILES'),

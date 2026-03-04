@@ -97,7 +97,7 @@ class TaskCreateInclude extends IncludeArchetype
             ->phase(Store::as('IS_SIMPLE', 'description <140 chars AND no architecture/integration/multi-module keywords'))
 
             // 2. Documentation check (ALWAYS - even for simple tasks)
-            ->phase(BashTool::call(BrainCLI::DOCS('{domain} {objective}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{domain} {objective}']) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
                 ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
                 'DOCUMENTATION = COMPLETE specification. Use for: requirements, estimate, acceptance criteria.',

@@ -10,7 +10,6 @@ use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Runtime;
 use BrainCore\Compilation\Store;
-use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Includes\Commands\Task\TaskCommandCommonTrait;
 use BrainNode\Agents\DocumentationMaster;
 use BrainNode\Agents\ExploreMaster;
@@ -46,9 +45,9 @@ class InitDocsInclude extends IncludeArchetype
             ->onViolation('Continue to next doc. Show summary at end.');
 
         $this->rule('yaml-front-matter-mandatory')->critical()
-            ->text('EVERY generated .md file MUST start with valid YAML front matter. brain docs indexes ONLY files with valid YAML. Format: brain docs --help -v.')
-            ->why('Files without YAML front matter are invisible to brain docs CLI and all commands that use it.')
-            ->onViolation('Add YAML front matter. Verify with brain docs after writing.');
+            ->text('EVERY generated .md file MUST start with valid YAML front matter. docs_search MCP tool indexes ONLY files with valid YAML. Format: see .docs/ examples.')
+            ->why('Files without YAML front matter are invisible to docs_search MCP tool and all commands that use it.')
+            ->onViolation('Add YAML front matter. Verify with ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' after writing.');
 
         $this->rule('text-first-code-last')->critical()
             ->text('Documentation is DESCRIPTION for humans. Minimize code to absolute minimum. Text first, diagrams second, code as last resort.')
@@ -57,11 +56,11 @@ class InitDocsInclude extends IncludeArchetype
 
         $this->rule('500-line-limit')->critical()
             ->text('Each documentation file MUST NOT exceed 500 lines. Split into parts with YAML part: N field.')
-            ->why('Readability, token efficiency, brain docs indexing performance.')
+            ->why('Readability, token efficiency, docs_search MCP tool indexing performance.')
             ->onViolation('Split content. Add part field to YAML. Cross-reference between parts.');
 
         $this->rule('no-duplicate-docs')->critical()
-            ->text('NEVER create documentation for topics that already have docs. Check brain docs index BEFORE generating each doc.')
+            ->text('NEVER create documentation for topics that already have docs. Check docs_search MCP tool index BEFORE generating each doc.')
             ->why('Duplicate docs diverge over time. One source of truth per topic.')
             ->onViolation('Skip topic. Log: "existing doc found at {path}".');
 
@@ -97,7 +96,7 @@ class InitDocsInclude extends IncludeArchetype
             ]))
             ->phase('STEP 1 - Check existing documentation:')
             ->do([
-                BashTool::call(BrainCLI::DOCS),
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']),
                 Store::as('EXISTING_DOCS', '[{path, name, description, type}]'),
             ])
             ->phase('STEP 2 - Check vector memory for prior doc insights:')
@@ -258,9 +257,9 @@ class InitDocsInclude extends IncludeArchetype
         $this->guideline('phase6-verification')
             ->goal('Verify all generated docs are valid and indexed')
             ->example()
-            ->phase('STEP 1 - Verify brain docs indexes all new files:')
+            ->phase('STEP 1 - Verify docs_search MCP tool indexes all new files:')
             ->do([
-                BashTool::call(BrainCLI::DOCS),
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']),
                 Store::as('FINAL_INDEX'),
             ])
             ->phase('STEP 2 - Compare:')
@@ -270,7 +269,7 @@ class InitDocsInclude extends IncludeArchetype
                 'Check: no file exceeds 500 lines',
                 Operator::if('any doc missing from index', [
                     'Read file → check YAML front matter → fix if malformed',
-                    'Re-verify with brain docs',
+                    'Re-verify with ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']),
                 ]),
             ]);
 
@@ -290,14 +289,14 @@ class InitDocsInclude extends IncludeArchetype
                     'Total lines: {total}',
                     'Types: {type_breakdown}',
                     'Agents used: {agent_count} DocumentationMaster (parallel)',
-                    'All indexed by brain docs: {verified}',
+                    'All indexed by docs_search MCP tool: {verified}',
                     '═══════════════════════════',
                     '',
                     'NEXT STEPS:',
                     '  1. Review generated docs in .docs/',
                     '  2. /doc:work {topic} — refine specific documents interactively',
                     '  3. /init-vector — populate vector memory with doc content',
-                    '  4. brain docs — verify full index',
+                    '  4. ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' — verify full index',
                 ]),
             ]);
 
@@ -322,7 +321,7 @@ class InitDocsInclude extends IncludeArchetype
             ->text('Command-specific error handling (trait provides baseline tool error / MCP failure policy)')
             ->example('no .docs/ directory → create it, proceed')->key('no-dir')
             ->example('agent timeout → skip doc, continue, report in summary')->key('timeout')
-            ->example('brain docs unavailable → write files, skip verification')->key('cli-fail')
+            ->example(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '*']) . ' unavailable → write files, skip verification')->key('cli-fail')
             ->example('YAML parsing error → fix front matter, retry verification')->key('yaml-fail')
             ->example('file exceeds 500 lines → split into parts automatically')->key('overflow')
             ->example('vector memory unavailable → skip storage, continue')->key('memory-fail');
@@ -336,7 +335,7 @@ class InitDocsInclude extends IncludeArchetype
             ->example('Gate 4: user approval obtained (or auto-approved)')
             ->example('Gate 5: all DocumentationMaster agents completed')
             ->example('Gate 6: every generated file has valid YAML front matter')
-            ->example('Gate 7: brain docs indexes all new files')
+            ->example('Gate 7: docs_search MCP tool indexes all new files')
             ->example('Gate 8: no file exceeds 500 lines')
             ->example('Gate 9: completion insight stored to vector memory');
 
@@ -350,11 +349,11 @@ class InitDocsInclude extends IncludeArchetype
                 ->phase('3', 'Plan: 8 docs (1 architecture, 3 modules, 2 api, 1 guide, 1 reference)')
                 ->phase('4', 'Approval: auto-approved (-y flag)')
                 ->phase('5', 'Generation: 3 parallel DocumentationMaster → 8 docs written')
-                ->phase('6', 'Verification: brain docs indexes all 8, YAML valid, <500 lines each')
+                ->phase('6', 'Verification: docs_search MCP tool indexes all 8, YAML valid, <500 lines each')
                 ->phase('7', 'Complete: 8 docs, ~1200 lines, 3 agents used');
 
             $this->guideline('directive')
-                ->text('PARALLEL agents! BATCH generation! YAML front matter! brain docs verification! Dense memory! No duplicates!');
+                ->text('PARALLEL agents! BATCH generation! YAML front matter! docs_search MCP tool verification! Dense memory! No duplicates!');
         }
     }
 }

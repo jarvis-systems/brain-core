@@ -72,9 +72,11 @@ class DoValidateInclude extends IncludeArchetype
                 '',
                 '=== PHASE 1: VALIDATION PREVIEW ===',
             ]))
-            ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'Get available agents with capabilities'))
+            ->phase('Get available agents with capabilities')
+            ->phase(BrainCLI::MCP__LIST_MASTERS())
             ->phase(Store::as('AVAILABLE_AGENTS', '{agent_id: description mapping}'))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from ' . Store::var('TASK_DESCRIPTION') . '}'), 'Get documentation INDEX preview'))
+            ->phase('Get documentation INDEX preview')
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from ' . Store::var('TASK_DESCRIPTION') . '}']))
             ->phase(Store::as('DOCS_PREVIEW', 'Documentation files available'))
             ->phase(Operator::output([
                 'Task: {' . Store::var('TASK_DESCRIPTION') . '}',
@@ -134,7 +136,8 @@ class DoValidateInclude extends IncludeArchetype
                 '',
                 '=== PHASE 3: DOCUMENTATION REQUIREMENTS ===',
             ]))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{keywords from ' . Store::var('TASK_DESCRIPTION') . '}'), 'Get documentation INDEX'))
+            ->phase('Get documentation INDEX')
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from ' . Store::var('TASK_DESCRIPTION') . '}']))
             ->phase(Store::as('DOCS_INDEX', 'Documentation file paths'))
             ->phase(Operator::if('{' . Store::var('DOCS_INDEX') . '} not empty', [
                 TaskTool::agent('documentation-master', 'Extract ALL requirements, acceptance criteria, constraints, and specifications from documentation files: {' . Store::var('DOCS_INDEX') . ' paths}. Return structured list: [{requirement_id, description, acceptance_criteria, related_files, priority}]. Store to vector memory.'),
@@ -325,7 +328,7 @@ class DoValidateInclude extends IncludeArchetype
                 'Abort command',
             ])
             ->phase()->if('no agents available', [
-                'Report: "No agents found via brain list:masters"',
+                'Report: "No agents found via ' . BrainCLI::MCP__LIST_MASTERS() . '"',
                 'Suggest: Run /init-agents first',
                 'Abort command',
             ])
@@ -338,7 +341,7 @@ class DoValidateInclude extends IncludeArchetype
                 'WAIT for user decision',
             ])
             ->phase()->if('documentation scan fails', [
-                'Log: "brain docs command failed or no documentation found"',
+                'Log: "' . BrainCLI::MCP__DOCS_SEARCH() . ' command failed or no documentation found"',
                 'Proceed without documentation context',
             ])
             ->phase()->if('memory storage fails', [

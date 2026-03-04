@@ -185,7 +185,7 @@ class InitAgentsInclude extends IncludeArchetype
                 'System agents are OFF LIMITS - only inventory, never modify or regenerate',
             ])
             ->example()
-            ->phase([BashTool::call(BrainCLI::LIST_MASTERS), 'Parse output'])
+            ->phase([BrainCLI::MCP__LIST_MASTERS(), 'Parse output'])
             ->phase(Store::as('ALL_AGENTS', '[{id, name, description}, ...]'))
             ->phase('Filter system agents (names ending with "Master" AND in system list)')
             ->phase(Store::as('SYSTEM_AGENTS', '[AgentMaster, PromptMaster, CommitMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster, ...]'))

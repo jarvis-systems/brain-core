@@ -113,7 +113,8 @@ class DoSyncInclude extends IncludeArchetype
                 Store::as('GATHERED_MATERIALS[{target}]', 'Extracted context'),
             ]))
             ->phase(Operator::if('$DOCS_SCAN_NEEDED === true', [
-                BashTool::describe(BrainCLI::DOCS('{keywords}'), 'Find documentation index (returns: Path, Name, Description)'),
+                'Find documentation index (returns: Path, Name, Description)',
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']),
                 Store::as('DOCS_INDEX', 'Documentation file index'),
                 Operator::forEach('doc in $DOCS_INDEX', [
                     ReadTool::call('{doc.path}'),

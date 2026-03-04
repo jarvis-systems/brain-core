@@ -19,7 +19,8 @@ final class FileRegistryResolver implements McpRegistryResolver
     public function __construct(
         private readonly string $projectRoot,
         private readonly string $cliPackageDir,
-    ) {}
+    ) {
+    }
 
     public function resolve(): ResolvedRegistry
     {
@@ -75,7 +76,7 @@ final class FileRegistryResolver implements McpRegistryResolver
             throw new RuntimeException("Invalid JSON in registry file: {$path}", previous: $e);
         }
 
-        if (! is_array($data)) {
+        if (!is_array($data)) {
             throw new RuntimeException("Registry file must contain a JSON object: {$path}");
         }
 
@@ -89,12 +90,12 @@ final class FileRegistryResolver implements McpRegistryResolver
     private function validateStructure(array $data, string $path): void
     {
         foreach (self::REQUIRED_KEYS as $key) {
-            if (! array_key_exists($key, $data)) {
+            if (!array_key_exists($key, $data)) {
                 throw new InvalidArgumentException("Missing required key '{$key}' in registry: {$path}");
             }
         }
 
-        if (! is_array($data['servers'])) {
+        if (!is_array($data['servers'])) {
             throw new InvalidArgumentException("'servers' must be an array in registry: {$path}");
         }
     }
@@ -112,8 +113,16 @@ final class FileRegistryResolver implements McpRegistryResolver
     {
         $ids = [];
         foreach ($servers as $index => $server) {
-            if (! isset($server['id'], $server['class'], $server['enabled'])) {
+            if (!isset($server['id'], $server['class'], $server['enabled'])) {
                 throw new InvalidArgumentException("Server at index {$index} missing required fields in registry: {$path}");
+            }
+
+            if (!isset($server['transport'])) {
+                throw new InvalidArgumentException("Server at index {$index} missing 'transport' field in registry: {$path}");
+            }
+
+            if ($server['transport'] !== 'stdio') {
+                throw new InvalidArgumentException("Server at index {$index} has unsupported transport '{$server['transport']}' (only 'stdio' allowed): {$path}");
             }
 
             if (in_array($server['id'], $ids, true)) {

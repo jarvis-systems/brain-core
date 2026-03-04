@@ -86,7 +86,7 @@ class DoAsyncInclude extends IncludeArchetype
         $this->rule('never-execute-directly')->critical()
             ->text('Brain NEVER executes implementation tasks directly. For ANY $TASK_DESCRIPTION: MUST delegate to agents via Task(). Brain only: analyzes, plans, presents approvals, delegates, validates results.')
             ->why('Direct execution violates orchestration model, bypasses agent expertise, wastes Brain tokens on execution instead of coordination.')
-            ->onViolation('STOP. Identify required agent from brain list:masters. Delegate via Task(@agent-name, task).');
+            ->onViolation('STOP. Identify required agent from ' . BrainCLI::MCP__LIST_MASTERS() . '. Delegate via Task(@agent-name, task).');
 
         // Anti-Improvisation: Strict Tool Prohibition
         $this->rule('no-direct-file-tools')->critical()
@@ -136,7 +136,8 @@ class DoAsyncInclude extends IncludeArchetype
             ->example()
             ->phase(VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'similar: {$TASK_DESCRIPTION}', 'limit' => 5, 'category' => 'code-solution,architecture']))
             ->phase(Store::as('PAST_SOLUTIONS', 'Past approaches'))
-            ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'brain list:masters'))
+            ->phase('Get available agents')
+            ->phase(BrainCLI::MCP__LIST_MASTERS())
             ->phase(Store::as('AVAILABLE_AGENTS', 'Agents list'))
             ->phase('Match task to agents: $TASK_DESCRIPTION + $CONVERSATION_CONTEXT + $PAST_SOLUTIONS')
             ->phase(Store::as('RELEVANT_AGENTS', '[{agent, capability, rationale}, ...]'))
@@ -175,14 +176,15 @@ class DoAsyncInclude extends IncludeArchetype
 
         // Phase 3: Material Gathering with Vector Storage
         $this->guideline('phase3-material-gathering')
-            ->goal('Collect materials via agents. Brain permitted: brain docs (index only, few tokens). ALL file reading → delegate to agents.')
+            ->goal('Collect materials via agents. Brain permitted: ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' (index only, few tokens). ALL file reading → delegate to agents.')
             ->example()
             ->phase(Operator::forEach('scan_target in $REQUIREMENTS_PLAN.scan_targets', [
                 TaskTool::agent('explore', 'Extract context from {scan_target}. Store findings to vector memory.'),
                 Store::as('GATHERED_MATERIALS[{target}]', 'Agent-extracted context'),
             ]))
             ->phase(Operator::if('$DOCS_SCAN_NEEDED === true', [
-                BashTool::describe(BrainCLI::DOCS('{keywords}'), 'Get documentation INDEX only (Path, Name, Description)'),
+                'Get documentation INDEX only (Path, Name, Description)',
+                BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']),
                 Store::as('DOCS_INDEX', 'Documentation file paths'),
                 TaskTool::agent('explore', 'Read and summarize documentation files: {$DOCS_INDEX paths}. Store to vector memory.'),
                 Store::as('DOCS_SCAN_FINDINGS', 'Agent-summarized documentation'),
@@ -317,7 +319,7 @@ class DoAsyncInclude extends IncludeArchetype
             ->text('12. HALLUCINATION: "Verify EVERY method/class/function call exists with correct signature. Read source to confirm. NEVER assume API from naming convention."')
             ->text('13. CLEANUP: "After edits: remove unused imports, dead code, orphaned helpers, commented-out blocks."')
             ->text('14. TESTS: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework, follow existing test patterns. Run written tests to verify passing."')
-            ->text('15. DOCS: "After implementation: IF task adds NEW feature/module/API → run brain docs \"{keywords}\" to check existing docs. NOT found → CREATE .docs/{feature}.md with YAML front matter + markdown body. Documentation = description for humans, text-first, minimize code. IF task CHANGES existing behavior and docs exist → UPDATE relevant docs. Bugfix/refactor → SKIP docs."');
+            ->text('15. DOCS: "After implementation: IF task adds NEW feature/module/API → run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']) . ' to check existing docs. NOT found → CREATE .docs/{feature}.md with YAML front matter + markdown body. Documentation = description for humans, text-first, minimize code. IF task CHANGES existing behavior and docs exist → UPDATE relevant docs. Bugfix/refactor → SKIP docs."');
 
         // Error Recovery
         $this->guideline('error-recovery')
@@ -329,7 +331,7 @@ class DoAsyncInclude extends IncludeArchetype
                 'Re-submit for approval',
             ])
             ->phase()->if('no agents available', [
-                'Report: "No agents found via brain list:masters"',
+                'Report: "No agents found via ' . BrainCLI::MCP__LIST_MASTERS() . '"',
                 'Suggest: Run /init-agents first',
                 'Abort command',
             ])
@@ -351,7 +353,7 @@ class DoAsyncInclude extends IncludeArchetype
                 'Warn: "Limited context may affect quality"',
             ])
             ->phase()->if('documentation scan fails', [
-                'Log: "brain docs command failed or no documentation found"',
+                'Log: "' . BrainCLI::MCP__DOCS_SEARCH() . ' command failed or no documentation found"',
                 'Proceed without documentation context',
             ])
             ->phase()->if('memory storage fails', [

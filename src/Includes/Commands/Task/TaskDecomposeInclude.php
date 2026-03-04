@@ -158,7 +158,7 @@ class TaskDecomposeInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'in_progress', 'comment' => 'Started decomposition', 'append_comment' => true]))
 
             // Stage 2: Documentation (PRIMARY source for structure)
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords from task}')) . ' → ' . Store::as('DOCS_INDEX'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from task}']) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
                 ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION'),
                 'DOCUMENTATION defines decomposition structure: modules, components, phases, dependencies',

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace BrainCore\Services\McpCall;
 
-use BrainCore\Contracts\McpRegistry\McpRegistryResolver;
+use BrainCore\Services\McpDiscovery\McpDiscoveryService;
 use RuntimeException;
 
 /**
@@ -13,9 +13,9 @@ use RuntimeException;
 final class McpInputValidator
 {
     public function __construct(
-        private readonly McpRegistryResolver $registryResolver,
-        private readonly string $projectRoot,
-    ) {}
+        private readonly McpDiscoveryService $discoveryService,
+    ) {
+    }
 
     /**
      * Validate input against a tool's schema.
@@ -24,44 +24,47 @@ final class McpInputValidator
      */
     public function validate(string $serverId, string $tool, array $input): void
     {
-        $registry = $this->registryResolver->resolve();
-        $serverEntry = null;
-        foreach ($registry->servers as $server) {
-            if ($server['id'] === $serverId) {
-                $serverEntry = $server;
+        try {
+            $data = $this->discoveryService->describeServer($serverId);
+        } catch (RuntimeException $e) {
+            return; // Server not found or disabled, executor will handle
+        }
+
+        $toolMetadata = null;
+        foreach ($data['tools'] ?? [] as $t) {
+            if ($t['name'] === $tool) {
+                $toolMetadata = $t;
                 break;
             }
         }
 
-        if ($serverEntry === null) {
-            return; // Executor will handle server not found
+        if ($toolMetadata === null) {
+            return; // Tool not allowed or not found
         }
 
-        $class = $serverEntry['class'];
-        if (! class_exists($class)) {
-            $this->ensureRootAutoloader();
+        $inputSchema = $toolMetadata['input_schema'] ?? [];
+        $required = $inputSchema['required'] ?? [];
+        $properties = $inputSchema['properties'] ?? [];
+
+        $this->checkRequired($tool, $input, $required);
+
+        // Convert 'properties' array back to 'types' map for checkTypes
+        $types = [];
+        foreach ($properties as $propName => $propDef) {
+            if (isset($propDef['type'])) {
+                $types[$propName] = $propDef['type'];
+            }
         }
 
-        if (! class_exists($class) || ! method_exists($class, 'schema')) {
-            return; // No schema to validate against
-        }
-
-        $fullSchema = $class::schema();
-        if (! isset($fullSchema[$tool])) {
-            return; // Tool not in schema
-        }
-
-        $toolSchema = $fullSchema[$tool];
-        $this->checkRequired($tool, $input, $toolSchema['required'] ?? []);
-        $this->checkTypes($tool, $input, $toolSchema['types'] ?? []);
+        $this->checkTypes($tool, $input, $types);
     }
 
     private function checkRequired(string $tool, array $input, array $required): void
     {
         foreach ($required as $key) {
-            if (! array_key_exists($key, $input)) {
+            if (!array_key_exists($key, $input)) {
                 throw new RuntimeException(
-                    "code=MCP_CALL_INVALID_INPUT reason=schema_validation_failed message=\"Missing required property: {$key}\" hint=\"Run: brain mcp:describe --server=<id> and adjust --input\""
+                    "code=MCP_CALL_INVALID_INPUT reason=schema_validation_failed message=\"Input missing a required property.\" hint=\"Run: brain mcp:list ; brain mcp:describe --server=<server>\""
                 );
             }
         }
@@ -70,34 +73,29 @@ final class McpInputValidator
     private function checkTypes(string $tool, array $input, array $types): void
     {
         foreach ($input as $key => $value) {
-            if (! isset($types[$key])) {
+            if (!isset($types[$key])) {
                 continue; // Flexible allowlist by default for now
             }
 
             $expected = $types[$key];
             $actual = gettype($value);
-            if ($actual === 'integer') $actual = 'integer';
-            if ($actual === 'double') $actual = 'float';
+            if ($actual === 'integer')
+                $actual = 'integer';
+            if ($actual === 'double')
+                $actual = 'float';
 
             if ($actual !== $expected) {
                 // Allow float for integer keys if value is whole number
                 if ($expected === 'integer' && $actual === 'float' && floor($value) === $value) {
                     continue;
                 }
-                
+
                 throw new RuntimeException(
-                    "code=MCP_CALL_INVALID_INPUT reason=schema_validation_failed message=\"Property '{$key}' must be {$expected}, got {$actual}.\" hint=\"Run: brain mcp:describe --server=<id> and adjust --input\""
+                    "code=MCP_CALL_INVALID_INPUT reason=schema_validation_failed message=\"Property type mismatch.\" hint=\"Run: brain mcp:list ; brain mcp:describe --server=<server>\""
                 );
             }
         }
     }
 
-    private function ensureRootAutoloader(): void
-    {
-        $projectRoot = $this->projectRoot;
-        $rootAutoloader = $projectRoot . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
-        if (is_file($rootAutoloader)) {
-            require_once $rootAutoloader;
-        }
-    }
 }
+

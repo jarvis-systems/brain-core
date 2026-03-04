@@ -46,9 +46,9 @@ class DoBrainstormInclude extends IncludeArchetype
             ->onViolation('Pause after each major idea set. Ask user for direction before continuing.');
 
         $this->rule('research-on-demand')->high()
-            ->text('Delegate to specialized agents ONLY when topic requires external knowledge or codebase analysis. Use brain list:masters to discover available agents and select the most appropriate one for the task (e.g., code specialist for codebase analysis, web-research-master for external research). Read documentation directly via Read tool when brain docs provides paths.')
+            ->text('Delegate to specialized agents ONLY when topic requires external knowledge or codebase analysis. Use ' . BrainCLI::MCP__LIST_MASTERS() . ' to discover available agents and select the most appropriate one for the task (e.g., code specialist for codebase analysis, web-research-master for external research). Read documentation directly via Read tool when ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '...']) . ' provides paths.')
             ->why('Efficient resource usage - simple topics don\'t need agent delegation overhead. Agent selection must be dynamic based on project configuration.')
-            ->onViolation('Evaluate: Is research truly needed? If yes, run brain list:masters, select appropriate agent, delegate. If no, proceed with brainstorming.');
+            ->onViolation('Evaluate: Is research truly needed? If yes, run ' . BrainCLI::MCP__LIST_MASTERS() . ', select appropriate agent, delegate. If no, proceed with brainstorming.');
 
         $this->rule('iterative-ideation-loop')->critical()
             ->text('After presenting initial ideas, you MUST enter iterative ideation loop. Keep proposing new ideas and asking for user input until user explicitly says "that\'s all", "let\'s continue", "proceed", or similar confirmation. NEVER skip this loop or proceed automatically.')
@@ -91,9 +91,11 @@ class DoBrainstormInclude extends IncludeArchetype
                 'Topic: {$BRAINSTORM_TOPIC}',
                 'Loading available resources...',
             ]))
-            ->phase(BashTool::describe(BrainCLI::LIST_MASTERS, 'Get available agents for potential delegation and specialist invites'))
+            ->phase('Get available agents for potential delegation and specialist invites')
+            ->phase(BrainCLI::MCP__LIST_MASTERS())
             ->phase(Store::as('AVAILABLE_AGENTS', '{agents with descriptions}'))
-            ->phase(BashTool::describe(BrainCLI::DOCS('{$BRAINSTORM_TOPIC}'), 'Get documentation INDEX'))
+            ->phase('Get documentation INDEX')
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{$BRAINSTORM_TOPIC}']))
             ->phase(Store::as('DOCS_INDEX', '{indexed documentation list with descriptions}'))
             ->phase(Operator::if('$DOCS_INDEX has relevant docs', [
                 'Select most relevant documents based on topic',
@@ -372,7 +374,7 @@ class DoBrainstormInclude extends IncludeArchetype
                 'Note to user: "No prior context found. Starting fresh brainstorm."',
             ])
             ->phase()->if('no agents available', [
-                'Report: "No agents found via brain list:masters"',
+                'Report: "No agents found via ' . BrainCLI::MCP__LIST_MASTERS() . '"',
                 'Suggest: Run /init-agents first',
                 'Abort command',
             ])
@@ -382,7 +384,7 @@ class DoBrainstormInclude extends IncludeArchetype
                 'Note: "Agent consultation unavailable"',
             ])
             ->phase()->if('documentation scan fails', [
-                'Log: "brain docs command failed or no documentation found"',
+                'Log: "' . BrainCLI::MCP__DOCS_SEARCH() . ' command failed or no documentation found"',
                 'Proceed without documentation context',
             ])
             ->phase()->if('memory storage fails', [

@@ -17,6 +17,7 @@ final class McpCallResult
      * @param array|null $error Error details if ok is false
      * @param string|null $requestId Deterministic request hash
      * @param bool $redactionsApplied Whether any redactions were performed
+     * @param array|null $debug DX-safe debug information if requested
      */
     public function __construct(
         public readonly bool $ok,
@@ -26,7 +27,9 @@ final class McpCallResult
         public readonly ?array $error = null,
         public readonly ?string $requestId = null,
         public readonly bool $redactionsApplied = false,
-    ) {}
+        public readonly ?array $debug = null,
+    ) {
+    }
 
     public static function success(string $serverId, string $tool, array $data, ?string $requestId = null, bool $redactionsApplied = false): self
     {
@@ -44,7 +47,7 @@ final class McpCallResult
         if ($debug !== null) {
             $error['debug'] = $debug;
         }
-        return new self(false, $serverId, $tool, [], $error, $requestId, $redactionsApplied);
+        return new self(false, $serverId, $tool, [], $error, $requestId, $redactionsApplied, $debug);
     }
 
     /**
@@ -56,17 +59,20 @@ final class McpCallResult
             'ok' => $this->ok,
             'server' => $this->serverId,
             'tool' => $this->tool,
+            'redactions_applied' => $this->redactionsApplied,
         ];
 
         if ($this->requestId !== null) {
             $result['request_id'] = $this->requestId;
-            $result['redactions_applied'] = $this->redactionsApplied;
         }
 
         if ($this->ok) {
             $result['data'] = $this->data;
         } else {
             $result['error'] = $this->error;
+            if ($this->debug !== null) {
+                $result['error']['debug'] = $this->debug;
+            }
         }
 
         // Ensure stable key ordering

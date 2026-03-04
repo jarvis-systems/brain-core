@@ -17,18 +17,19 @@ final class StdioAdapter
 
     /**
      * Resolves and returns the fully formed shell command for dry-run purposes.
-     * Applies redaction to the array so absolute paths or secrets are not leaked.
-     * 
+     * Applies sanitization to prevent infrastructure fingerprinting.
+     * Sensitive flags AND their values are replaced with <REDACTED_ARG>.
+     *
      * @param non-empty-string[] $command
      * @param array $input The original input to redact
-     * @return array<mixed> Normalized result payload containing the redacted command
+     * @return array<mixed> Normalized result payload containing the sanitized command
      */
     public function resolveCommand(array $command, string $serverId, string $tool, array $input = []): array
     {
-        [$redactedArgs, $argsRedacted] = McpRedactor::redactArray($command);
+        [$sanitizedArgs, $argsSanitized] = McpRedactor::sanitizeCommandArgs($command);
         [$redactedInput, $inputRedacted] = McpRedactor::redactArray($input);
 
-        $redactedCommand = McpRedactor::redactString(implode(' ', $redactedArgs));
+        $sanitizedCommand = McpRedactor::redactString(implode(' ', $sanitizedArgs));
 
         return [
             'ok' => true,
@@ -36,9 +37,9 @@ final class StdioAdapter
             'kill_switch_env' => 'BRAIN_DISABLE_MCP',
             'server' => $serverId,
             'tool' => $tool,
-            'redactions_applied' => $argsRedacted || $inputRedacted,
-            'command' => $redactedCommand,
-            'args' => $redactedArgs,
+            'redactions_applied' => $argsSanitized || $inputRedacted,
+            'command' => $sanitizedCommand,
+            'args' => $sanitizedArgs,
             'input' => $redactedInput,
             'transport' => 'stdio',
             'would_execute' => false,

@@ -59,11 +59,16 @@ abstract class McpArchitecture extends ArchitectureAbstract
     public static function callJson(string $method, array $args = []): string
     {
         self::ksortRecursive($args);
-        $json = json_encode(
-            $args,
-            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-        );
-        return static::id() . "__$method($json)";
+        try {
+            $json = json_encode(
+                $args,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
+            return static::id() . "__$method($json)";
+        } catch (\JsonException $e) {
+            // Handle JSON encoding error if necessary
+            throw new \RuntimeException('Failed to encode arguments to JSON: ' . $e->getMessage(), 0, $e);
+        }
     }
 
     private static function ksortRecursive(array &$array): void
