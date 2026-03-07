@@ -27,10 +27,7 @@ class InitVectorInclude extends IncludeArchetype
         // IRON RULES (from trait — universal safety, memory tags only: init-vector stores memories)
         // =========================================================================
         $this->defineIronExecutionRules();
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
         $this->defineMemoryTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
         $this->defineCognitiveLevelGuidelines();
 
         // =========================================================================

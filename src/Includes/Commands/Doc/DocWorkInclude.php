@@ -72,19 +72,14 @@ class DocWorkInclude extends IncludeArchetype
             ->onViolation('If auto-approve: remove the question, use defaults, continue. If interactive: ask and wait.');
 
         // Secrets protection — docs should never contain secrets from .env or configs (from trait)
-        $this->defineSecretsPiiProtectionRules();
 
         // No destructive git — doc edits must not wreck git state or memory/ (from trait)
-        $this->defineNoDestructiveGitRules();
 
         // Tag taxonomy — predefined tags for memory storage when storing doc insights (from trait)
-        $this->defineTagTaxonomyRules();
 
         // Failure policy — universal tool error / missing info handling (from trait)
-        $this->defineFailurePolicyRules();
 
         // Aggressive docs search — multi-keyword discovery pattern (from trait)
-        $this->defineAggressiveDocsSearchGuideline();
 
         $this->rule('external-docs-via-context7')->high()
             ->text('When documenting features that use external packages/libraries: resolve library via ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{package}']) . ' then query docs via ' . Context7Mcp::callJson('query-docs', ['libraryId' => '{resolved_id}', 'query' => '{specific_topic}']) . '. Use Context7 for KNOWN packages (composer/npm dependencies). Use web-research-master for broader context or unknown sources. NEVER guess external API behavior — verify against official docs.')

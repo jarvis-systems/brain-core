@@ -17,6 +17,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Collaborative brainstorming anchored to vector task. Loads task, asks user for topic, facilitates ideation with research delegation, optional task modification/subtask creation.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskBrainstormInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -61,7 +62,6 @@ class TaskBrainstormInclude extends IncludeArchetype
         $this->defineParallelIsolationChecklistGuideline();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         // INPUT CAPTURE
         $this->defineInputCaptureGuideline();

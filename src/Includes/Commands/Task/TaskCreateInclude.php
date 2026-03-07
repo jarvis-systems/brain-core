@@ -18,6 +18,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Task creation: analyzes description, researches context (memory, codebase, docs), estimates effort, creates well-structured task after approval. NEVER executes.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskCreateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -33,7 +34,6 @@ class TaskCreateInclude extends IncludeArchetype
             ->text('MUST research context: 1) existing tasks (duplicates?), 2) vector memory (prior work), 3) PROJECT DOCUMENTATION (.docs/), 4) codebase (if code-related), 5) context7 (if unknown lib/pattern).');
 
         // DOCUMENTATION IS LAW
-        $this->defineDocumentationIsLawRules();
 
         // CODEBASE PATTERN REUSE (from trait - helps estimate and scope)
         $this->defineCodebasePatternReuseRule();
@@ -74,7 +74,6 @@ class TaskCreateInclude extends IncludeArchetype
         $this->defineParallelIsolationChecklistGuideline();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         // BATCH TRIVIAL (from trait - group trivial identical operations into single task)
         $this->defineBatchTrivialRule();

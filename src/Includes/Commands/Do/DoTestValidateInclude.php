@@ -15,6 +15,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Text-based test validation with parallel agent orchestration. Accepts text description (example: "test-validate user authentication"). Validates test coverage against documentation requirements, test quality (no bloat, real workflows), test consistency, and completeness. Creates vector tasks for gaps. Idempotent. For vector task test validation use /task:test-validate.')]
+#[Includes(DoBaseInclude::class)]
 class DoTestValidateInclude extends IncludeArchetype
 {
     use DoCommandCommonTrait;
@@ -29,11 +30,6 @@ class DoTestValidateInclude extends IncludeArchetype
         $this->defineEntryPointBlockingRule('TEST-VALIDATE');
 
         // Universal safety rules
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
 
         // Iron Rules - Zero Tolerance
         $this->defineTestValidationOnlyRule();

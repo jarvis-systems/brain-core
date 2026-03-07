@@ -16,6 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Test validation with TDD support. TWO MODES: 1) TDD (pending tasks) - writes tests first, sets "tested"; 2) Validation (completed tasks) - validates coverage, fixes gaps inline. No task creation - agents fix directly.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskTestValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -59,11 +60,8 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineVectorTaskIdRequiredRule('/do:test-validate');
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
-        $this->defineDocumentationIsLawRules();
-        $this->defineNoDestructiveGitRules();
 
         // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
-        $this->defineSecretsPiiProtectionRules();
 
         // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
         $this->defineParallelExecutionAwarenessRules();
@@ -74,7 +72,6 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineFailureAwarenessRules();
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
-        $this->defineFailurePolicyRules();
 
         // CODEBASE CONSISTENCY (from trait - tests should follow existing test patterns)
         $this->defineCodebasePatternReuseRule();
@@ -90,7 +87,6 @@ class TaskTestValidateInclude extends IncludeArchetype
         $this->defineCommentContextRules();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         if ($this->strictAtLeast('standard')) {
             $this->rule('scale-agents')->high()

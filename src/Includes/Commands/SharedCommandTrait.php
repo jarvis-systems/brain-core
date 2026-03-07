@@ -538,7 +538,6 @@ trait SharedCommandTrait
             ->why('Docs may be named differently than code. "FocusModeTest" code → "Focus Mode" doc. Single exact search = missed docs = wrong decisions.')
             ->onViolation('Generate keyword variations. Search each. Only conclude "no docs" after 3+ failed searches.');
 
-        $this->defineAggressiveDocsSearchGuideline();
     }
 
     /**

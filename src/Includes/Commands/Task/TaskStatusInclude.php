@@ -11,6 +11,7 @@ use BrainCore\Compilation\Store;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Provides detailed task status information based on user input. Supports time-based filters, status filters, grouping, and specific parent queries.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskStatusInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;

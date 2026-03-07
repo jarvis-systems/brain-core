@@ -17,6 +17,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Defines the do:brainstorm command protocol for freeform brainstorming sessions. Accepts topic directly as first parameter, facilitates structured ideation with agent delegation for research, documentation reading, and optional task creation. Ideal for exploring ideas before creating formal tasks.')]
+#[Includes(DoBaseInclude::class)]
 class DoBrainstormInclude extends IncludeArchetype
 {
     use DoCommandCommonTrait;
@@ -29,11 +30,6 @@ class DoBrainstormInclude extends IncludeArchetype
         $this->defineEntryPointBlockingRule('BRAINSTORM');
 
         // Universal safety rules
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
 
         $this->rule('topic-required')->critical()
             ->text('Brainstorm topic MUST be provided as first argument. If empty, ask user for topic before proceeding.')

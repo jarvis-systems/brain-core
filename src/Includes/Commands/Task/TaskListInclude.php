@@ -11,6 +11,7 @@ use BrainCore\Compilation\Store;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Task listing utility that queries vector storage and displays formatted task hierarchy with status and priority indicators. Supports filters: status, parent_id, tags, priority, limit.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskListInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -18,7 +19,6 @@ class TaskListInclude extends IncludeArchetype
     protected function handle(): void
     {
         // TAG TAXONOMY (from trait - predefined tags for consistent display)
-        $this->defineTagTaxonomyRules();
 
         // === COMMAND INPUT (IMMEDIATE CAPTURE) ===
         $this->guideline('input')

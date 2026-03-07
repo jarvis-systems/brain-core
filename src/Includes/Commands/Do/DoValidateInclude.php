@@ -16,6 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Text-based work validation with parallel agent orchestration. Accepts text description (example: "validate user authentication"). Validates work against documentation requirements, code consistency, and completeness. Creates follow-up tasks for gaps. Idempotent. For vector task validation use /task:validate.')]
+#[Includes(DoBaseInclude::class)]
 class DoValidateInclude extends IncludeArchetype
 {
     use DoCommandCommonTrait;
@@ -30,11 +31,6 @@ class DoValidateInclude extends IncludeArchetype
         $this->defineEntryPointBlockingRule('VALIDATE');
 
         // Universal safety rules
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
 
         // Iron Rules - Zero Tolerance
         $this->defineValidationOnlyNoExecutionRule();

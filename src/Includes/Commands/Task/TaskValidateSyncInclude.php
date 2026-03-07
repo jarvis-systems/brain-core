@@ -19,6 +19,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Sync validation of completed vector task. Direct tools (no agents). Validates task.content requirements, code quality, tests. Cosmetic fixed inline. Functional issues → fix-tasks. Idempotent.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskValidateSyncInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -51,11 +52,8 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->defineNextStepFlowRule();
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
-        $this->defineDocumentationIsLawRules();
-        $this->defineNoDestructiveGitRules();
 
         // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
-        $this->defineSecretsPiiProtectionRules();
 
         // FAILURE-AWARE VALIDATION (from trait - prevents repeating same mistakes)
         $this->defineFailureAwarenessRules();
@@ -64,7 +62,6 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->defineStuckPatternEscalationRule();
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
-        $this->defineFailurePolicyRules();
 
         // RETRY CIRCUIT BREAKER (from trait - prevents infinite validate retry loops in auto-approve)
         $this->defineRetryCircuitBreakerRule('validate');
@@ -88,7 +85,6 @@ class TaskValidateSyncInclude extends IncludeArchetype
         $this->defineCommentContextRules();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         // PARENT INHERITANCE (from trait)
         $this->defineParentIdMandatoryRule();

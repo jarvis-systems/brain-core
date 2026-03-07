@@ -29,9 +29,6 @@ class InitBrainInclude extends IncludeArchetype
         // IRON RULES (from trait — universal safety, no tag taxonomy: init-brain doesn't create tasks)
         // =========================================================================
         $this->defineIronExecutionRules();
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineFailurePolicyRules();
         $this->defineCognitiveLevelGuidelines();
 
         // =========================================================================

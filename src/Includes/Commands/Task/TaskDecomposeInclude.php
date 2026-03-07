@@ -19,6 +19,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Task decomposition into subtasks. 2 parallel agents research (code + memory), plans logical execution order, creates subtasks. NEVER executes - only creates.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskDecomposeInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -41,7 +42,6 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->defineAutoApprovalRules();
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
-        $this->defineDocumentationIsLawRules();
 
         // CODEBASE PATTERN REUSE (from trait - consistency in decomposition)
         $this->defineCodebasePatternReuseRule();
@@ -99,7 +99,6 @@ class TaskDecomposeInclude extends IncludeArchetype
         $this->defineParallelIsolationChecklistGuideline();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         // BATCH TRIVIAL (from trait - group trivial identical operations into single task)
         $this->defineBatchTrivialRule();

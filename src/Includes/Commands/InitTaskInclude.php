@@ -31,11 +31,6 @@ class InitTaskInclude extends IncludeArchetype
         // IRON RULES (from trait — universal safety)
         // =========================================================================
         $this->defineIronExecutionRules();
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
 
         // =========================================================================
         // IRON RULES (command-specific)

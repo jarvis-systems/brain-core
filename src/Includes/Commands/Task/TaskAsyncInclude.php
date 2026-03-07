@@ -17,6 +17,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Async vector task execution via agent delegation. Brain orchestrates with critical thinking, agents execute. Researches when ambiguous, adapts examples. Parallel when independent.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskAsyncInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -33,11 +34,8 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->defineNextStepFlowRule();
 
         // DOCUMENTATION IS LAW (from trait - prevents stupid questions)
-        $this->defineDocumentationIsLawRules();
-        $this->defineNoDestructiveGitRules();
 
         // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
-        $this->defineSecretsPiiProtectionRules();
 
         // CODEBASE PATTERN REUSE (from trait - prevents reinventing the wheel)
         $this->defineCodebasePatternReuseRule();
@@ -63,7 +61,6 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->defineCommentContextRules();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         // CRITICAL THINKING FOR DELEGATION — standard+
         if ($this->strictAtLeast('standard')) {
@@ -76,7 +73,6 @@ class TaskAsyncInclude extends IncludeArchetype
         $this->defineFailureAwarenessRules();
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
-        $this->defineFailurePolicyRules();
 
         // RETRY CIRCUIT BREAKER (from trait - prevents infinite retry loops in auto-approve)
         $this->defineRetryCircuitBreakerRule('exec');

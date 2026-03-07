@@ -15,6 +15,7 @@ use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('Defines the do:async command protocol for multi-agent orchestration with flexible execution modes, user approval gates, and vector memory integration. Ensures zero distractions, atomic tasks, and strict plan adherence for reliable task execution.')]
+#[Includes(DoBaseInclude::class)]
 class DoAsyncInclude extends IncludeArchetype
 {
     use DoCommandCommonTrait;
@@ -29,12 +30,6 @@ class DoAsyncInclude extends IncludeArchetype
         $this->defineEntryPointBlockingRule('ASYNC');
 
         // Universal safety rules
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
-        $this->defineAggressiveDocsSearchGuideline();
-        $this->defineDocumentationIsLawRules();
 
         // Iron Rules - Zero Tolerance
         $this->defineZeroDistractionsRule();

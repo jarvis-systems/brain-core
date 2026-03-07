@@ -20,6 +20,7 @@ use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 
 #[Purpose('Direct synchronous task execution by Brain without agent delegation. Uses Read/Edit/Write/Glob/Grep tools directly. Single approval gate. Best for: simple tasks, quick fixes, single-file changes, when agent overhead is unnecessary. Accepts task description as input. Zero distractions, atomic execution, strict plan adherence.')]
+#[Includes(DoBaseInclude::class)]
 class DoSyncInclude extends IncludeArchetype
 {
     use DoCommandCommonTrait;
@@ -34,11 +35,6 @@ class DoSyncInclude extends IncludeArchetype
         $this->defineEntryPointBlockingRule('SYNC');
 
         // Universal safety rules
-        $this->defineSecretsPiiProtectionRules();
-        $this->defineNoDestructiveGitRules();
-        $this->defineTagTaxonomyRules();
-        $this->defineFailurePolicyRules();
-        $this->defineDocumentationIsLawRules();
 
         // Code quality rules (DoSync executes directly — needs same quality as TaskSync)
         $this->defineCodebasePatternReuseRule();

@@ -16,6 +16,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Validate completed vector task. 4 parallel agents: Completion, Code Quality, Testing, Security & Performance. Conditional 5th research agent for stuck patterns. Creates fix-tasks for functional issues. Cosmetic fixed inline by agents.')]
+#[Includes(TaskBaseInclude::class)]
 class TaskValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -41,11 +42,8 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineNoManualAgentFallbackRule();
 
         // DOCUMENTATION IS LAW (from trait - validates against docs, not made-up criteria)
-        $this->defineDocumentationIsLawRules();
-        $this->defineNoDestructiveGitRules();
 
         // SECRETS & PII PROTECTION (from trait - no secret exfiltration via output or storage)
-        $this->defineSecretsPiiProtectionRules();
 
         // CODEBASE CONSISTENCY (from trait - verify code follows existing patterns)
         $this->defineCodebasePatternReuseRule();
@@ -63,7 +61,6 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineCommentContextRules();
 
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
-        $this->defineTagTaxonomyRules();
 
         // PARENT INHERITANCE (IRON LAW)
         $this->defineParentIdMandatoryRule();
@@ -95,7 +92,6 @@ class TaskValidateInclude extends IncludeArchetype
         $this->defineStuckPatternEscalationRule();
 
         // FAILURE POLICY (from trait - universal tool error / missing docs / ambiguous spec handling)
-        $this->defineFailurePolicyRules();
 
         // RETRY CIRCUIT BREAKER (from trait - prevents infinite validate retry loops in auto-approve)
         $this->defineRetryCircuitBreakerRule('validate');
