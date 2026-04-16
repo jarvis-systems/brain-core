@@ -279,7 +279,7 @@ if (! function_exists('now')) {
      * @param  \UnitEnum|\DateTimeZone|string|null  $tz
      * @return \Illuminate\Support\Carbon
      */
-    function now(UnitEnum|DateTimeZone|string $tz = null): CarbonInterface
+    function now(UnitEnum|DateTimeZone|string|null $tz = null): CarbonInterface
     {
         return Date::now(enum_value($tz));
     }
