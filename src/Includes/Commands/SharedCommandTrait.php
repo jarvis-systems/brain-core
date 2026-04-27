@@ -659,9 +659,9 @@ trait SharedCommandTrait
             ->onViolation('Add git prohibition to agent prompt before delegation.');
 
         $this->rule('memory-folder-sacred')->critical()
-            ->text('memory/ folder contains SQLite databases (vector memory + tasks). SACRED — protect at ALL times. NEVER git checkout/restore/reset/clean memory/ — these DESTROY all project knowledge irreversibly. In PARALLEL CONTEXT: use "git add {specific_files}" (task-scope only) — memory/ excluded implicitly because it is not in task files. In NON-PARALLEL context: "git add -A" is safe and DESIRED — includes memory/ for full state checkpoint preserving knowledge base alongside code.')
-            ->why('memory/ is the project persistent brain. Destructive git commands on memory/ = total knowledge loss. In parallel mode, concurrent SQLite writes + git add -A = binary merge conflicts and staged half-done sibling work. In sequential mode, committing memory/ preserves full project state for safe revert.')
-            ->onViolation('NEVER destructive git on memory/. Parallel: git add specific files only (memory/ not in scope). Non-parallel: git add -A (full checkpoint with memory/).');
+            ->text('memory/ folder contains SQLite databases (vector memory + tasks). SACRED — protect at ALL times. NEVER git checkout/restore/reset/clean memory/ — these DESTROY all project knowledge irreversibly. Git checkpoint staging MUST respect current task scope and unrelated WIP. PARALLEL CONTEXT: stage task-scope files only. NON-PARALLEL context: full checkpoint including memory/ is allowed ONLY after verifying worktree has no unrelated WIP; otherwise stage current-task files only and skip memory/.')
+            ->why('memory/ is the project persistent brain. Destructive git commands on memory/ = total knowledge loss. Blind git add -A can stage unrelated user WIP or half-done sibling work. Scoped staging preserves checkpoint safety without cross-contaminating commits.')
+            ->onViolation('NEVER destructive git on memory/. Before staging, check git status. Unrelated WIP present → stage task-scope files only; clean task-owned worktree → full checkpoint may include memory/.');
     }
 
     // =========================================================================

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
+use BrainCore\Attributes\Includes;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
@@ -14,14 +15,14 @@ use BrainCore\Compilation\Tools\EditTool;
 use BrainCore\Compilation\Tools\GlobTool;
 use BrainCore\Compilation\Tools\GrepTool;
 use BrainCore\Compilation\Tools\ReadTool;
-use BrainCore\Compilation\Tools\TaskTool;
+use BrainCore\Compilation\Tools\WebSearchTool;
 use BrainCore\Compilation\Tools\WriteTool;
 use BrainNode\Mcp\Context7Mcp;
 use BrainNode\Mcp\SequentialThinkingMcp;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Synchronous vector task execution by Brain. Sync = blocking execution (not background). Agent delegation allowed for research to keep context clean. Critical thinking: validates clarity, adapts examples, researches when needed.')]
+#[Purpose('Synchronous vector task execution by Brain. Sync = blocking direct-tool execution (not background, no Task() delegation). Critical thinking: validates clarity, adapts examples, researches with direct tools when needed.')]
 #[Includes(TaskBaseInclude::class)]
 class TaskSyncInclude extends IncludeArchetype
 {
@@ -71,7 +72,7 @@ class TaskSyncInclude extends IncludeArchetype
         if ($this->strictAtLeast('standard')) {
             $this->rule('fast-path')->high()->text('Simple task (clear intent, specific files, no ambiguity) → skip research, execute directly. Complex/ambiguous → full validation flow.');
             $this->rule('research-triggers')->critical()->text('Research REQUIRED when ANY: 1) content <50 chars, 2) contains "example/like/similar/e.g./такий як", 3) no file paths AND no class/function names, 4) references unknown library/pattern, 5) contradicts existing code, 6) multiple valid interpretations, 7) task asks "how to" without specifics.');
-            $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) web-research-master for patterns/practices. -y flag: auto-select best. No -y: present options to user.');
+            $this->rule('research-flow')->high()->text('Research order: 1) context7 for library docs, 2) direct web search for patterns/practices. -y flag: auto-select best. No -y: present options to user.');
         }
 
         // FAILURE-AWARE EXECUTION (CRITICAL - prevents repeating same mistakes)
@@ -84,12 +85,15 @@ class TaskSyncInclude extends IncludeArchetype
 
         if ($this->strictAtLeast('standard')) {
             $this->rule('escalate-stuck-problems')->high()
-                ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives, ask user, or delegate to web-research-master.')
+                ->text('If task matches pattern that failed 2+ times (from memory/sibling analysis) → DO NOT attempt same approach. Escalate: research alternatives with direct tools, ask user in interactive mode, or switch to /task:async if agent research is required.')
                 ->why('Definition of insanity: doing same thing expecting different results.');
         }
 
         // SYNC EXECUTION RULES (sync = blocking, not "no agents")
-        $this->rule('sync-meaning')->medium()->text('Sync = synchronous/blocking execution (vs async/background). Agent delegation IS allowed for research - keeps main context clean.');
+        $this->rule('sync-meaning')->medium()->text('Sync = synchronous/blocking direct-tool execution (vs async/background). Task() delegation is forbidden in sync execution; use direct MCP/docs/web/search/read/edit tools only.');
+        $this->rule('no-task-delegation')->critical()
+            ->text('In /task:sync, Brain MUST NOT call Task() agents. If implementation needs an agent, use /task:async instead. Sync keeps all execution in the current tool context.')
+            ->why('Sync and async are separate modes. Mixing direct tools with agent delegation causes mode confusion and makes recovery/status semantics unreliable.');
         $this->rule('read-before-edit')->critical()->text('ALWAYS Read file BEFORE Edit/Write.');
         $this->rule('understand-then-execute')->critical()->text('Understand INTENT behind task, not just literal text. Adapt examples to actual context.');
 
@@ -104,7 +108,7 @@ class TaskSyncInclude extends IncludeArchetype
                 ->text('Install dependencies: detect package manager (composer, npm, pip, cargo, go mod, etc.) from project files. -y: auto-install. No -y: ask "Need to install {packages}. Proceed?"')
                 ->why('Task cannot complete without required dependencies.');
             $this->rule('dependency-audit')->medium()
-                ->text('After install: run audit if available (npm audit, composer audit, pip-audit, cargo audit). Vulnerabilities found: -y = WARN and continue, no -y = ask user.');
+                ->text('After install: run audit if available (npm audit, composer audit, pip-audit, cargo audit). High/critical vulnerabilities in newly added dependencies block completion: set task pending with evidence. Low/medium vulnerabilities may be noted only if not exploitable in task scope.');
             $this->rule('dependency-dev-vs-prod')->medium()
                 ->text('Dev dependencies (test frameworks, linters, dev tools) install to dev. Production dependencies install to main. Detect from usage context.');
         }
@@ -152,7 +156,7 @@ class TaskSyncInclude extends IncludeArchetype
             $this->rule('partial-failure-decision')->high()
                 ->text('Step fails after previous steps changed files: 1) Attempt fix (max 2), 2) If unfixable AND -y: rollback all + mark pending, 3) If unfixable AND no -y: ask "Rollback/Skip/Manual fix?"');
             $this->rule('partial-success-option')->medium()
-                ->text('If 80%+ steps succeeded and remaining are non-critical: -y = complete with warning comment, no -y = ask "Complete partial or rollback?"');
+                ->text('Partial success is NOT completion. If any in-scope requirement remains unfinished, set status=pending with completed_steps, remaining_steps, changed_files, and blocker details. Complete only when all task requirements are implemented.');
         }
 
         // RETRY & TIMEOUT LIMITS — standard+
@@ -207,10 +211,10 @@ class TaskSyncInclude extends IncludeArchetype
             // 1. Load task (ALWAYS FIRST)
             ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort()))
-            ->phase(Operator::if('status=completed', [
-                Operator::if('$HAS_AUTO_APPROVE', Operator::abort('Already completed. Use different task ID.')),
-                'ask "Re-execute completed task?"',
-            ]))
+            ->phase(Operator::if('status=completed', Operator::abort('Already completed. NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync).')))
+            ->phase(Operator::if('status=validated', Operator::abort('Already validated. Follow next-step lifecycle; do not re-execute validated tasks.')))
+            ->phase(Operator::if('status=stopped', Operator::abort('Task is stopped/cancelled. Do not execute unless a human reopens it.')))
+            ->phase(Operator::if('status NOT IN [pending, tested, in_progress]', Operator::abort('Task is not executable in current lifecycle state.')))
             ->phase(Operator::if('status=in_progress', [
                 'Parse task.comment for execution_state JSON',
                 Operator::if('has completed_steps AND timestamp <1h', [
@@ -260,7 +264,8 @@ class TaskSyncInclude extends IncludeArchetype
                 Operator::if('$HAS_AUTO_APPROVE', [
                     'Execute ONLY $FIRST_BATCH (inline for sync)',
                     'After $FIRST_BATCH completes → STOP.',
-                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'comment' => 'Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}.', 'append_comment' => true]),
+                    Operator::if('REMAINING_SUBTASKS not empty', VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}. Returned to pending for next execution cycle.', 'append_comment' => true])),
+                    Operator::if('REMAINING_SUBTASKS empty', VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Final child batch completed: {FIRST_BATCH ids}. Ready for validation.', 'append_comment' => true])),
                     'RESULT: PARTIAL — batch completed. NEXT: /task:sync {$VECTOR_TASK_ID} [-y] (remaining children)',
                 ]),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N pending subtasks. Execute first ({FIRST_BATCH})?"'),
@@ -289,9 +294,9 @@ class TaskSyncInclude extends IncludeArchetype
             // 3. Research (ONLY if triggers matched)
             ->phase(Store::as('NEEDS_RESEARCH', 'ANY: content <50 chars, contains "example/like/similar/e.g./такий як/як у", no paths AND no class names, unknown lib/pattern, contradicts code, ambiguous, "how to" without specifics'))
             ->phase(Operator::if(Store::get('NEEDS_RESEARCH'), [
-                '3.1: ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{detected_lib}']) . ' → IF library mentioned',
-                '3.2: ' . Context7Mcp::callJson('query-docs', ['query' => '{task question}']) . ' → get docs',
-                '3.3: IF context7 insufficient → ' . TaskTool::agent('web-research-master', 'Research: {task.title}. Find: implementation patterns, best practices, concrete examples.'),
+                '3.1: ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{detected_lib}', 'query' => '{task question}']) . ' → IF library mentioned → ' . Store::as('LIBRARY_ID'),
+                '3.2: ' . Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{task question}']) . ' → get docs',
+                '3.3: IF context7 insufficient → ' . WebSearchTool::describe('{task.title} implementation pattern best practices concrete examples') . ' → direct research, no Task() delegation',
                 Store::as('RESEARCH_OPTIONS', '[{option, source, pros, cons}]'),
             ]))
             ->phase(Operator::if(Store::get('RESEARCH_OPTIONS') . ' AND $HAS_AUTO_APPROVE', 'Auto-select BEST: fit with existing code > simplicity > best practices'))
@@ -495,6 +500,13 @@ class TaskSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Done. Files: {changed_files}. Tests: {pass/skip/none}.', 'append_comment' => true]))
             ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Task #{id}: {approach}, files: {list}, patterns used, learnings', 'category' => self::CAT_CODE_SOLUTION]))
 
+            // 8.5 Safety net before final output
+            ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' → verify status is NOT in_progress')
+            ->phase(Operator::if('task.status = "in_progress"', [
+                'SAFETY NET TRIGGERED: sync execution completed but status still in_progress.',
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'SAFETY NET: Sync execution workflow ended without explicit status update. Returned to pending.', 'append_comment' => true]),
+            ]))
+
             // NEXT (lifecycle reinforcement — at workflow end for recency)
             ->phase(Operator::if('TRIVIAL execution (doc-only/comment-only/formatting-only changes AND ≤1 file AND no code logic changes)', [
                 VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'validated', 'comment' => 'Trivial change — validation skipped (doc/comment/formatting only).', 'append_comment' => true]),
@@ -573,7 +585,10 @@ class TaskSyncInclude extends IncludeArchetype
                 ]),
             ]))
             ->phase(Operator::if('timeout on long operation', [
-                Operator::if('$HAS_AUTO_APPROVE', 'Skip with warning, continue'),
+                Operator::if('$HAS_AUTO_APPROVE', [
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'BLOCKED: operation timed out after retry. Returned to pending for retry.', 'append_comment' => true]),
+                    Operator::abort('Operation timed out after retry'),
+                ]),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Operation timed out. Wait longer/Skip/Abort?"'),
             ]));
     }

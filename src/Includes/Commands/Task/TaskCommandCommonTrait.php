@@ -418,12 +418,22 @@ trait TaskCommandCommonTrait
      *
      * @param string $variableName Variable name holding the task ID (default: 'VECTOR_TASK_ID')
      */
-    protected function defineParentIdMandatoryRule(string $variableName = 'VECTOR_TASK_ID'): void
+    protected function defineParentIdMandatoryRule(
+        string $variableName = 'VECTOR_TASK_ID',
+        bool $allowGlobalRegressionTasks = false
+    ): void
     {
+        $exception = $allowGlobalRegressionTasks
+            ? ' Only exception: collateral regression tasks for test failures proven OUTSIDE current task scope MUST be global (no parent_id), tagged "'.self::TAG_REGRESSION.'" + "'.self::TAG_BUGFIX.'", and must explicitly state they were discovered during validation of $'.$variableName.' but are not caused by it.'
+            : '';
+        $violation = $allowGlobalRegressionTasks
+            ? 'ABORT task_create if parent_id missing or != $'.$variableName.', unless this is a scoped collateral regression task with regression+bugfix tags and explicit unrelated-scope evidence.'
+            : 'ABORT task_create if parent_id missing or != $'.$variableName.'.';
+
         $this->rule('parent-id-mandatory')->critical()
-            ->text('ALL new tasks/subtasks created MUST have parent_id = $'.$variableName.'. No orphan tasks. No exceptions.')
+            ->text('ALL new tasks/subtasks created MUST have parent_id = $'.$variableName.'. No orphan tasks.'.$exception)
             ->why('Task hierarchy integrity. Orphan tasks break traceability and workflow.')
-            ->onViolation('ABORT task_create if parent_id missing or != $'.$variableName.'.');
+            ->onViolation($violation);
     }
 
     // =========================================================================
@@ -869,8 +879,8 @@ trait TaskCommandCommonTrait
         }
 
         $this->rule('scoped-git-checkpoint')->critical()
-            ->text('Git checkpoint commits scope depends on context: 1) PARALLEL CONTEXT: "git add {task_file1} {task_file2}" — commit ONLY task-scope files. memory/ excluded implicitly (not in task files). Prevents staging other agents\' uncommitted work and SQLite binary conflicts. 2) NON-PARALLEL context: "git add -A" — full state checkpoint, INCLUDES memory/ for complete project state preservation. 3) If commit fails (pre-commit hook) → LOG and continue, work is still valid.')
-            ->why('In parallel context, multiple agents write to memory/ SQLite and codebase concurrently. "git add -A" stages everything: other agents\' half-done work + binary SQLite mid-write = corrupted checkpoint. In non-parallel, "git add -A" is safe and DESIRED — memory/ commit preserves knowledge base alongside code for full revert capability.')
-            ->onViolation('Parallel: "git add {specific_files}" (task scope only). Non-parallel: "git add -A" (full checkpoint with memory/).');
+            ->text('Git checkpoint commits MUST NOT stage unrelated WIP. Before staging, inspect git status and build a task-owned file manifest from $TASK_FILES + comment file paths + files changed by this workflow. PARALLEL CONTEXT: stage ONLY manifest files. NON-PARALLEL context: full checkpoint is allowed only if git status shows no unrelated WIP; otherwise stage ONLY manifest files and skip memory/. If commit fails (pre-commit hook) → LOG and continue, work is still valid.')
+            ->why('Blind git add -A can stage user WIP, sibling-agent work, or SQLite memory changes unrelated to the task. Scoped staging gives a useful checkpoint without contaminating commits.')
+            ->onViolation('Do not run blind git add -A. Build manifest first. Unrelated WIP present → git add {manifest files only}; clean task-owned worktree → full checkpoint allowed.');
     }
 }

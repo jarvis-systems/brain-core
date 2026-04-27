@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
+use BrainCore\Attributes\Includes;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
@@ -149,7 +150,10 @@ class TaskTestValidateInclude extends IncludeArchetype
                 VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$TASK.parent_id', 'limit' => 20]) . ' → check sibling comments for failed test attempts'
             ))
             ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{TASK keywords}']) . ' → ' . Store::as('DOCS'))
-            ->phase(Operator::if('unknown testing pattern', Context7Mcp::callJson('query-docs', ['query' => '{pattern}']) . ' → understand first'))
+            ->phase(Operator::if('unknown testing pattern', [
+                Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{testing library/framework}', 'query' => '{pattern}']) . ' → ' . Store::as('LIBRARY_ID'),
+                Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{pattern}']) . ' → understand first',
+            ]))
 
             // 4. TDD MODE (pending tasks)
             ->phase(Operator::if(Store::get('IS_TDD'), [
@@ -187,9 +191,10 @@ class TaskTestValidateInclude extends IncludeArchetype
                 VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'tested', 'comment' => 'Test validation PASSED. Fixes: {summary}', 'append_comment' => true]),
                 // Git checkpoint — commit tested work (parallel = scoped files, non-parallel = full checkpoint with memory/)
                 Operator::if(Store::get('TASK') . '.parallel === true AND ACTIVE_SIBLINGS exist', [
-                    BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope files (excludes memory/ and sibling work)',
+                    BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope manifest files (excludes memory/ and sibling work)',
                 ], [
-                    BashTool::call('git add -A') . ' → NON-PARALLEL: full state checkpoint INCLUDING memory/ for complete revert capability',
+                    BashTool::call('git status --short') . ' → check for unrelated WIP before staging',
+                    BashTool::call('git add {$TASK_FILES}') . ' → NON-PARALLEL: stage task-scope manifest files; use full checkpoint ONLY when status shows no unrelated WIP',
                 ]),
                 BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [tested]"'),
                 Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still tested. Continue.'),

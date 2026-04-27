@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
+use BrainCore\Attributes\Includes;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
@@ -129,7 +130,7 @@ class TaskAsyncInclude extends IncludeArchetype
                 ->text('Critical agent (blocker for others) fails: -y = abort remaining + mark all pending with failure details, no -y = ask "Critical task failed. Abort all/Retry/Manual intervention?"')
                 ->why('Never rollback via git. Mark pending and let next attempt handle recovery.');
             $this->rule('partial-success-handling')->medium()
-                ->text('N of M agents succeeded: -y = complete with warning listing failed parts, no -y = ask "N/M succeeded. Complete partial/Rollback all/Retry failed?"');
+                ->text('N of M agents succeeded is NOT completion if any failed agent owns in-scope requirements. -y = set task pending with succeeded/failed agents, files touched, and blockers. Complete only when all required delegations succeed. Optional/out-of-scope failures may be noted, but must not hide incomplete task scope.');
         }
 
         // RETRY & TIMEOUT FOR AGENTS — standard+
@@ -188,10 +189,10 @@ class TaskAsyncInclude extends IncludeArchetype
             // 1. Load task (ALWAYS FIRST)
             ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
-            ->phase(Operator::if('status=completed', [
-                Operator::if('$HAS_AUTO_APPROVE', Operator::abort('Already completed. Use different task ID.')),
-                'ask "Re-execute completed task?"',
-            ]))
+            ->phase(Operator::if('status=completed', Operator::abort('Already completed. NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync).')))
+            ->phase(Operator::if('status=validated', Operator::abort('Already validated. Follow next-step lifecycle; do not re-execute validated tasks.')))
+            ->phase(Operator::if('status=stopped', Operator::abort('Task is stopped/cancelled. Do not execute unless a human reopens it.')))
+            ->phase(Operator::if('status NOT IN [pending, tested, in_progress]', Operator::abort('Task is not executable in current lifecycle state.')))
             ->phase(Operator::if('status=in_progress', [
                 'Parse task.comment for delegation_state JSON',
                 Operator::if('has agent_tasks with pending/running AND timestamp <1h', [
@@ -241,7 +242,8 @@ class TaskAsyncInclude extends IncludeArchetype
                 Operator::if('$HAS_AUTO_APPROVE', [
                     'Delegate ONLY $FIRST_BATCH to agents (parallel if group, single if sequential)',
                     'After $FIRST_BATCH completes → STOP.',
-                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'comment' => 'Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}.', 'append_comment' => true]),
+                    Operator::if('REMAINING_SUBTASKS not empty', VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Batch completed: {FIRST_BATCH ids}. Remaining: {REMAINING_SUBTASKS ids}. Returned to pending for next execution cycle.', 'append_comment' => true])),
+                    Operator::if('REMAINING_SUBTASKS empty', VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Final child batch completed: {FIRST_BATCH ids}. Ready for validation.', 'append_comment' => true])),
                     'RESULT: PARTIAL — batch completed. NEXT: /task:async {$VECTOR_TASK_ID} [-y] (remaining children)',
                 ]),
                 Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Has N subtasks. Execute first batch ({FIRST_BATCH})?"'),
@@ -254,8 +256,8 @@ class TaskAsyncInclude extends IncludeArchetype
             // 3. Research (ONLY if triggers matched)
             ->phase(Store::as('NEEDS_RESEARCH', 'ANY: content <50 chars, contains "example/like/similar/e.g./такий як/як у", no paths AND no class names, unknown lib/pattern, contradicts code, ambiguous, "how to" without specifics'))
             ->phase(Operator::if(Store::get('NEEDS_RESEARCH'), [
-                '3.1: ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{detected_lib}']) . ' → IF library mentioned',
-                '3.2: ' . Context7Mcp::callJson('query-docs', ['query' => '{task question}']) . ' → get docs',
+                '3.1: ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{detected_lib}', 'query' => '{task question}']) . ' → IF library mentioned → ' . Store::as('LIBRARY_ID'),
+                '3.2: ' . Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{task question}']) . ' → get docs',
                 '3.3: IF context7 insufficient → ' . TaskTool::agent('web-research-master', 'Research: {task.title}. Find: implementation patterns, best practices.'),
                 Store::as('RESEARCH_OPTIONS', '[{option, source, pros, cons}]'),
             ]))
@@ -288,7 +290,7 @@ class TaskAsyncInclude extends IncludeArchetype
                     'Pass BLOCKED_APPROACHES to ALL agents in their prompts',
                 ]
             ))
-            ->phase(BashTool::call(BrainCLI::DOCS('{keywords}')) . ' ' . Store::as('DOCS_INDEX'))
+            ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']) . ' ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', [
                 TaskTool::agent('explore', 'Read docs: {doc.paths}. Return full content.') . ' → ' . Store::as('DOCS_CONTENT'),
                 'DOCS_CONTENT = COMPLETE specification. Pass to ALL agents. Documentation > task.content.',
@@ -368,19 +370,26 @@ class TaskAsyncInclude extends IncludeArchetype
 
             // 8. Handle partial success
             ->phase(Operator::if('some agents failed', [
-                Operator::if('$HAS_AUTO_APPROVE AND >80% succeeded', [
-                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Partial success: {succeeded}/{total}. Failed: {list}', 'append_comment' => true]),
+                Operator::if('$HAS_AUTO_APPROVE AND any failed agent owns in-scope required work', [
+                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Partial async execution: {succeeded}/{total} agents succeeded. Failed required work: {list}. Files touched: {files}. Returned to pending for retry.', 'append_comment' => true]),
+                    Operator::abort('Required async delegation failed'),
                 ]),
-                Operator::if('$HAS_AUTO_APPROVE AND <=80% succeeded', [
-                    VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Too many failures: {failed}/{total}', 'append_comment' => true]),
-                    Operator::abort('Too many agent failures'),
+                Operator::if('$HAS_AUTO_APPROVE AND failures are explicitly optional/out-of-scope', [
+                    'Record warning in task.comment; continue only if all task requirements are complete.',
                 ]),
-                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "N/M succeeded. Complete partial/Rollback all/Retry failed?"'),
+                Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "N/M succeeded. Retry failed agents or mark task pending?"'),
             ]))
 
             // 9. Complete
             ->phase(VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'completed', 'comment' => 'Done. Agents: {list}. Files: {files}.', 'append_comment' => true]))
             ->phase(VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Task #{id}: delegation strategy, agents used: {list}, learnings: {summary}', 'category' => self::CAT_CODE_SOLUTION]))
+
+            // 9.5 Safety net before final output
+            ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' → verify status is NOT in_progress')
+            ->phase(Operator::if('task.status = "in_progress"', [
+                'SAFETY NET TRIGGERED: async execution completed but status still in_progress.',
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'SAFETY NET: Async execution workflow ended without explicit status update. Returned to pending.', 'append_comment' => true]),
+            ]))
 
             // NEXT (lifecycle reinforcement — at workflow end for recency)
             ->phase(Operator::if('TRIVIAL execution (doc-only/comment-only/formatting-only changes AND ≤1 file AND no code logic changes)', [
@@ -430,7 +439,10 @@ class TaskAsyncInclude extends IncludeArchetype
             ->phase(Operator::if('agent timeout', [
                 'Cancel agent, retry up to 2 times',
                 Operator::if('still timeout', [
-                    Operator::if('$HAS_AUTO_APPROVE', 'Skip with warning, continue other agents'),
+                    Operator::if('$HAS_AUTO_APPROVE', [
+                        VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Agent timeout after retries: {name}. Returned to pending for retry.', 'append_comment' => true]),
+                        Operator::abort('Agent timeout after retries'),
+                    ]),
                     Operator::if('NOT $HAS_AUTO_APPROVE', 'ask "Agent {name} timed out. Retry/Skip/Abort?"'),
                 ]),
             ]))
@@ -478,6 +490,6 @@ class TaskAsyncInclude extends IncludeArchetype
             ->text('16. TEST COVERAGE: "After implementation: check if changed code has tests. NO tests → WRITE them. Insufficient coverage → ADD tests. Target: >=80% coverage, critical paths 100%, meaningful assertions, edge cases (null, empty, boundary). Detect test framework from project, follow existing test patterns/structure. Run written tests to verify passing. NEVER skip — validator will reject without tests."')
             ->text('17. COMMENT CONTEXT: "Task comment contains accumulated inter-session context: {$COMMENT_CONTEXT}. Use memory IDs to fetch prior findings. Use file_paths as starting points. Respect decisions already made. Avoid repeating failures. DO NOT ignore comment history."')
             ->text('18. PARALLEL CONTEXT: "IF $ACTIVE_SIBLINGS not empty: Other agents MAY be executing sibling tasks concurrently. Your file scope: {MY_FILE_SCOPE}. Sibling scopes (from their task comments): {SIBLING_SCOPES}. SHARED/FORBIDDEN files: {SHARED_FILES}. Modify ONLY files in YOUR scope. Out-of-scope file needed → DO NOT edit, record in task comment as SCOPE EXTENSION NEEDED. Shared files (config, .env, migrations, routes) → NEVER edit in parallel context. Sibling without scope in comment = still planning, NOT a red flag."')
-            ->text('19. DOCUMENTATION: "After implementation: IF task adds NEW feature/module/API → run brain docs \"{keywords}\" to check existing docs. NOT found → CREATE .docs/{feature}.md with YAML front matter (name, description, type, date, version) + markdown body (purpose, usage, key concepts, API/interface). Documentation = description for humans, text-first, minimize code. IF task CHANGES existing behavior and docs exist → UPDATE relevant docs. Bugfix/refactor without behavior change OR trivial → SKIP docs."');
+            ->text('19. DOCUMENTATION: "After implementation: IF task adds NEW feature/module/API → run docs_search MCP with feature keywords to check existing docs. NOT found → CREATE .docs/{feature}.md with YAML front matter (name, description, type, date, version) + markdown body (purpose, usage, key concepts, API/interface). Documentation = description for humans, text-first, minimize code. IF task CHANGES existing behavior and docs exist → UPDATE relevant docs. Bugfix/refactor without behavior change OR trivial → SKIP docs."');
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
+use BrainCore\Attributes\Includes;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
@@ -63,7 +64,7 @@ class TaskValidateInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
 
         // PARENT INHERITANCE (IRON LAW)
-        $this->defineParentIdMandatoryRule();
+        $this->defineParentIdMandatoryRule(allowGlobalRegressionTasks: true);
 
         if ($this->strictAtLeast('standard')) {
             $this->rule('estimate-mandatory')->critical()
@@ -101,28 +102,9 @@ class TaskValidateInclude extends IncludeArchetype
 
         // SECURITY, PERFORMANCE, TYPE SAFETY, DEPENDENCY, TEST QUALITY — strict+
         if ($this->strictAtLeast('strict')) {
-            // SECURITY VALIDATION (severity policy)
-            $this->rule('security-injection')->critical()->text('Injection vulnerabilities = fix-task.');
-            $this->rule('security-xss')->critical()->text('XSS vulnerabilities = fix-task.');
-            $this->rule('security-secrets')->critical()->text('Hardcoded secrets = fix-task.');
-            $this->rule('security-auth')->high()->text('Auth/authz issues = fix-task.');
-            $this->rule('security-sensitive-data')->high()->text('Sensitive data exposure = fix-task.');
-
-            // PERFORMANCE VALIDATION (severity policy)
-            $this->rule('performance-n-plus-one')->high()->text('N+1 query pattern = fix-task.');
-            $this->rule('performance-complexity')->medium()->text('Algorithmic complexity issues = fix-task.');
-            $this->rule('performance-memory')->medium()->text('Memory issues = fix-task.');
-
-            // TYPE SAFETY (severity policy)
-            $this->rule('type-safety')->high()->text('Type safety violations = fix-task.');
-
-            // DEPENDENCY VALIDATION (severity policy)
-            $this->rule('dependency-audit')->high()->text('Dependency vulnerabilities = fix-task.');
-            $this->rule('dependency-license')->medium()->text('License compatibility issues = fix-task.');
-
-            // TEST QUALITY (severity policy)
-            $this->rule('test-quality-assertions')->high()->text('Tests without meaningful assertions = fix-task.');
-            $this->rule('test-quality-edge-cases')->high()->text('Missing edge case tests = fix-task.');
+            $this->rule('validation-severity-classification')->critical()
+                ->text('Create fix-tasks for in-scope security, performance, type-safety, dependency, and test-quality failures. CRITICAL: injection, XSS, hardcoded secrets, data loss/crash risks. MAJOR: auth/authz, sensitive data exposure, N+1, type-safety, dependency vulnerabilities, failing tests, missing critical-path tests. MINOR: complexity/memory warnings, weak assertions, missing edge cases, dependency-license issues.')
+                ->onViolation('Classify by highest applicable severity and create a validation-fix task unless the issue is purely cosmetic and safe to fix inline.');
         }
 
         // DEDUPLICATION & MERGE — standard+
@@ -134,16 +116,12 @@ class TaskValidateInclude extends IncludeArchetype
 
             // PARTIAL FAILURE HANDLING
             $this->rule('agent-partial-failure')->high()
-                ->text('If agent crashes/times out: retry ONCE. If still fails: continue with remaining agents, mark agent failure in report. 2 of 3 agents = still validate, but note incomplete coverage.')
+                ->text('If agent crashes/times out: retry ONCE. If still fails: continue with remaining agents, mark agent failure in report. 2 of 4 agents = still validate, but note incomplete coverage.')
                 ->why('One agent failure should not block entire validation. Partial results > no results.')
                 ->onViolation('Log failed agent, include warning in final report, suggest manual review of uncovered area.');
         }
 
-        // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
-        $this->defineParallelIsolationRules();
-
-        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
-        $this->defineParallelExecutionAwarenessRules();
+        // VALIDATOR PARALLEL SAFETY (fix-tasks stay sequential; only inline cosmetics need sibling-scope checks)
         $this->defineValidatorParallelCosmeticRule();
         $this->defineScopedGitCheckpointRule();
 
@@ -157,29 +135,8 @@ class TaskValidateInclude extends IncludeArchetype
         // Light validation - skip heavy checks for trivial tasks — strict+
         if ($this->strictAtLeast('strict')) {
             $this->rule('light-validation-tag')->medium()
-                ->text('Task with "light validation" tag = SKIP heavy checks (quality gates, full test suite, code quality agents). RUN only: syntax check, file exists, basic format validation.')
-                ->why('Trivial tasks (docs, typos, comments, config values, formatting) do not need full validation. Explicit tag = conscious decision by task creator.');
-
-            $this->guideline('light-validation-examples')
-                ->text('Recognize tags that signal trivial/light validation. Match by INTENT, not exact string.')
-                ->example('light-validation, light, trivial, minor, docs-only, documentation, readme, typo, cosmetic, formatting, config-only, skip-tests, no-validation');
-
-            $this->guideline('light-validation-scope')
-                ->text('Light validation appropriate for:')
-                ->example('Documentation changes (README, CHANGELOG, comments, docblocks)')
-                ->example('Typo fixes in text/UI/messages')
-                ->example('Config value changes (not logic)')
-                ->example('Code formatting, import sorting')
-                ->example('Removing dead/unused code')
-                ->example('Adding/updating .gitignore, .editorconfig');
-
-            $this->guideline('light-validation-not-for')
-                ->text('NEVER light validation for:')
-                ->example('Any logic changes (even "simple" ones)')
-                ->example('API/interface changes')
-                ->example('Database migrations')
-                ->example('Security-related code')
-                ->example('New features or bug fixes');
+                ->text('Task with light/trivial/docs-only/cosmetic intent = light validation: skip heavy gates and agents; run only file existence, syntax, and basic format checks. Allowed: docs, typos, comments/docblocks, import sorting, formatting, .gitignore/.editorconfig. FORBIDDEN for logic/API changes, migrations, security code, new features, and bug fixes.')
+                ->why('Trivial tasks do not need full validation, but any behavioral change must use full validation.');
         }
 
         // Quality gates - commands that MUST pass for validation
@@ -320,7 +277,10 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('Extract from ' . Store::get('SIBLING_TASKS') . ' comments + ' . Store::get('SIBLING_MEMORIES') . ': what was tried, what failed, what worked')
             ->phase(Store::as('FAILURE_PATTERNS', 'solutions that were tried and failed (from sibling comments + sibling memories + debugging memories)'))
             ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from task}']) . ' ' . Store::as('DOCS_INDEX'))
-            ->phase(Operator::if('unknown library/pattern in task scope', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand API before validating'))
+            ->phase(Operator::if('unknown library/pattern in task scope', [
+                Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{library}', 'query' => '{task question}']) . ' → ' . Store::as('LIBRARY_ID'),
+                Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{task question}']) . ' → understand API before validating',
+            ]))
 
             // 3. Approval (skip if -y)
             ->phase(Operator::if(
@@ -340,7 +300,7 @@ class TaskValidateInclude extends IncludeArchetype
                         'basic checks pass',
                         VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'validated', 'comment' => 'Light validation passed (trivial task)', 'append_comment' => true]),
                         [
-                            VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Light validation fixes: #ID', 'content' => 'basic_issues', 'parent_id' => '$VECTOR_TASK_ID', 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]),
+                            VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Light validation fixes: #ID', 'content' => 'basic_issues with evidence and file paths', 'parent_id' => '$VECTOR_TASK_ID', 'priority' => 'medium', 'estimate' => 1, 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]),
                             VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending']),
                         ]
                     ),
@@ -355,7 +315,7 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('  - TASK_ID: ' . Store::get('TASK') . '.id')
             ->phase('  - TASK_TITLE: ' . Store::get('TASK') . '.title')
             ->phase('  - TASK_CONTENT: ' . Store::get('TASK') . '.content (full requirements text)')
-            ->phase('  - TASK_FILES: extract file paths mentioned in task.content (src/*, tests/*, etc.)')
+            ->phase('  - TASK_FILES: merge file paths from task.content + COMMENT_CONTEXT.file_paths + executor-reported files + git status/diff manifest')
             ->phase('  - PARENT_CONTEXT: ' . Store::get('PARENT') . '.title + .content (if exists) — broader goal')
             ->phase('  - MEMORY_IDS: list memory IDs from ' . Store::get('MEMORY_CONTEXT') . ' (e.g., #1500, #1502)')
             ->phase('  - KNOWN_FAILURES_TEXT: full text from ' . Store::get('KNOWN_FAILURES') . ' — what NOT to suggest')
@@ -364,24 +324,11 @@ class TaskValidateInclude extends IncludeArchetype
             ->phase('  - HAS_PARENT: ' . Store::get('TASK') . '.parent_id exists (true = subtask = scoped tests, false = root task = full suite)')
             ->phase('  - COMMENT_CONTEXT: ' . Store::get('COMMENT_CONTEXT') . ' — accumulated inter-session history (memory IDs, files touched, failures, decisions)')
             ->phase('  - AUTO_APPROVE: ' . Store::get('HAS_AUTO_APPROVE') . ' (true = -y mode, agent MUST NOT ask user questions)')
+            ->phase('  - SIBLING_SCOPES: ' . Store::get('SIBLING_SCOPES') . ' (if parallel context exists)')
             ->phase(Store::as('AGENT_CONTEXT', 'formatted context block with all above data INCLUDING $COMMENT_CONTEXT and $AUTO_APPROVE'))
             ->phase(Operator::parallel([
                 TaskTool::agent('explore', '
-CONTEXT (provided by validator):
-- Task ID: {TASK_ID}
-- Task title: {TASK_TITLE}
-- Task content: {TASK_CONTENT}
-- Files to check: {TASK_FILES}
-- Parent goal: {PARENT_CONTEXT}
-- Related memories: {MEMORY_IDS}
-- Documentation paths: {DOCS_PATHS}
-- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
-- Auto-approve: {AUTO_APPROVE}
-
-IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
-
-KNOWN FAILURES (DO NOT SUGGEST THESE):
-{KNOWN_FAILURES_TEXT}
+SHARED CONTEXT: STORE-GET($AGENT_CONTEXT). Includes task, files, parent, docs, memory, comment context, auto-approve, known failures, failure patterns, sibling scopes. Auto-approve=true → never ask. Known failures/failure patterns → do not suggest.
 
 CRITICAL: DOCUMENTATION = LAW
 - task.content may be brief summary
@@ -404,25 +351,10 @@ MISSION: COMPLETION CHECK
 10. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → before ANY Edit, verify file is NOT in their scope. Deferred cosmetics are NOT failures.
 11. DOCUMENTATION CHECK: IF task adds NEW feature/module/API → run ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords}']) . ' to verify .docs/ documentation exists. No docs for new feature = cosmetic issue (executor should have created). Create basic .docs/{feature}.md inline with YAML front matter (name, description, type, date, version) + brief markdown description. If parallel context and doc file could conflict → defer to comment.
 
-Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [], garbage: [], pattern_violations: [], cosmetic_fixed: [], cosmetic_deferred: [], docs_coverage: {new_features: [], has_docs: bool, docs_created: []}}')
+Return JSON: {docs_read: [], requirements_from_docs: [], requirements_from_task: [], requirements_checklist: [{requirement, source: "docs|task", status, evidence}], missing_requirements: [{requirement, source, evidence, fix_task_needed}], garbage: [{file, line: null|int, issue, evidence, fix_task_needed}], pattern_violations: [{file, line: null|int, evidence, fix_task_needed}], cosmetic_fixed: [], cosmetic_deferred: [], docs_coverage: {new_features: [], has_docs: bool, docs_created: []}}')
 ,
                 TaskTool::agent('explore', '
-CONTEXT (provided by validator):
-- Task ID: {TASK_ID}
-- Task title: {TASK_TITLE}
-- Task content: {TASK_CONTENT}
-- Files to check: {TASK_FILES}
-- Related memories: {MEMORY_IDS}
-- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
-- Auto-approve: {AUTO_APPROVE}
-
-IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
-
-KNOWN FAILURES (DO NOT SUGGEST THESE):
-{KNOWN_FAILURES_TEXT}
-
-PREVIOUS FAILED ATTEMPTS:
-{FAILURE_PATTERNS_TEXT}
+SHARED CONTEXT: STORE-GET($AGENT_CONTEXT). Auto-approve=true → never ask. Known failures/failure patterns → do not suggest.
 
 MISSION: CODE QUALITY (static analysis only, NO test execution)
 1. Read EACH file from TASK_FILES
@@ -437,21 +369,9 @@ MISSION: CODE QUALITY (static analysis only, NO test execution)
 10. FORBIDDEN: running test commands — Testing agent handles ALL test execution exclusively
 11. PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → verify file ownership before Edit. Deferred cosmetics are NOT failures.
 
-Return JSON: {files_reviewed: [], logic_issues: [], architecture_issues: [], type_issues: [], complexity_issues: [], hallucinated_calls: [], broken_consumers: [], edge_case_issues: [], static_analysis_result: {}, cosmetic_deferred: []}'),
+Return JSON: {files_reviewed: [], logic_issues: [{file, line: null|int, severity, evidence, fix_task_needed}], architecture_issues: [{file, line: null|int, severity, evidence, fix_task_needed}], type_issues: [{file, line: null|int, severity, evidence, fix_task_needed}], complexity_issues: [{file, line: null|int, severity, evidence, fix_task_needed}], hallucinated_calls: [{file, line: null|int, call, evidence, fix_task_needed}], broken_consumers: [{file, line: null|int, consumer, evidence, fix_task_needed}], edge_case_issues: [{file, line: null|int, evidence, fix_task_needed}], static_analysis_result: {}, cosmetic_deferred: []}'),
                 TaskTool::agent('explore', '
-CONTEXT (provided by validator):
-- Task ID: {TASK_ID}
-- Task title: {TASK_TITLE}
-- Task content: {TASK_CONTENT}
-- Files to check: {TASK_FILES}
-- Has parent: {HAS_PARENT} (true = subtask, false = root task)
-- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
-- Auto-approve: {AUTO_APPROVE}
-
-IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
-
-KNOWN FAILURES (DO NOT SUGGEST THESE):
-{KNOWN_FAILURES_TEXT}
+SHARED CONTEXT: STORE-GET($AGENT_CONTEXT). HAS_PARENT controls test scope. Auto-approve=true → never ask. Known failures/failure patterns → do not suggest.
 
 MISSION: TESTING (EXCLUSIVE test executor — only this agent runs tests)
 
@@ -490,20 +410,9 @@ QUALITY CHECKS (both scoped and root):
 If test approach mentioned in KNOWN_FAILURES → find ALTERNATIVE approach
 PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → run ONLY tests for THIS task files. Do NOT run tests that touch active sibling files.
 
-Return JSON: {scoped: bool, test_files_found: [], consumer_tests_found: [], coverage: {}, missing_tests: [], failing_tests: [], weak_assertions: [], missing_edge_cases: [], slow_tests: [], flaky_tests: [], quality_gate_result: {}}'),
+Return JSON: {scoped: bool, test_files_found: [], consumer_tests_found: [], coverage: {}, missing_tests: [{file, line: null|int, evidence, fix_task_needed}], failing_tests: [{test, file, evidence, fix_task_needed}], weak_assertions: [{file, line: null|int, evidence, fix_task_needed}], missing_edge_cases: [{file, line: null|int, evidence, fix_task_needed}], slow_tests: [{test, duration_ms, evidence, fix_task_needed}], flaky_tests: [{test, evidence, fix_task_needed}], quality_gate_result: {}}'),
                 TaskTool::agent('explore', '
-CONTEXT (provided by validator):
-- Task ID: {TASK_ID}
-- Task title: {TASK_TITLE}
-- Task content: {TASK_CONTENT}
-- Files to check: {TASK_FILES}
-- Comment context: {COMMENT_CONTEXT} (previous sessions: memory IDs, files touched, execution history, failures, decisions)
-- Auto-approve: {AUTO_APPROVE}
-
-IF Auto-approve = true: NEVER ask user questions. On ANY ambiguity or decision fork → choose the conservative/non-blocking option automatically. Log the decision, continue without stopping.
-
-KNOWN FAILURES:
-{KNOWN_FAILURES_TEXT}
+SHARED CONTEXT: STORE-GET($AGENT_CONTEXT). Auto-approve=true → never ask. Known failures/failure patterns → do not suggest.
 
 MISSION: SECURITY & PERFORMANCE
 SECURITY (check each file):
@@ -528,7 +437,7 @@ If file in active sibling scope → DO NOT fix cleanup inline, record as "DEFERR
 FORBIDDEN: running test commands (phpunit, pest, jest, pytest, composer test, npm test, etc.) — Testing agent handles ALL test execution exclusively
 PARALLEL CONTEXT: {SIBLING_SCOPES}. If active siblings exist → verify file ownership before ANY Edit. Deferred cleanups are NOT failures.
 
-Return JSON: {files_reviewed: [], injection: [], xss: [], secrets: [], auth_issues: [], data_exposure: [], n_plus_one: [], memory_issues: [], dependency_vulnerabilities: [], dead_code: [], debug_statements: [], cosmetic_deferred: []}'),
+Return JSON: {files_reviewed: [], injection: [{file, line: null|int, evidence, fix_task_needed}], xss: [{file, line: null|int, evidence, fix_task_needed}], secrets: [{file, line: null|int, evidence, fix_task_needed}], auth_issues: [{file, line: null|int, evidence, fix_task_needed}], data_exposure: [{file, line: null|int, evidence, fix_task_needed}], n_plus_one: [{file, line: null|int, evidence, fix_task_needed}], memory_issues: [{file, line: null|int, evidence, fix_task_needed}], dependency_vulnerabilities: [{dependency, evidence, fix_task_needed}], dead_code: [{file, line: null|int, evidence, fix_task_needed}], debug_statements: [{file, line: null|int, evidence, fix_task_needed}], cosmetic_deferred: []}'),
             ]))
 
             // 4.5 AGENT RESULTS GATE — verify sufficient agent coverage before proceeding
@@ -622,11 +531,12 @@ TASK CONTEXT:
 
 STEPS:
 1. For EACH stuck issue: identify the CORE problem (not symptom)
-2. ' . Context7Mcp::callJson('query-docs', ['query' => '{relevant library/framework} {problem pattern}']) . ' → official docs patterns
-3. WebSearch("{problem} {framework} best practice alternative solution") → community solutions
-4. Cross-reference results against FAILED APPROACHES — eliminate already-tried
-5. For each issue: rank remaining alternatives by confidence (high/medium/low)
-6. If AUTO-APPROVE: select highest-confidence untried approach automatically
+2. ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{relevant library/framework}', 'query' => '{problem pattern}']) . ' → resolve official docs target
+3. ' . Context7Mcp::callJson('query-docs', ['libraryId' => '{resolved_id}', 'query' => '{problem pattern} recommended approach']) . ' → official docs patterns
+4. WebSearch("{problem} {framework} best practice alternative solution") → community solutions
+5. Cross-reference results against FAILED APPROACHES — eliminate already-tried
+6. For each issue: rank remaining alternatives by confidence (high/medium/low)
+7. If AUTO-APPROVE: select highest-confidence untried approach automatically
 
 Return JSON: {stuck_issues: [{file, issue, times_failed, failed_approaches: [], research_findings: [{source, approach, confidence, rationale}], recommended: {approach, confidence, rationale}, escalate_to_human: bool}]}'),
                     Store::as('RESEARCH_RESULT', '{research agent output}'),
@@ -654,15 +564,16 @@ Return JSON: {stuck_issues: [{file, issue, times_failed, failed_approaches: [], 
                     VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'validated']),
                     // 5.7 Git checkpoint — commit validated work (parallel = scoped files, non-parallel = full checkpoint with memory/)
                     Operator::if(Store::get('TASK') . '.parallel === true AND ACTIVE_SIBLINGS exist', [
-                        BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope files (excludes memory/ and sibling work)',
+                        BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope manifest files (excludes memory/ and sibling work)',
                     ], [
-                        BashTool::call('git add -A') . ' → NON-PARALLEL: full state checkpoint INCLUDING memory/ for complete revert capability',
+                        BashTool::call('git status --short') . ' → check for unrelated WIP before staging',
+                        BashTool::call('git add {$TASK_FILES}') . ' → NON-PARALLEL: stage task-scope manifest files; use full checkpoint ONLY when status shows no unrelated WIP',
                     ]),
                     BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
                     Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue to report.'),
                 ],
                 [
-                    VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Validation fixes: #ID', 'content' => 'filtered_issues_list', 'parent_id' => '$VECTOR_TASK_ID', 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]) . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
+                    VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Validation fixes: #ID', 'content' => 'filtered_issues_list with evidence, file paths, severity, and known-failed approaches excluded', 'parent_id' => '$VECTOR_TASK_ID', 'priority' => '{critical>0 ? high : medium}', 'estimate' => '{TOTAL_ESTIMATE}', 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]) . ' ← parallel: false always for validation fixes unless a later decomposer proves isolation.',
                     VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending']) . ' ← IRON LAW: always "pending" when fix-task created. MCP will reset anyway.',
                 ]
             ))
@@ -714,6 +625,9 @@ Return JSON: {stuck_issues: [{file, issue, times_failed, failed_approaches: [], 
             ->phase(Operator::if('agent timeout (>60s)', 'Treat as failure, apply retry logic above'))
             ->phase(Operator::if('fix-task creation fails', 'store issues to memory for manual review, abort with error'))
             ->phase(Operator::if('user rejects validation', 'accept modifications, re-validate from step 4'))
-            ->phase(Operator::if('quality gate command not found', 'WARN and skip that gate, note in report'));
+            ->phase(Operator::if('configured quality gate command not found', [
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Validation failed: configured quality gate command not found. Fix gate config or install dependency, then retry.', 'append_comment' => true]),
+                Operator::abort('Configured quality gate missing — validation cannot pass'),
+            ]));
     }
 }

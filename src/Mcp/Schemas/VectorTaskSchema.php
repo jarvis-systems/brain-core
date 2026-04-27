@@ -9,179 +9,8 @@ final class VectorTaskSchema
     public static function get(): array
     {
         return [
-            'task_create' => [
-                'required' => ['title', 'content'],
-                'allowed' => ['title', 'content', 'parent_id', 'comment', 'priority', 'estimate', 'order', 'parallel', 'tags'],
-                'types' => [
-                    'title' => 'string',
-                    'content' => 'string',
-                    'parent_id' => 'integer',
-                    'comment' => 'string',
-                    'priority' => 'string',
-                    'estimate' => 'float',
-                    'order' => 'integer',
-                    'parallel' => 'boolean',
-                    'tags' => 'array',
-                ],
-            ],
-            'task_create_bulk' => [
-                'required' => ['tasks'],
-                'allowed' => ['tasks'],
-                'types' => [
-                    'tasks' => 'array',
-                ],
-            ],
-            'task_update' => [
-                'required' => ['task_id'],
-                'allowed' => ['task_id', 'title', 'content', 'status', 'parent_id', 'comment', 'start_at', 'finish_at', 'priority', 'estimate', 'order', 'parallel', 'tags', 'append_comment', 'add_tag', 'remove_tag'],
-                'types' => [
-                    'task_id' => 'integer',
-                    'title' => 'string',
-                    'content' => 'string',
-                    'status' => 'string',
-                    'parent_id' => 'integer',
-                    'comment' => 'string',
-                    'start_at' => 'string',
-                    'finish_at' => 'string',
-                    'priority' => 'string',
-                    'estimate' => 'float',
-                    'order' => 'integer',
-                    'parallel' => 'boolean',
-                    'tags' => 'array',
-                    'append_comment' => 'boolean',
-                    'add_tag' => 'string',
-                    'remove_tag' => 'string',
-                ],
-            ],
-            'task_get' => [
-                'required' => ['task_id'],
-                'allowed' => ['task_id'],
-                'types' => [
-                    'task_id' => 'integer',
-                ],
-            ],
-            'task_list' => [
-                'required' => [],
-                'allowed' => ['query', 'status', 'parent_id', 'tags', 'ids', 'limit', 'offset'],
-                'types' => [
-                    'query' => 'string',
-                    'status' => 'string',
-                    'parent_id' => 'integer',
-                    'tags' => 'array',
-                    'ids' => 'array',
-                    'limit' => 'integer',
-                    'offset' => 'integer',
-                ],
-            ],
-            'task_delete' => [
-                'required' => ['task_id'],
-                'allowed' => ['task_id'],
-                'types' => [
-                    'task_id' => 'integer',
-                ],
-            ],
-            'task_delete_bulk' => [
-                'required' => ['task_ids'],
-                'allowed' => ['task_ids'],
-                'types' => [
-                    'task_ids' => 'array',
-                ],
-            ],
-            'task_comment' => [
-                'required' => ['task_id', 'comment'],
-                'allowed' => ['task_id', 'comment'],
-                'types' => [
-                    'task_id' => 'integer',
-                    'comment' => 'string',
-                ],
-            ],
-            'task_add_tag' => [
-                'required' => ['task_id', 'tag'],
-                'allowed' => ['task_id', 'tag'],
-                'types' => [
-                    'task_id' => 'integer',
-                    'tag' => 'string',
-                ],
-            ],
-            'task_remove_tag' => [
-                'required' => ['task_id', 'tag'],
-                'allowed' => ['task_id', 'tag'],
-                'types' => [
-                    'task_id' => 'integer',
-                    'tag' => 'string',
-                ],
-            ],
-            'task_next' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'task_stats' => [
-                'required' => [],
-                'allowed' => ['status', 'priority', 'tags', 'parent_id', 'created_after', 'created_before', 'start_after', 'start_before', 'finish_after', 'finish_before'],
-                'types' => [
-                    'status' => 'string',
-                    'priority' => 'string',
-                    'tags' => 'array',
-                    'parent_id' => 'integer',
-                    'created_after' => 'string',
-                    'created_before' => 'string',
-                    'start_after' => 'string',
-                    'start_before' => 'string',
-                    'finish_after' => 'string',
-                    'finish_before' => 'string',
-                ],
-            ],
-            'tag_frequencies' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'tag_weights' => [
-                'required' => [],
-                'allowed' => [],
-                'types' => [],
-            ],
-            'tag_classify' => [
-                'required' => ['tag'],
-                'allowed' => ['tag'],
-                'types' => [
-                    'tag' => 'string',
-                ],
-            ],
-            'tags_classify_batch' => [
-                'required' => ['tags'],
-                'allowed' => ['tags'],
-                'types' => [
-                    'tags' => 'array',
-                ],
-            ],
-            'search_explain' => [
-                'required' => ['query'],
-                'allowed' => ['query', 'limit'],
-                'types' => [
-                    'query' => 'string',
-                    'limit' => 'integer',
-                ],
-            ],
-            'tag_normalize_preview' => [
-                'required' => [],
-                'allowed' => ['threshold', 'require_predefined'],
-                'types' => [
-                    'threshold' => 'float',
-                    'require_predefined' => 'boolean',
-                ],
-            ],
-            'tag_normalize_apply' => [
-                'required' => [],
-                'allowed' => ['threshold', 'dry_run', 'require_predefined'],
-                'types' => [
-                    'threshold' => 'float',
-                    'dry_run' => 'boolean',
-                    'require_predefined' => 'boolean',
-                ],
-            ],
             'canonical_tag_add' => [
+                'description' => 'Add a predefined canonical tag mapping',
                 'required' => ['canonical_tag', 'variant_tag'],
                 'allowed' => ['canonical_tag', 'variant_tag'],
                 'types' => [
@@ -189,19 +18,86 @@ final class VectorTaskSchema
                     'variant_tag' => 'string',
                 ],
             ],
+            'canonical_tag_list' => [
+                'description' => 'List predefined canonical tag mappings',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
             'canonical_tag_remove' => [
+                'description' => 'Remove a predefined canonical tag mapping',
                 'required' => ['variant_tag'],
                 'allowed' => ['variant_tag'],
                 'types' => [
                     'variant_tag' => 'string',
                 ],
             ],
-            'canonical_tag_list' => [
+            'cookbook' => [
+                'description' => 'Read vector task cookbook documentation and workflow cases',
+                'required' => [],
+                'allowed' => ['case_category', 'cognitive', 'include', 'level', 'limit', 'offset', 'priority', 'query', 'strict'],
+                'types' => [
+                    'case_category' => 'string',
+                    'cognitive' => 'string',
+                    'include' => 'string',
+                    'level' => 'integer',
+                    'limit' => 'integer',
+                    'offset' => 'integer',
+                    'priority' => 'string',
+                    'query' => 'string',
+                    'strict' => 'string',
+                ],
+            ],
+            'get_canonical_tags' => [
+                'description' => 'Get all canonical tags',
                 'required' => [],
                 'allowed' => [],
                 'types' => [],
             ],
+            'search_explain' => [
+                'description' => 'Search tasks with ranking explanation',
+                'required' => ['query'],
+                'allowed' => ['limit', 'query'],
+                'types' => [
+                    'limit' => 'integer',
+                    'query' => 'string',
+                ],
+            ],
+            'tag_classify' => [
+                'description' => 'Classify a tag by search ranking boost level',
+                'required' => ['tag'],
+                'allowed' => ['tag'],
+                'types' => [
+                    'tag' => 'string',
+                ],
+            ],
+            'tag_frequencies' => [
+                'description' => 'Get tag frequencies and IDF weights',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'tag_normalize_apply' => [
+                'description' => 'Apply tag normalization suggestions',
+                'required' => [],
+                'allowed' => ['dry_run', 'require_predefined', 'threshold'],
+                'types' => [
+                    'dry_run' => 'boolean',
+                    'require_predefined' => 'boolean',
+                    'threshold' => 'float',
+                ],
+            ],
+            'tag_normalize_preview' => [
+                'description' => 'Preview tag normalization suggestions',
+                'required' => [],
+                'allowed' => ['require_predefined', 'threshold'],
+                'types' => [
+                    'require_predefined' => 'boolean',
+                    'threshold' => 'float',
+                ],
+            ],
             'tag_similarity' => [
+                'description' => 'Calculate semantic similarity between two tags',
                 'required' => ['tag1', 'tag2'],
                 'allowed' => ['tag1', 'tag2'],
                 'types' => [
@@ -209,24 +105,153 @@ final class VectorTaskSchema
                     'tag2' => 'string',
                 ],
             ],
-            'get_canonical_tags' => [
+            'tag_weights' => [
+                'description' => 'Get IDF weights for all tags',
                 'required' => [],
                 'allowed' => [],
                 'types' => [],
             ],
-            'cookbook' => [
-                'required' => [],
-                'allowed' => ['include', 'level', 'case_category', 'query', 'priority', 'cognitive', 'strict', 'limit', 'offset'],
+            'tags_classify_batch' => [
+                'description' => 'Classify multiple tags by search ranking boost level',
+                'required' => ['tags'],
+                'allowed' => ['tags'],
                 'types' => [
-                    'include' => 'string',
-                    'level' => 'integer',
-                    'case_category' => 'string',
-                    'query' => 'string',
+                    'tags' => 'array',
+                ],
+            ],
+            'task_add_tag' => [
+                'description' => 'Add one tag to a task',
+                'required' => ['tag', 'task_id'],
+                'allowed' => ['tag', 'task_id'],
+                'types' => [
+                    'tag' => 'string',
+                    'task_id' => 'integer',
+                ],
+            ],
+            'task_comment' => [
+                'description' => 'Append a comment to a task',
+                'required' => ['comment', 'task_id'],
+                'allowed' => ['comment', 'task_id'],
+                'types' => [
+                    'comment' => 'string',
+                    'task_id' => 'integer',
+                ],
+            ],
+            'task_create' => [
+                'description' => 'Create a new vector task',
+                'required' => ['content', 'title'],
+                'allowed' => ['comment', 'content', 'estimate', 'order', 'parallel', 'parent_id', 'priority', 'tags', 'title'],
+                'types' => [
+                    'comment' => 'string',
+                    'content' => 'string',
+                    'estimate' => 'float',
+                    'order' => 'integer',
+                    'parallel' => 'boolean',
+                    'parent_id' => 'integer',
                     'priority' => 'string',
-                    'cognitive' => 'string',
-                    'strict' => 'string',
+                    'tags' => 'array',
+                    'title' => 'string',
+                ],
+            ],
+            'task_create_bulk' => [
+                'description' => 'Create multiple vector tasks',
+                'required' => ['tasks'],
+                'allowed' => ['tasks'],
+                'types' => [
+                    'tasks' => 'array',
+                ],
+            ],
+            'task_delete' => [
+                'description' => 'Delete a task by ID',
+                'required' => ['task_id'],
+                'allowed' => ['task_id'],
+                'types' => [
+                    'task_id' => 'integer',
+                ],
+            ],
+            'task_delete_bulk' => [
+                'description' => 'Delete multiple tasks by ID',
+                'required' => ['task_ids'],
+                'allowed' => ['task_ids'],
+                'types' => [
+                    'task_ids' => 'array',
+                ],
+            ],
+            'task_get' => [
+                'description' => 'Get one task by ID',
+                'required' => ['task_id'],
+                'allowed' => ['task_id'],
+                'types' => [
+                    'task_id' => 'integer',
+                ],
+            ],
+            'task_list' => [
+                'description' => 'List tasks with optional filters and semantic search',
+                'required' => [],
+                'allowed' => ['ids', 'limit', 'offset', 'parent_id', 'query', 'status', 'tags'],
+                'types' => [
+                    'ids' => 'array',
                     'limit' => 'integer',
                     'offset' => 'integer',
+                    'parent_id' => 'integer',
+                    'query' => 'string',
+                    'status' => 'string',
+                    'tags' => 'array',
+                ],
+            ],
+            'task_next' => [
+                'description' => 'Get next task to work on',
+                'required' => [],
+                'allowed' => [],
+                'types' => [],
+            ],
+            'task_remove_tag' => [
+                'description' => 'Remove one tag from a task',
+                'required' => ['tag', 'task_id'],
+                'allowed' => ['tag', 'task_id'],
+                'types' => [
+                    'tag' => 'string',
+                    'task_id' => 'integer',
+                ],
+            ],
+            'task_stats' => [
+                'description' => 'Get task statistics with optional filters',
+                'required' => [],
+                'allowed' => ['created_after', 'created_before', 'finish_after', 'finish_before', 'parent_id', 'priority', 'start_after', 'start_before', 'status', 'tags'],
+                'types' => [
+                    'created_after' => 'string',
+                    'created_before' => 'string',
+                    'finish_after' => 'string',
+                    'finish_before' => 'string',
+                    'parent_id' => 'integer',
+                    'priority' => 'string',
+                    'start_after' => 'string',
+                    'start_before' => 'string',
+                    'status' => 'string',
+                    'tags' => 'array',
+                ],
+            ],
+            'task_update' => [
+                'description' => 'Update task fields by ID',
+                'required' => ['task_id'],
+                'allowed' => ['add_tag', 'append_comment', 'comment', 'content', 'estimate', 'finish_at', 'order', 'parallel', 'parent_id', 'priority', 'remove_tag', 'start_at', 'status', 'tags', 'task_id', 'title'],
+                'types' => [
+                    'add_tag' => 'string',
+                    'append_comment' => 'boolean',
+                    'comment' => 'string',
+                    'content' => 'string',
+                    'estimate' => 'float',
+                    'finish_at' => 'string',
+                    'order' => 'integer',
+                    'parallel' => 'boolean',
+                    'parent_id' => 'integer',
+                    'priority' => 'string',
+                    'remove_tag' => 'string',
+                    'start_at' => 'string',
+                    'status' => 'string',
+                    'tags' => 'array',
+                    'task_id' => 'integer',
+                    'title' => 'string',
                 ],
             ],
         ];

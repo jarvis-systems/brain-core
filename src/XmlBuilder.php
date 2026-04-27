@@ -137,7 +137,7 @@ class XmlBuilder
                 => $ruleText !== null ? MD::autoCode($ruleText) : null,
                 $ruleChildren
             ], $sccNext);
-        } elseif (! isset(self::$cache['iron_rules_exists'])) {
+        } else {
             $lines[] = '<' . $element . $attributes . '>';
         }
 
@@ -224,7 +224,7 @@ class XmlBuilder
         ) {
             //$lines[] = '---';
             $lines[] = '';
-        } elseif (! isset(self::$cache['iron_rules_exists'])) {
+        } else {
             $lines[] = '</' . $element . '>';
         }
 

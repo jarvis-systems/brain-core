@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BrainCore\Includes\Commands\Task;
 
 use BrainCore\Archetypes\IncludeArchetype;
+use BrainCore\Attributes\Includes;
 use BrainCore\Attributes\Purpose;
 use BrainCore\Compilation\BrainCLI;
 use BrainCore\Compilation\Operator;
@@ -87,7 +88,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
         // TAG TAXONOMY (from trait - predefined tags for tasks and memory)
 
         // PARENT INHERITANCE (from trait)
-        $this->defineParentIdMandatoryRule();
+        $this->defineParentIdMandatoryRule(allowGlobalRegressionTasks: true);
 
         // VALIDATION RULES (common from trait)
         $this->defineValidationCoreRules();
@@ -99,13 +100,27 @@ class TaskValidateSyncInclude extends IncludeArchetype
         if ($this->strictAtLeast('standard')) {
             $this->rule('idempotent')->high()
                 ->text('Re-run produces same result. Check existing tasks before creating. Skip duplicates.');
+
+            $this->rule('sync-validation-parity')->critical()
+                ->text('/task:validate-sync MUST validate the same issue categories as /task:validate: completion, code quality, testing, security, performance, type safety, dependency risk, cleanup, documentation coverage, impact radius, hallucinated APIs, collateral failures, and stuck/failure-history. Difference is execution mode only: direct tools instead of parallel validator agents.')
+                ->why('Sync validation is used as a drop-in direct-tool alternative. Lower category coverage creates false validated states.')
+                ->onViolation('Add explicit direct-tool checks for the missing category before marking validated.');
+
+            $this->rule('sync-evidence-required')->high()
+                ->text('Every sync validation issue MUST include evidence: category, severity, file path when applicable, line when known, observed fact, why it is in-scope, and proposed fix direction. No evidence = do not create fix-task yet; gather evidence first.');
+
+            $this->rule('no-breaking-changes')->high()->text('Breaking API/interface changes without documentation = fix-task.');
+            $this->rule('flaky-test-detection')->high()->text('Flaky tests = fix-task.');
         }
 
-        // PARALLEL ISOLATION (from trait - strict criteria when creating fix-tasks)
-        $this->defineParallelIsolationRules();
+        // SECURITY, PERFORMANCE, TYPE SAFETY, DEPENDENCY, TEST QUALITY — strict+
+        if ($this->strictAtLeast('strict')) {
+            $this->rule('validation-severity-classification')->critical()
+                ->text('Create fix-tasks for in-scope security, performance, type-safety, dependency, and test-quality failures. CRITICAL: injection, XSS, hardcoded secrets, data loss/crash risks. MAJOR: auth/authz, sensitive data exposure, N+1, type-safety, dependency vulnerabilities, failing tests, missing critical-path tests. MINOR: complexity/memory warnings, weak assertions, missing edge cases, dependency-license issues.')
+                ->onViolation('Classify by highest applicable severity and create a validation-fix task unless the issue is purely cosmetic and safe to fix inline.');
+        }
 
-        // PARALLEL EXECUTION AWARENESS (from trait - know sibling tasks when validating parallel task)
-        $this->defineParallelExecutionAwarenessRules();
+        // VALIDATOR PARALLEL SAFETY (fix-tasks stay sequential; only inline cosmetics need sibling-scope checks)
         $this->defineValidatorParallelCosmeticRule();
         $this->defineScopedGitCheckpointRule();
 
@@ -232,32 +247,48 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ))
             ->phase(BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{keywords from task}']) . ' → ' . Store::as('DOCS_INDEX'))
             ->phase(Operator::if(Store::get('DOCS_INDEX') . ' found', ReadTool::call('{doc_paths}') . ' → ' . Store::as('DOCUMENTATION') . ' (COMPLETE spec)'))
-            ->phase(Operator::if('unknown library/pattern', Context7Mcp::callJson('query-docs', ['query' => '{library}']) . ' → understand before validating'))
+            ->phase(Operator::if('unknown library/pattern', [
+                Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{library}', 'query' => '{task question}']) . ' → ' . Store::as('LIBRARY_ID'),
+                Context7Mcp::callJson('query-docs', ['libraryId' => '$LIBRARY_ID', 'query' => '{task question}']) . ' → understand before validating',
+            ]))
 
             // 3.5 Codebase pattern check (verify code follows existing conventions)
             ->phase(GrepTool::describe('Search for similar implementations: analogous class names, method patterns, trait usage'))
             ->phase(Store::as('EXISTING_PATTERNS', '{similar implementations found in codebase}'))
+            ->phase(Store::as('TASK_FILES', 'merge file paths from task.content + COMMENT_CONTEXT.file_paths + execution history + git status/diff manifest + files discovered by requirement tracing'))
 
             // 4. Direct validation (TASK SCOPE ONLY)
             ->phase(Store::as('COSMETIC_FIXES', '0'))
+            ->phase(Store::as('VALIDATION_EVIDENCE', '{completion: [], code_quality: [], security: [], performance: [], type_safety: [], dependencies: [], tests: [], cleanup: [], docs: [], collateral: []}'))
             ->phase('4.1 COMPLETION: Extract requirements from DOCUMENTATION (primary) + task.content (secondary) → list ALL requirements → verify each done')
             ->phase(GlobTool::describe('Find task-related files'))
             ->phase(ReadTool::describe('Read files, confirm implementation'))
-            ->phase('Detect garbage: unused imports, dead code, debug statements, commented-out blocks')
+            ->phase('For EACH requirement: record evidence {requirement, source, status, file, line?, observed}. Missing requirement → add MAJOR/MINOR issue depending on requirement criticality.')
+            ->phase('Detect garbage: unused imports, dead code, debug statements, commented-out blocks → cleanup evidence')
 
             ->phase('4.2 CODE QUALITY: Task scope only')
             ->phase(GrepTool::describe('Search patterns, potential issues'))
-            ->phase('Check: logic, security, architecture. Unknown lib → context7.')
+            ->phase('Check: logic, architecture, breaking changes. Unknown lib → context7.')
             ->phase('4.2.1 PATTERN CONSISTENCY: Compare implementation against $EXISTING_PATTERNS. Code should follow established project conventions.')
             ->phase('4.2.2 HALLUCINATION CHECK: Verify ALL method/class/function calls reference REAL code. Read source to confirm methods exist with correct signatures.')
             ->phase('4.2.3 IMPACT RADIUS: For each changed file, Grep who imports/uses/extends it. Verify consumers NOT broken.')
             ->phase('4.2.4 LOGIC EDGE CASES: For each changed function, verify: null/empty handling, boundary values, off-by-one, error paths.')
+            ->phase('4.2.5 TYPE SAFETY: Check missing/incorrect types, nullable values without checks, changed return types, impossible casts, mixed/array shape misuse, enum/string confusion. Type safety violation → MAJOR unless cosmetic annotation-only.')
+            ->phase('4.2.6 BREAKING CHANGE CHECK: Public signature/export/contract changed? Verify all callers updated and docs reflect it. Undocumented breaking change → fix-task.')
+            ->phase('4.2.7 DEPENDENCY/API CHECK: New dependency or external API use? Verify manifest/lock updates, version compatibility, license risk, audit output if package manager supports audit. High/critical vulnerability → MAJOR/CRITICAL issue.')
 
-            ->phase('4.3 QUALITY GATES (non-test)')
+            ->phase('4.3 SECURITY (direct, same categories as async Security agent)')
+            ->phase(GrepTool::describe('Search task files for secret indicators: password, api_key, token, secret, credential, private_key'))
+            ->phase('SECURITY CHECKS: SQL injection (parameterized?), command injection (escaped?), template injection, XSS/output escaping, auth/authz/IDOR, privilege escalation, PII/secrets in logs/errors. CRITICAL: injection, XSS, hardcoded secrets, auth bypass, data loss.')
+
+            ->phase('4.4 PERFORMANCE (direct, same categories as async Security & Performance agent)')
+            ->phase('PERFORMANCE CHECKS: N+1 query/API calls in loops, O(n²) over unbounded data, unbounded memory loads, missing pagination/chunking, unnecessary serialization, blocking I/O in hot paths. N+1 or unbounded data on user/runtime path → MAJOR.')
+
+            ->phase('4.5 QUALITY GATES (non-test)')
             ->phase(BashTool::describe('{non-test QUALITY_COMMAND gates}', 'Run static analysis, linting quality gates (EXCLUDE test gate)'))
             ->phase('Gate FAIL = fix-task')
 
-            ->phase('4.4 TESTING (scoped by hierarchy)')
+            ->phase('4.6 TESTING (scoped by hierarchy)')
             ->phase(Operator::if('TASK.parent_id (subtask)', [
                 'Find test files: grep tests/ for changed class names, check mirror directory structure',
                 GrepTool::describe('Search test directory for imports/uses of changed classes → consumer tests'),
@@ -271,17 +302,21 @@ class TaskValidateSyncInclude extends IncludeArchetype
                     ? BashTool::describe($testGateCmd, 'Run FULL test suite via QUALITY GATE [TEST]')
                     : BashTool::describe('{project test command}', 'Detect and run full test suite from project config'),
             ]))
-            ->phase('Check: tests exist (>=80%), pass, edge cases. Slow tests = issue.')
+            ->phase('TEST QUALITY: tests exist (coverage >=80%, critical paths 100%), pass, meaningful assertions, null/empty/boundary/error edge cases, no assertion-free smoke tests.')
+            ->phase('FLAKY/SLOW TESTS: suspect flaky → run 2x to confirm. Unit >500ms, integration >2s, any >5s → issue with duration evidence.')
 
-            ->phase('4.5 CLEANUP: Scan for unused imports, dead code, orphaned helpers, debug statements')
+            ->phase('4.7 CLEANUP: Scan for unused imports/use/require, dead code, unreachable branches, orphaned helpers, commented-out blocks, debug/temporary statements. Cosmetic safe files → fix inline; functional cleanup → issue.')
 
-            ->phase('4.6 DOCS COVERAGE: IF task adds NEW feature/module/API → ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{feature keywords}']) . ' → check if .docs/ entry exists. No docs for new feature = minor cosmetic issue. Create basic .docs/{feature}.md inline (YAML front matter + brief description). Bugfix/refactor = SKIP.')
+            ->phase('4.8 DOCS COVERAGE: IF task adds NEW feature/module/API → ' . BrainCLI::MCP__DOCS_SEARCH(['keywords' => '{feature keywords}']) . ' → check if .docs/ entry exists. No docs for new feature = minor cosmetic issue. Create basic .docs/{feature}.md inline (YAML front matter + brief description). Bugfix/refactor = SKIP.')
 
             ->phase('During validation: cosmetic found → check SIBLING_SCOPES (if parallel) → file in active sibling scope? → DEFER to comment. File safe? → Edit → fix → COSMETIC_FIXES++ → continue')
             ->phase(Operator::if(Store::get('KNOWN_FAILURES') . ' not empty', 'Before creating fix-task: verify proposed fix is NOT in known failures. Match → research alternative.'))
+            ->phase('SYNC EVIDENCE SCHEMA: Every issue added to ISSUES must include {category, severity, file: null|path, line: null|int, evidence, in_scope_reason, proposed_fix_direction}. Deduplicate by file + category + root cause.')
 
             // 5. Aggregate
-            ->phase(Store::as('ISSUES', '{critical, major, minor, missing_requirements — IN-SCOPE only}'))
+            ->phase('MERGE DIRECT RESULTS: collect VALIDATION_EVIDENCE. DEDUPLICATE: same file + same issue category + same root cause = one issue.')
+            ->phase('CLASSIFY severity: CRITICAL security/data-loss/crash; MAJOR logic/type/N+1/failing tests/missing critical-path tests/auth/sensitive-data/dependency vulnerability; MINOR weak assertions/missing edge case/complexity/memory/license warnings.')
+            ->phase(Store::as('ISSUES', '{critical, major, minor, missing_requirements, security, performance, type_safety, dependency, test_quality — IN-SCOPE only with evidence}'))
             ->phase(Store::as('COLLATERAL_FAILURES', '{test failures classified as OUTSIDE task scope — different module/domain/component}'))
             ->phase(Store::as('FUNCTIONAL_COUNT', 'critical + major + minor + missing (in-scope only)'))
 
@@ -312,11 +347,12 @@ class TaskValidateSyncInclude extends IncludeArchetype
 
                     // 5.7 INLINE RESEARCH ESCALATION — direct tool calls (sync = no agent delegation)
                     'For EACH stuck issue:',
-                    '  1. ' . Context7Mcp::callJson('query-docs', ['query' => '{library/framework} {problem pattern} recommended approach']) . ' → official docs',
-                    '  2. ' . WebSearchTool::describe('{problem} {framework} best practice alternative solution') . ' → community solutions',
-                    '  3. ' . VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{problem} solution workaround alternative', 'limit' => 5, 'category' => self::CAT_CODE_SOLUTION]) . ' → solutions from other contexts',
-                    '  4. Cross-reference research against STUCK_FAILED_APPROACHES — eliminate already-tried',
-                    '  5. Rank remaining alternatives by confidence',
+                    '  1. ' . Context7Mcp::callJson('resolve-library-id', ['libraryName' => '{library/framework}', 'query' => '{problem pattern}']) . ' → resolve official docs target',
+                    '  2. ' . Context7Mcp::callJson('query-docs', ['libraryId' => '{resolved_id}', 'query' => '{problem pattern} recommended approach']) . ' → official docs',
+                    '  3. ' . WebSearchTool::describe('{problem} {framework} best practice alternative solution') . ' → community solutions',
+                    '  4. ' . VectorMemoryMcp::callValidatedJson('search_memories', ['query' => '{problem} solution workaround alternative', 'limit' => 5, 'category' => self::CAT_CODE_SOLUTION]) . ' → solutions from other contexts',
+                    '  5. Cross-reference research against STUCK_FAILED_APPROACHES — eliminate already-tried',
+                    '  6. Rank remaining alternatives by confidence',
                     Store::as('RESEARCH_RESULT', '{research findings per stuck issue}'),
 
                     // Inject research into fix-task content
@@ -339,19 +375,26 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(VectorTaskMcp::callValidatedJson('task_list', ['query' => 'fix {TASK.title}', 'limit' => 10]) . ' → check duplicates')
             ->phase(Store::as('TOTAL_ESTIMATE', 'critical*2h + major*1.5h + minor*0.5h + missing*4h'))
             ->phase(Operator::if('TOTAL_ESTIMATE <= 8 AND no duplicate', [
-                VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Validation fixes: #{TASK.id}', 'content' => '{issues}', 'parent_id' => '$TASK_PARENT_ID', 'priority' => '{critical>0 ? high : medium}', 'estimate' => '{TOTAL_ESTIMATE}', 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]) . ' ← parallel: false by default. Apply parallel-isolation-checklist against siblings before setting true.',
+                VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Validation fixes: #{TASK.id}', 'content' => '{issues with evidence, file paths, severity, and known-failed approaches excluded}', 'parent_id' => '$TASK_PARENT_ID', 'priority' => '{critical>0 ? high : medium}', 'estimate' => '{TOTAL_ESTIMATE}', 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]) . ' ← parallel: false always for validation fixes unless a later decomposer proves isolation.',
                 Store::as('CREATED_TASKS[]', '{id}'),
             ]))
-            ->phase(Operator::if('TOTAL_ESTIMATE > 8', 'Split into 5-8h batches, create multiple tasks'))
+            ->phase(Operator::if('TOTAL_ESTIMATE > 8', [
+                Store::as('ISSUE_BATCHES', 'split ISSUES into cohesive 5-8h batches by file/module/severity; each batch estimate <= 8h'),
+                Operator::forEach('batch in ISSUE_BATCHES', [
+                    VectorTaskMcp::callValidatedJson('task_create', ['title' => 'Validation fixes: #{TASK.id} — {batch.area}', 'content' => '{batch issues with evidence, file paths, severity, and known-failed approaches excluded}', 'parent_id' => '$TASK_PARENT_ID', 'priority' => '{batch has critical ? high : medium}', 'estimate' => '{batch.estimate}', 'parallel' => false, 'tags' => [self::TAG_VALIDATION_FIX]]) . ' ← parent_id required, estimate required, parallel=false',
+                    Store::as('CREATED_TASKS[]', '{id}'),
+                ]),
+            ]))
 
             // 7. Complete
             ->phase(Operator::if('CREATED_TASKS.count = 0 AND FUNCTIONAL_COUNT = 0', [
                 VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'validated', 'comment' => 'Sync validation PASSED', 'append_comment' => true]),
                 // Git checkpoint — commit validated work (parallel = scoped files, non-parallel = full checkpoint with memory/)
                 Operator::if(Store::get('TASK') . '.parallel === true AND ACTIVE_SIBLINGS exist', [
-                    BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope files (excludes memory/ and sibling work)',
+                    BashTool::call('git add {$TASK_FILES}') . ' → PARALLEL: stage ONLY task-scope manifest files (excludes memory/ and sibling work)',
                 ], [
-                    BashTool::call('git add -A') . ' → NON-PARALLEL: full state checkpoint INCLUDING memory/ for complete revert capability',
+                    BashTool::call('git status --short') . ' → check for unrelated WIP before staging',
+                    BashTool::call('git add {$TASK_FILES}') . ' → NON-PARALLEL: stage task-scope manifest files; use full checkpoint ONLY when status shows no unrelated WIP',
                 ]),
                 BashTool::call('git commit -m "Task #$VECTOR_TASK_ID: $TASK_TITLE [validated]"'),
                 Operator::if('commit fails (pre-commit hook)', 'LOG: commit skipped, work is still validated. Continue.'),
@@ -385,6 +428,14 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('task not found', Operator::abort('Check task ID')))
             ->phase(Operator::if('task not validatable status', Operator::abort('Complete via /task:sync first')))
             ->phase(Operator::if('validation fails', 'Report partial, store to memory'))
-            ->phase(Operator::if('task creation fails', 'Store to memory for manual review'));
+            ->phase(Operator::if('configured quality gate command not found', [
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Validation failed: configured quality gate command not found. Fix gate config or install dependency, then retry.', 'append_comment' => true]),
+                Operator::abort('Configured quality gate missing — sync validation cannot pass'),
+            ]))
+            ->phase(Operator::if('task creation fails', [
+                VectorMemoryMcp::callValidatedJson('store_memory', ['content' => 'Validation #{TASK.id}: failed to create validation-fix tasks. Issues: {summary}', 'category' => self::CAT_DEBUGGING, 'tags' => [self::MTAG_FAILURE]]),
+                VectorTaskMcp::callValidatedJson('task_update', ['task_id' => '$VECTOR_TASK_ID', 'status' => 'pending', 'comment' => 'Validation failed: could not create fix-tasks. Issues stored to debugging memory for manual review.', 'append_comment' => true]),
+                Operator::abort('Fix-task creation failed'),
+            ]));
     }
 }
