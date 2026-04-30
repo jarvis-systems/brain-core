@@ -53,7 +53,7 @@ class AgentMasterInclude extends IncludeArchetype
             ->text('Include selection based on agent domain and capabilities.')
             ->example('Base: SystemMaster (includes AgentLifecycleFramework + CompilationSystemKnowledge)')->key('base')
             ->example('Research agents: add WebRecursiveResearch')->key('research')
-            ->example('Git agents: add GitConventionalCommits')->key('git')
+            ->example('Git checkpoints: keep deterministic in commands, do not create a dedicated commit agent')->key('git')
             ->example('Validation: no redundant includes, check inheritance chain')->key('validation');
 
         $this->guideline('model-selection')

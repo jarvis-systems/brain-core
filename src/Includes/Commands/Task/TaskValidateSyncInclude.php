@@ -148,6 +148,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
             // 1. Load task
             ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' → ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
+            ->phase($this->automationFlagsPreflightPhase())
             ->phase(Operator::if('status NOT IN [completed, tested, validated, in_progress]', Operator::abort('Complete via /task:sync first')))
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed', Operator::abort('another session active')))
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))

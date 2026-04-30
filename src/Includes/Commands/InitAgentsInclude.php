@@ -43,7 +43,7 @@ class InitAgentsInclude extends IncludeArchetype
         $this->rule('project-agents-only')->critical()
             ->text([
                 'ONLY create PROJECT-SPECIFIC agents using Master variation',
-                'FORBIDDEN: Creating or modifying SYSTEM agents (AgentMaster, PromptMaster, CommitMaster, etc.)',
+                'FORBIDDEN: Creating or modifying SYSTEM agents (AgentMaster, PromptMaster, etc.)',
                 'FORBIDDEN: Modifying agents from vendor/jarvis-brain/core/src/',
                 'System agents use SystemMaster variation and are OFF LIMITS',
             ])
@@ -53,7 +53,7 @@ class InitAgentsInclude extends IncludeArchetype
         $this->rule('preserve-system-agents')->critical()
             ->text([
                 'System agents (ending with Master) are managed by SystemMaster variation',
-                'Examples: AgentMaster, PromptMaster, CommitMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster',
+                'Examples: AgentMaster, PromptMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster',
                 'These agents are specialized for Brain orchestration - NEVER regenerate or modify them',
             ])
             ->why('System agents have carefully tuned configurations for Brain ecosystem')
@@ -175,7 +175,7 @@ class InitAgentsInclude extends IncludeArchetype
         $this->guideline('phase2-inventory-agents')
             ->goal('List all existing agents and separate SYSTEM agents from PROJECT agents')
             ->note([
-                'SYSTEM agents (use SystemMaster variation): AgentMaster, PromptMaster, CommitMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster',
+                'SYSTEM agents (use SystemMaster variation): AgentMaster, PromptMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster',
                 'PROJECT agents (use Master variation): All other agents created for project-specific needs',
                 'System agents are OFF LIMITS - only inventory, never modify or regenerate',
             ])
@@ -183,7 +183,7 @@ class InitAgentsInclude extends IncludeArchetype
             ->phase([BrainCLI::MCP__LIST_MASTERS(), 'Parse output'])
             ->phase(Store::as('ALL_AGENTS', '[{id, name, description}, ...]'))
             ->phase('Filter system agents (names ending with "Master" AND in system list)')
-            ->phase(Store::as('SYSTEM_AGENTS', '[AgentMaster, PromptMaster, CommitMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster, ...]'))
+            ->phase(Store::as('SYSTEM_AGENTS', '[AgentMaster, PromptMaster, WebResearchMaster, ExploreMaster, DocumentationMaster, VectorMaster, ScriptMaster, ...]'))
             ->phase('Filter project agents (all others)')
             ->phase(Store::as('PROJECT_AGENTS', '[...project-specific agents...]'))
             ->phase(['Agents located in', Runtime::NODE_DIRECTORY('Agents/*.php')])
@@ -437,9 +437,9 @@ class InitAgentsInclude extends IncludeArchetype
         // Deep cognitive only: example, directive
         if ($this->cognitiveAtLeast('deep')) {
             $this->guideline('example-parallel-batch')
-                ->scenario('System: 8 protected (SystemMaster) | Project: 10 discovered → 4 batches → 4 parallel AgentMasters')
+                ->scenario('System: 7 protected (SystemMaster) | Project: 10 discovered → 4 batches → 4 parallel AgentMasters')
                 ->example()
-                ->phase('inventory', 'System agents (OFF LIMITS): AgentMaster, PromptMaster, CommitMaster, ExploreMaster, WebResearchMaster, DocumentationMaster, VectorMaster, ScriptMaster')
+                ->phase('inventory', 'System agents (OFF LIMITS): AgentMaster, PromptMaster, ExploreMaster, WebResearchMaster, DocumentationMaster, VectorMaster, ScriptMaster')
                 ->phase('gap', '10 missing PROJECT agents: API, Cache, Queue, Auth, Payment, Report, Search, Export, Import, Sync')
                 ->phase('variation', 'All new agents use Master variation (NOT SystemMaster)')
                 ->phase('batch', 'batch_1=[API,Cache,Queue], batch_2=[Auth,Payment,Report], batch_3=[Search,Export], batch_4=[Import,Sync]')

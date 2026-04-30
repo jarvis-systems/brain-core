@@ -211,6 +211,7 @@ class TaskSyncInclude extends IncludeArchetype
             // 1. Load task (ALWAYS FIRST)
             ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort()))
+            ->phase($this->automationFlagsPreflightPhase())
             ->phase(Operator::if('status=completed', Operator::abort('Already completed. NEXT: /task:validate {$VECTOR_TASK_ID} [-y] (or /task:validate-sync).')))
             ->phase(Operator::if('status=validated', Operator::abort('Already validated. Follow next-step lifecycle; do not re-execute validated tasks.')))
             ->phase(Operator::if('status=stopped', Operator::abort('Task is stopped/cancelled. Do not execute unless a human reopens it.')))

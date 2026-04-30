@@ -115,6 +115,7 @@ class TaskTestValidateInclude extends IncludeArchetype
             // 1. Load task
             ->phase(VectorTaskMcp::callValidatedJson('task_get', ['task_id' => '$VECTOR_TASK_ID']) . ' → ' . Store::as('TASK'))
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
+            ->phase($this->automationFlagsPreflightPhase())
             ->phase(Operator::if('status NOT IN [pending, completed, tested, validated, in_progress]', Operator::abort('Invalid status. Complete or reset first.')))
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed → continue OR abort'))
             ->phase(Store::as('IS_TDD', 'TASK.status === "pending"'))

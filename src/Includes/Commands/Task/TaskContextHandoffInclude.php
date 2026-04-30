@@ -33,7 +33,7 @@ class TaskContextHandoffInclude extends IncludeArchetype
         $this->guideline('context-handoff-gate')
             ->goal('Decide cold vs warm context after mandatory task_get')
             ->example()
-            ->phase(Store::as('CONTEXT_MODE', 'cold if --cold; reuse if --reuse-context; auto otherwise (--cold wins)'))
+            ->phase(Store::as('CONTEXT_MODE', 'cold if -c/--cold; reuse if -r/--reuse-context; auto otherwise (--cold wins)'))
             ->phase('After task_get + comment parse, build CURRENT_TASK_FINGERPRINT from stable task fields')
             ->phase(Operator::if('CONTEXT_MODE = cold OR no CONTEXT_HANDOFF v1 OR task_id/fingerprint mismatch', [
                 Store::as('REUSE_ALLOWED', 'false'),

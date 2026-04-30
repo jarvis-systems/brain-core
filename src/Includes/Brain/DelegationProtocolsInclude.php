@@ -93,7 +93,7 @@ class DelegationProtocolsInclude extends IncludeArchetype
             $this->guideline('type-task')
                 ->text('Delegation of discrete implementation tasks or builds.')
                 ->example('Feature implementation, bug fixes, refactoring, code generation')->key('scope')
-                ->example('CommitMaster, ScriptMaster, PromptMaster')->key('typical-agents')
+                ->example('ExploreMaster, ScriptMaster, PromptMaster')->key('typical-agents')
                 ->example('Concrete deliverable: code, config, or artifact')->key('output');
 
             $this->guideline('type-analysis')

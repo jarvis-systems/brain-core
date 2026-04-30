@@ -56,6 +56,11 @@ trait TaskCommandCommonTrait
         ], '-c/--cold/-r/--reuse-context');
     }
 
+    protected function automationFlagsPreflightPhase(): string
+    {
+        return 'Apply RUN_MODE_FLAGS before side effects: dry_run blocks writes/status changes/memory/git; offline blocks web/context7/network; timeout sets workflow deadline; max_agents/sequential constrain delegation; fail_fast stops on first critical blocker; resume/restart control in_progress recovery; full_suite/audit_only apply only to validators; checkpoint controls git staging/commit.';
+    }
+
     protected function contextHandoffFingerprintPhase(): string
     {
         return Store::as('CURRENT_TASK_FINGERPRINT', '{hash of TASK id/title/content/comment/tags/status/parent_id/parallel/order}');
