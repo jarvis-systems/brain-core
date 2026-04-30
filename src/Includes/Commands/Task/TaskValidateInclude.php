@@ -17,7 +17,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Validate completed vector task. 4 parallel agents: Completion, Code Quality, Testing, Security & Performance. Conditional 5th research agent for stuck patterns. Creates fix-tasks for functional issues. Cosmetic fixed inline by agents.')]
-#[Includes(TaskBaseInclude::class)]
+#[Includes(TaskBaseInclude::class, TaskContextHandoffInclude::class)]
 class TaskValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -162,7 +162,7 @@ class TaskValidateInclude extends IncludeArchetype
         }
 
         // INPUT CAPTURE
-        $this->defineInputCaptureGuideline();
+        $this->defineContextAwareInputCaptureGuideline();
 
         // WORKFLOW
         $this->guideline('workflow')->example()
@@ -178,14 +178,11 @@ class TaskValidateInclude extends IncludeArchetype
                 'SESSION RECOVERY: check if crashed session (no active work)',
                 Operator::abort('another session active')
             ))
-            ->phase(Operator::if(
-                Store::get('TASK') . '.parent_id',
-                VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' ' . Store::as('PARENT') . ' (READ-ONLY context, NEVER modify)'
-            ))
-            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('SUBTASKS'))
-
-            // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+            ->phase($this->contextHandoffFingerprintPhase())
+            ->phase($this->contextHandoffApplyPhase())
+            ->phase($this->contextAwareParentLoadPhase(Store::get('TASK') . '.parent_id'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('SUBTASKS'))
 
             // 1.21 CIRCUIT BREAKER: prevent infinite validation retry loops (check BEFORE validating)
             ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [validate]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))

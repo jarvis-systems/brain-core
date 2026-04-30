@@ -17,7 +17,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Test validation with TDD support. TWO MODES: 1) TDD (pending tasks) - writes tests first, sets "tested"; 2) Validation (completed tasks) - validates coverage, fixes gaps inline. No task creation - agents fix directly.')]
-#[Includes(TaskBaseInclude::class)]
+#[Includes(TaskBaseInclude::class, TaskContextHandoffInclude::class)]
 class TaskTestValidateInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -98,7 +98,7 @@ class TaskTestValidateInclude extends IncludeArchetype
         }
 
         // INPUT CAPTURE
-        $this->defineInputCaptureGuideline();
+        $this->defineContextAwareInputCaptureGuideline();
 
         // Quality gate - test command for scoping
         $qualityCommands = $this->groupVars('QUALITY_COMMAND');
@@ -120,10 +120,10 @@ class TaskTestValidateInclude extends IncludeArchetype
             ->phase(Store::as('IS_TDD', 'TASK.status === "pending"'))
             ->phase(Store::as('IS_SIMPLE', 'TASK has single concern (1-2 files scope) AND priority !== "critical"'))
             ->phase(Store::as('IS_SUBTASK', 'TASK.parent_id !== null'))
-            ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' → context'))
-
-            // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+            ->phase($this->contextHandoffFingerprintPhase())
+            ->phase($this->contextHandoffApplyPhase())
+            ->phase($this->contextAwareParentLoadPhase('TASK.parent_id'))
 
             // 1.25 Parallel execution awareness (test validator: check if siblings are active)
             ->phase(Operator::if(Store::get('TASK') . '.parallel === true AND parent_id', [

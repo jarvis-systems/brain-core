@@ -18,7 +18,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Async vector task execution via agent delegation. Brain orchestrates with critical thinking, agents execute. Researches when ambiguous, adapts examples. Parallel when independent.')]
-#[Includes(TaskBaseInclude::class)]
+#[Includes(TaskBaseInclude::class, TaskContextHandoffInclude::class)]
 class TaskAsyncInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -182,7 +182,7 @@ class TaskAsyncInclude extends IncludeArchetype
         }
 
         // INPUT CAPTURE
-        $this->defineInputCaptureGuideline();
+        $this->defineContextAwareInputCaptureGuideline();
 
         // WORKFLOW
         $this->guideline('workflow')->example()
@@ -206,11 +206,11 @@ class TaskAsyncInclude extends IncludeArchetype
                 ]),
             ]))
             ->phase(Operator::if('status=tested AND comment contains "TDD MODE"', 'TDD execution mode → jump to tdd-mode guideline'))
-            ->phase(Operator::if('parent_id', VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'))
-            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('SUBTASKS'))
-
-            // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+            ->phase($this->contextHandoffFingerprintPhase())
+            ->phase($this->contextHandoffApplyPhase())
+            ->phase($this->contextAwareParentLoadPhase('parent_id'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' ' . Store::as('SUBTASKS'))
 
             // 1.21 CIRCUIT BREAKER: prevent infinite retry loops (check BEFORE delegating)
             ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [exec]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))

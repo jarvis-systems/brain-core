@@ -20,7 +20,9 @@ NEVER hardcode secrets in source files.
 All builds must be deterministic.
 - **why**: Non-determinism causes drift between environments.
 
+</iron_rules>
 
+<guidelines>
 
 # Test first
 Write tests before implementation.
@@ -28,6 +30,7 @@ Write tests before implementation.
 - `step-1`: Create test file
 - `step-2`: Run and see it fail
 
+</guidelines>
 
 # Scan first
 Always scan source files before generating code.

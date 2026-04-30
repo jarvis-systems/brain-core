@@ -44,6 +44,40 @@ trait TaskCommandCommonTrait
         ]);
     }
 
+    /**
+     * Define input capture for task lifecycle commands that support context handoff.
+     * --cold forces normal context loading; --reuse-context requires a valid handoff.
+     */
+    protected function defineContextAwareInputCaptureGuideline(): void
+    {
+        $this->defineInputCaptureWithCustomGuideline([
+            'CONTEXT_MODE' => '{cold if $RAW_INPUT contains "--cold" or "-c"; reuse if it contains "--reuse-context" or "-r"; otherwise auto. If both are present, cold wins}',
+            'VECTOR_TASK_ID' => '{numeric ID extracted from $CLEAN_ARGS}',
+        ], '-c/--cold/-r/--reuse-context');
+    }
+
+    protected function contextHandoffFingerprintPhase(): string
+    {
+        return Store::as('CURRENT_TASK_FINGERPRINT', '{hash of TASK id/title/content/comment/tags/status/parent_id/parallel/order}');
+    }
+
+    protected function contextHandoffApplyPhase(): string
+    {
+        return 'Apply context-handoff-gate: set REUSE_ALLOWED. Later parent/docs/memory/pattern context steps MUST use handoff values and skip duplicate reads/searches when REUSE_ALLOWED has matching data.';
+    }
+
+    protected function contextAwareParentLoadPhase(string $condition = 'TASK.parent_id'): string
+    {
+        return Operator::if(
+            $condition,
+            Operator::if(
+                'REUSE_ALLOWED has parent summary',
+                Store::as('PARENT', '{handoff parent summary + fingerprint}'),
+                VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' ' . Store::as('PARENT') . ' (READ-ONLY context)'
+            )
+        );
+    }
+
     // =========================================================================
     // STATUS SEMANTICS (TASK LIFECYCLE DEFINITION)
     // =========================================================================

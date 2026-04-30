@@ -26,12 +26,15 @@ trait InputCaptureTrait
      *
      * @param  array<string, string>  $customVars  Variable name => description pairs
      */
-    protected function defineInputCaptureWithCustomGuideline(array $customVars = []): void
+    protected function defineInputCaptureWithCustomGuideline(
+        array $customVars = [],
+        ?string $cleanArgsDescription = null,
+    ): void
     {
         $guideline = $this->guideline('input')
             ->text(Store::as('RAW_INPUT', '$ARGUMENTS'))
             ->text(Store::as('HAS_AUTO_APPROVE', '{true if $RAW_INPUT contains "-y" or "--yes"}'))
-            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with -y/--yes flags removed}'));
+            ->text(Store::as('CLEAN_ARGS', '{$RAW_INPUT with -y/--yes'.($cleanArgsDescription ? '/'.$cleanArgsDescription:'').' flags removed}'));
 
         foreach ($customVars as $name => $description) {
             $guideline->text(Store::as($name, $description));

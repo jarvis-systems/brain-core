@@ -20,7 +20,7 @@ use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
 #[Purpose('Sync validation of completed vector task. Direct tools (no agents). Validates task.content requirements, code quality, tests. Cosmetic fixed inline. Functional issues → fix-tasks. Idempotent.')]
-#[Includes(TaskBaseInclude::class)]
+#[Includes(TaskBaseInclude::class, TaskContextHandoffInclude::class)]
 class TaskValidateSyncInclude extends IncludeArchetype
 {
     use TaskCommandCommonTrait;
@@ -138,7 +138,7 @@ class TaskValidateSyncInclude extends IncludeArchetype
         }
 
         // INPUT CAPTURE
-        $this->defineInputCaptureGuideline();
+        $this->defineContextAwareInputCaptureGuideline();
 
         // WORKFLOW
         $this->guideline('workflow')
@@ -150,11 +150,11 @@ class TaskValidateSyncInclude extends IncludeArchetype
             ->phase(Operator::if('not found', Operator::abort('Task not found')))
             ->phase(Operator::if('status NOT IN [completed, tested, validated, in_progress]', Operator::abort('Complete via /task:sync first')))
             ->phase(Operator::if('status=in_progress', 'SESSION RECOVERY: check if crashed', Operator::abort('another session active')))
-            ->phase(Operator::if('TASK.parent_id', VectorTaskMcp::callValidatedJson('task_get', ['task_id' => 'parent_id']) . ' → context only'))
-            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' → ' . Store::as('SUBTASKS'))
-
-            // 1.2 Extract comment context (accumulated inter-session history)
             ->phase(Store::as('COMMENT_CONTEXT', '{parsed from $TASK.comment: memory_ids: [#NNN], file_paths: [...], execution_history: [...], failures: [...], blockers: [...], decisions: [], mode_flags: []}'))
+            ->phase($this->contextHandoffFingerprintPhase())
+            ->phase($this->contextHandoffApplyPhase())
+            ->phase($this->contextAwareParentLoadPhase('TASK.parent_id'))
+            ->phase(VectorTaskMcp::callValidatedJson('task_list', ['parent_id' => '$VECTOR_TASK_ID']) . ' → ' . Store::as('SUBTASKS'))
 
             // 1.21 CIRCUIT BREAKER: prevent infinite validation retry loops (check BEFORE validating)
             ->phase(Store::as('ATTEMPT_COUNT', 'count "ATTEMPT [validate]:" markers in $TASK.comment AFTER last "CIRCUIT BREAKER:" entry (default 0)'))
