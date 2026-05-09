@@ -11,12 +11,10 @@ use BrainCore\Includes\Brain\ResponseValidationInclude;
 use BrainCore\Includes\Brain\DelegationProtocolsInclude;
 use BrainCore\Includes\Brain\PreActionValidationInclude;
 use BrainCore\Includes\Universal\BrainDocsInclude;
-use BrainCore\Includes\Universal\CompilationSystemKnowledgeInclude;
 use BrainCore\Includes\Universal\CompileSafetyInclude;
 use BrainCore\Includes\Universal\SecretOutputPolicyInclude;
 use BrainCore\Includes\Universal\VectorMemoryInclude;
 use BrainCore\Includes\Universal\VectorTaskInclude;
-use BrainCore\Support\Brain;
 
 trait BrainIncludesTrait
 {
@@ -32,9 +30,6 @@ trait BrainIncludesTrait
         $this->include(VectorMemoryInclude::class);                     // Vector memory primary knowledge base
         $this->include(VectorTaskInclude::class);                       // Vector task management and tracking
         $this->include(BrainDocsInclude::class);                        // Documentation indexing and search command
-        if ($this->isSelfDev()) {
-            $this->include(CompilationSystemKnowledgeInclude::class);   // System knowledge for Brain compilation
-        }
         //$this->include(BrainScriptsInclude::class);                     // Brain scripts automation command
 
         // === BRAIN ORCHESTRATION (Brain-specific) ===
@@ -64,11 +59,4 @@ trait BrainIncludesTrait
         }
     }
 
-    public function isSelfDev(): bool
-    {
-        $localFile = Brain::basePath(['node', 'Brain.php']);
-        $brainFile = Brain::basePath([$this->var('BRAIN_DIRECTORY'), 'node', 'Brain.php']);
-        return (is_file($localFile) && is_file($brainFile))
-            || $this->varIsPositive('SELF_DEV_MODE');
-    }
 }

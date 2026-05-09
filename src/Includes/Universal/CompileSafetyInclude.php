@@ -6,6 +6,7 @@ namespace BrainCore\Includes\Universal;
 
 use BrainCore\Archetypes\IncludeArchetype;
 use BrainCore\Attributes\Purpose;
+use BrainCore\Compilation\Runtime;
 
 #[Purpose('Compile discipline: single-writer lock, WIP quarantine, worktree hygiene. See .docs/product/04-security-model.md Compile Safety Contract.')]
 class CompileSafetyInclude extends IncludeArchetype
@@ -29,5 +30,10 @@ class CompileSafetyInclude extends IncludeArchetype
             ->text('brain compile must never produce new uncommitted changes to tracked files.')
             ->why('Deterministic builds require clean worktree. Non-determinism indicates compile bug.')
             ->onViolation('Run scripts/check-compile-clean.sh to verify. Fix source if compile dirties worktree.');
+
+        $this->rule('never-write-compiled')->critical()
+            ->text('FORBIDDEN: Write/Edit to ' . Runtime::BRAIN_FOLDER() . ', ' . Runtime::AGENTS_FOLDER() . ', ' . Runtime::COMMANDS_FOLDER() . ', ' . Runtime::SKILLS_FOLDER() . '. These are compilation artifacts.')
+            ->why('Compiled files are auto-generated. Direct edits are overwritten on next compile.')
+            ->onViolation('ABORT. Edit source under ' . Runtime::NODE_DIRECTORY() . ', then run brain compile.');
     }
 }

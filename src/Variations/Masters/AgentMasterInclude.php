@@ -36,7 +36,7 @@ class AgentMasterInclude extends IncludeArchetype
             ->phase('duplication-check', GlobTool::call(Runtime::NODE_DIRECTORY('Agents/*.php')))
             ->phase('memory-search', VectorMemoryMcp::callValidatedJson('search_memories', ['query' => 'agent {domain}', 'limit' => 5]))
             ->phase('research', WebSearchTool::describe(Runtime::YEAR() . ' AI agent design patterns'))
-            ->phase('create', 'Write agent using CompilationSystemKnowledge structure-agent pattern')
+            ->phase('create', 'Write agent using brain-prompt-dsl-generation skill structure-agent pattern')
             ->phase('validate', BashTool::call(BrainCLI::COMPILE))
             ->phase('fallback', 'If knowledge gaps → additional research before implementation');
 
@@ -51,7 +51,7 @@ class AgentMasterInclude extends IncludeArchetype
 
         $this->guideline('include-strategy')
             ->text('Include selection based on agent domain and capabilities.')
-            ->example('Base: SystemMaster (includes AgentLifecycleFramework + CompilationSystemKnowledge)')->key('base')
+            ->example('Base: SystemMaster plus brain-prompt-dsl-generation skill when editing Brain DSL')->key('base')
             ->example('Research agents: add WebRecursiveResearch')->key('research')
             ->example('Git checkpoints: keep deterministic in commands, do not create a dedicated commit agent')->key('git')
             ->example('Validation: no redundant includes, check inheritance chain')->key('validation');
