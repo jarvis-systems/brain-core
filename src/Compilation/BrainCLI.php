@@ -44,6 +44,11 @@ class BrainCLI
             $args[] = "--json";
             return 'brain docs ' . addslashes($keywords) . ' ' . implode(' ', $args);
         }
+        // MCP schema expects keywords as array<string>. Callers historically pass a single
+        // search string for ergonomics — wrap it as a 1-element array so the emit matches schema.
+        if (isset($options['keywords']) && is_string($options['keywords'])) {
+            $options['keywords'] = [$options['keywords']];
+        }
         self::ksortRecursive($options);
         try {
             $json = json_encode(

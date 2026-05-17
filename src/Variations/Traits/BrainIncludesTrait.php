@@ -10,6 +10,7 @@ use BrainCore\Includes\Brain\CoreConstraintsInclude;
 use BrainCore\Includes\Brain\ResponseValidationInclude;
 use BrainCore\Includes\Brain\DelegationProtocolsInclude;
 use BrainCore\Includes\Brain\PreActionValidationInclude;
+use BrainCore\Includes\Brain\SkillProposalPolicyInclude;
 use BrainCore\Includes\Universal\BrainDocsInclude;
 use BrainCore\Includes\Universal\CompileSafetyInclude;
 use BrainCore\Includes\Universal\SecretOutputPolicyInclude;
@@ -39,6 +40,7 @@ trait BrainIncludesTrait
             $this->include(DelegationProtocolsInclude::class);          // Delegation protocols
         }
         $this->include(ResponseValidationInclude::class);               // Agent response validation
+        $this->include(SkillProposalPolicyInclude::class);              // Skill proposal flow policy (diff-review gate)
         $this->include(ErrorHandlingInclude::class);                    // Basic error handling
         if (class_exists('BrainNode\\Common')) {
             $this->include('BrainNode\\Common');                        // Common node utilities
