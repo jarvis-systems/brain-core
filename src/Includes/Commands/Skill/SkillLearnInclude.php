@@ -12,7 +12,7 @@ use BrainCore\Compilation\Tools\BashTool;
 use BrainNode\Mcp\VectorMemoryMcp;
 use BrainNode\Mcp\VectorTaskMcp;
 
-#[Purpose('Skill candidate auto-detector: scans current session signals (git, recent tasks, recent memory, conversation) → identifies 1-5 candidate patterns → user picks → Brain auto-derives action/target/rationale/evidence/confidence → shared triage → write pending proposal.')]
+#[Purpose('Skill candidate auto-detector: scans current session signals (git, recent tasks, recent memory, conversation) → identifies 1-5 candidate patterns → user picks → Brain auto-derives action/target/rationale/evidence/confidence → shared triage → direct write to canonical node/Skills/{target}/.')]
 class SkillLearnInclude extends IncludeArchetype
 {
     use SkillProposalSharedTrait;
@@ -26,9 +26,9 @@ class SkillLearnInclude extends IncludeArchetype
             ->onViolation('Discard arguments. Proceed with signal scan and present numbered candidates.');
 
         $this->rule('learn-user-pick-required')->critical()
-            ->text('Brain MUST present 1-5 detected candidates and wait for an explicit user pick before triage. Empty input or "none" aborts cleanly without writing.')
-            ->why('Without user pick the command becomes blind self-proposal — exactly the failure mode the proposal flow exists to prevent.')
-            ->onViolation('Re-present the candidate list. If user response is "none" or empty, exit with no proposal written.');
+            ->text('Brain MUST present 1-5 detected candidates and wait for an explicit user pick before triage. Empty input or "none" aborts cleanly without writing and records a decline signal in vector-memory.')
+            ->why('Without user pick the command becomes blind self-modification — exactly the failure mode the direct-write flow exists to prevent. User invocation + explicit pick IS the consent gate.')
+            ->onViolation('Re-present the candidate list. If user response is "none" or empty, exit with no canonical write and store a vector-memory decline signal.');
 
         // ROLE
         $this->guideline('role')
@@ -54,11 +54,14 @@ class SkillLearnInclude extends IncludeArchetype
             ->phase('detect-patterns', 'Cross-reference GIT_SIGNALS, RECENT_TASKS, RECENT_MEMORY, CONVO_SIGNALS — identify 1-5 candidate patterns worth recording as skill insights (each must have >=2 supporting evidence pointers)')
             ->phase('store-candidates', Store::as('CANDIDATE_PATTERNS', 'array of {label, summary (1 sentence), suggested_action (create-skill|modify-skill|append-reference), suggested_target (kebab-case skill id or null), evidence_refs, confidence_hint}'))
             ->phase('present', 'Display numbered list of candidates with 1-sentence summary, suggested action, and suggested target each')
-            ->phase('user-pick', 'Prompt user: "Which to record as a proposal? (1,2,3 / multiple comma-separated / none)"')
+            ->phase('user-pick', 'Prompt user: "Which to record? (1,2,3 / multiple comma-separated / none)"')
             ->phase('store-pick', Store::as('PICKED', 'array of selected candidate indices, or empty for none'))
-            ->phase('abort-on-none', Operator::if(
+            ->phase('decline-on-none', Operator::if(
                 Store::get('PICKED') . ' is empty',
-                Operator::abort('User picked none — no proposal written')
+                Operator::do(
+                    'Invoke the shared workflow-decline-signal guideline (defined below) to record a vector-memory negative signal',
+                    Operator::abort('User picked none — no canonical write performed')
+                )
             ));
 
         // WORKFLOW: DERIVE FIELDS PER PICKED CANDIDATE
@@ -89,7 +92,8 @@ class SkillLearnInclude extends IncludeArchetype
             ))
             ->phase('handoff', 'Hand off to shared triage + build + write workflow (defined below) once per picked candidate');
 
-        // SHARED PROPOSAL PIPELINE
+        // SHARED DIRECT-WRITE PIPELINE
         $this->appendProposalWorkflow();
+        $this->recordDeclineSignal();
     }
 }

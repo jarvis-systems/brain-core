@@ -11,7 +11,7 @@ use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 use BrainCore\Compilation\Tools\ReadTool;
 
-#[Purpose('Interactive skill editor: reads current node/Skills/{name}/SKILL.md, analyzes session signals (git history, recent corrections, related tasks), suggests a unified diff, lets the user accept/edit/abort, then runs the shared triage + write pipeline.')]
+#[Purpose('Interactive skill editor: reads current node/Skills/{name}/SKILL.md, analyzes session signals (git history, recent corrections, related tasks), suggests a unified diff, lets the user accept/edit/abort, then runs the shared triage + direct-write pipeline.')]
 class SkillEditInclude extends IncludeArchetype
 {
     use SkillProposalSharedTrait;
@@ -21,17 +21,17 @@ class SkillEditInclude extends IncludeArchetype
         // INTENT IRON RULES
         $this->rule('edit-target-must-exist')->critical()
             ->text('node/Skills/{TARGET_SKILL}/SKILL.md MUST exist before suggesting an edit. If it does not → abort and recommend /skill:new {TARGET_SKILL} instead.')
-            ->why('modify-skill on a non-existent target jams /skill:apply and confuses reviewers.')
+            ->why('modify-skill on a non-existent target would fail at patch time and leaves no canonical for the direct write to land on.')
             ->onViolation('ABORT. Recommend /skill:new {TARGET_SKILL} for new skills.');
 
         $this->rule('edit-diff-required')->critical()
-            ->text('Edit MUST produce a non-empty unified diff against the current SKILL.md. Empty diffs (no actual change) abort without writing a proposal.')
-            ->why('A no-op proposal is noise — wastes reviewer time and pollutes pending-proposals/.')
-            ->onViolation('ABORT with message "no changes detected — nothing to propose".');
+            ->text('Edit MUST produce a non-empty unified diff against the current SKILL.md. Empty diffs (no actual change) abort without writing.')
+            ->why('A no-op write is noise — pollutes git history and the per-skill history-references/ audit log.')
+            ->onViolation('ABORT with message "no changes detected — nothing to write".');
 
         // ROLE
         $this->guideline('role')
-            ->text('Interactive skill editor. Parses one positional argument as the existing skill name, reads the canonical SKILL.md, mines session signals for what changed since authoring, drafts a unified diff, lets the user accept/edit/abort, then hands off to the shared proposal pipeline as a modify-skill proposal.');
+            ->text('Interactive skill editor. Parses one positional argument as the existing skill name, reads the canonical SKILL.md, mines session signals for what changed since authoring, drafts a unified diff, lets the user accept/edit/abort, then hands off to the shared direct-write pipeline as a modify-skill change.');
 
         // WORKFLOW: PARSE + READ
         $this->guideline('workflow-parse-and-read')
@@ -65,13 +65,20 @@ class SkillEditInclude extends IncludeArchetype
             ->phase('store-suggested-diff', Store::as('SUGGESTED_DIFF', '{unified diff against $CURRENT_SKILL_MD, paths relative to project root}'))
             ->phase('validate-non-empty', Operator::validate(
                 Store::get('SUGGESTED_DIFF') . ' contains at least one hunk',
-                Operator::abort('No meaningful change detected — nothing to propose')
+                Operator::abort('No meaningful change detected — nothing to write')
             ))
             ->phase('user-review', 'Display $SUGGESTED_DIFF to user. Ask: "accept / edit / abort?"')
             ->phase('handle-response', Operator::if(
                 'user response == edit',
                 'Collect user edits, regenerate $SUGGESTED_DIFF, re-show, loop until accept or abort',
-                Operator::if('user response == abort', Operator::abort('User aborted diff acceptance'), 'Proceed with current $SUGGESTED_DIFF')
+                Operator::if(
+                    'user response == abort',
+                    Operator::do(
+                        'Invoke the shared workflow-decline-signal guideline (defined below) to record a vector-memory negative signal',
+                        Operator::abort('User aborted diff acceptance — no canonical write performed')
+                    ),
+                    'Proceed with current $SUGGESTED_DIFF'
+                )
             ));
 
         // WORKFLOW: DERIVE FIELDS
@@ -85,7 +92,8 @@ class SkillEditInclude extends IncludeArchetype
             ->phase('caveats', Store::as('CAVEATS', '[] unless user added concerns during edit loop'))
             ->phase('replacement', Store::as('REPLACEMENT', '"none" (edit flow never deprecates)'));
 
-        // SHARED PROPOSAL PIPELINE
+        // SHARED DIRECT-WRITE PIPELINE
         $this->appendProposalWorkflow();
+        $this->recordDeclineSignal();
     }
 }

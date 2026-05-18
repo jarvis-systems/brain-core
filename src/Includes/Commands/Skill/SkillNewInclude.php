@@ -10,7 +10,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 
-#[Purpose('Interactive new skill author: takes a kebab-case skill name, asks the user for purpose, enriches body from session context, auto-suggests docs_topics, drafts SKILL.md.new with YAML frontmatter, then runs the shared triage + write pipeline.')]
+#[Purpose('Interactive new skill author: takes a kebab-case skill name, asks the user for purpose, enriches body from session context, auto-suggests docs_topics, drafts the SKILL.md content with YAML frontmatter, then runs the shared triage + direct-write pipeline.')]
 class SkillNewInclude extends IncludeArchetype
 {
     use SkillProposalSharedTrait;
@@ -19,8 +19,8 @@ class SkillNewInclude extends IncludeArchetype
     {
         // INTENT IRON RULES
         $this->rule('new-target-must-not-exist')->critical()
-            ->text('Before writing a create-skill proposal: node/Skills/{TARGET_SKILL}/ MUST NOT exist. If it does → abort and recommend /skill:edit {TARGET_SKILL} instead.')
-            ->why('create-skill on top of an existing folder corrupts the queue and risks overwriting canonical SKILL.md during /skill:apply.')
+            ->text('Before any direct write: node/Skills/{TARGET_SKILL}/ MUST NOT exist. If it does → abort and recommend /skill:edit {TARGET_SKILL} instead.')
+            ->why('create-skill on top of an existing folder would overwrite the canonical SKILL.md without any review step.')
             ->onViolation('ABORT. Recommend /skill:edit {TARGET_SKILL} for existing skills.');
 
         $this->rule('new-name-kebab-case')->critical()
@@ -30,7 +30,7 @@ class SkillNewInclude extends IncludeArchetype
 
         // ROLE
         $this->guideline('role')
-            ->text('Interactive new-skill author. Parses one positional argument as the skill name, validates filesystem state, asks the user one focused purpose question, drafts a SKILL.md.new with frontmatter (name, description, optional docs_topics) plus body sections derived from purpose and session signals, then hands off to the shared proposal pipeline.');
+            ->text('Interactive new-skill author. Parses one positional argument as the skill name, validates filesystem state, asks the user one focused purpose question, drafts the SKILL.md content with frontmatter (name, description, optional docs_topics) plus body sections derived from purpose and session signals, then hands off to the shared direct-write pipeline.');
 
         // WORKFLOW: PARSE NAME
         $this->guideline('workflow-parse-name')
@@ -61,28 +61,36 @@ class SkillNewInclude extends IncludeArchetype
             ->phase('enrich-from-session', 'Scan current conversation context, recent vector-task changes, and recent vector-memory entries for material that should inform body sections (related files, decisions, anti-patterns)')
             ->phase('store-session-context', Store::as('SESSION_CONTEXT', '{related_files, related_tasks, related_memories, recurring_decisions}'));
 
-        // WORKFLOW: DRAFT SKILL.md.new
+        // WORKFLOW: DRAFT SKILL.md CONTENT
         $this->guideline('workflow-draft')
-            ->text('Build the full SKILL.md.new draft and gather intent-collection variables for shared pipeline')
+            ->text('Build the full SKILL.md draft and gather intent-collection variables for shared pipeline')
             ->example()
             ->phase('set-action', Store::as('ACTION', 'create-skill'))
             ->phase('rationale', Store::as('RATIONALE', '{first sentence of $PURPOSE, trimmed to 8-400 chars}'))
             ->phase('build-frontmatter', 'YAML frontmatter: name: ' . Store::get('TARGET_SKILL') . ', description: {single-line summary distilled from $PURPOSE, max 200 chars}')
             ->phase('docs-suggest', 'Invoke the shared docs_search probe (Step 0 triage produces $DOCS_HITS) — Step 5.5 will suggest docs_topics keywords automatically')
             ->phase('build-body', 'Sections derived from $PURPOSE and $SESSION_CONTEXT: ## Purpose, ## When to use, ## How to use (numbered steps), ## References (if related files known)')
-            ->phase('assemble-draft', Store::as('DRAFT', '{full SKILL.md.new content: --- frontmatter --- + body sections}'))
-            ->phase('show-draft', 'Display draft SKILL.md.new to user. Ask: "accept / edit / abort?"')
+            ->phase('assemble-draft', Store::as('DRAFT', '{full SKILL.md content: --- frontmatter --- + body sections}'))
+            ->phase('show-draft', 'Display draft SKILL.md to user. Ask: "accept / edit / abort?"')
             ->phase('handle-response', Operator::if(
                 'user response == edit',
                 'Collect user edits, regenerate $DRAFT, re-show, loop until accept or abort',
-                Operator::if('user response == abort', Operator::abort('User aborted draft acceptance'), 'Proceed with current $DRAFT')
+                Operator::if(
+                    'user response == abort',
+                    Operator::do(
+                        'Invoke the shared workflow-decline-signal guideline (defined below) to record a vector-memory negative signal',
+                        Operator::abort('User aborted draft acceptance — no canonical write performed')
+                    ),
+                    'Proceed with current $DRAFT'
+                )
             ))
             ->phase('auto-set-evidence', Store::as('EVIDENCE', '[{kind: "session", ref: "current session"}] ++ refs from $SESSION_CONTEXT.related_files / related_tasks / related_memories'))
             ->phase('auto-set-confidence', Store::as('CONFIDENCE', '0.9 (explicit user request anchor)'))
             ->phase('auto-set-caveats', Store::as('CAVEATS', '[] unless user added concerns during edit loop'))
             ->phase('auto-set-replacement', Store::as('REPLACEMENT', '"none" (new flow never deprecates)'));
 
-        // SHARED PROPOSAL PIPELINE
+        // SHARED DIRECT-WRITE PIPELINE
         $this->appendProposalWorkflow();
+        $this->recordDeclineSignal();
     }
 }

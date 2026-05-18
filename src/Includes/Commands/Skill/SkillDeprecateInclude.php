@@ -10,7 +10,7 @@ use BrainCore\Compilation\Operator;
 use BrainCore\Compilation\Store;
 use BrainCore\Compilation\Tools\BashTool;
 
-#[Purpose('Interactive skill deprecator: takes a kebab-case skill name, asks for reason + optional replacement, builds a frontmatter patch adding deprecated: true (and replacement when given), then runs the shared triage + write pipeline.')]
+#[Purpose('Interactive skill deprecator: takes a kebab-case skill name, asks for reason + optional replacement, builds a frontmatter patch adding deprecated: true (and replacement when given), then runs the shared triage + direct-write pipeline.')]
 class SkillDeprecateInclude extends IncludeArchetype
 {
     use SkillProposalSharedTrait;
@@ -19,8 +19,8 @@ class SkillDeprecateInclude extends IncludeArchetype
     {
         // INTENT IRON RULES
         $this->rule('deprecate-target-must-exist')->critical()
-            ->text('node/Skills/{TARGET_SKILL}/SKILL.md MUST exist before suggesting deprecation. If not → abort.')
-            ->why('Deprecating a non-existent skill creates a phantom patch that /skill:apply cannot resolve.')
+            ->text('node/Skills/{TARGET_SKILL}/SKILL.md MUST exist before deprecation. If not → abort.')
+            ->why('Deprecating a non-existent skill is a no-op patch that nothing can land against.')
             ->onViolation('ABORT with message "skill not found — nothing to deprecate".');
 
         $this->rule('deprecate-reason-required')->critical()
@@ -30,7 +30,7 @@ class SkillDeprecateInclude extends IncludeArchetype
 
         // ROLE
         $this->guideline('role')
-            ->text('Interactive skill deprecator. Parses one positional argument as the existing skill name, asks the user for a reason and optional replacement, builds a unified diff that adds deprecated: true and (optionally) replacement: {id} to the YAML frontmatter, then hands off to the shared proposal pipeline as a deprecate-skill proposal.');
+            ->text('Interactive skill deprecator. Parses one positional argument as the existing skill name, asks the user for a reason and optional replacement, builds a unified diff that adds deprecated: true and (optionally) replacement: {id} to the YAML frontmatter, then hands off to the shared direct-write pipeline as a deprecate-skill change.');
 
         // WORKFLOW: PARSE + PROMPT
         $this->guideline('workflow-parse-and-prompt')
@@ -79,7 +79,7 @@ class SkillDeprecateInclude extends IncludeArchetype
             ->phase('auto-set-confidence', Store::as('CONFIDENCE', '0.9 (explicit user request anchor)'))
             ->phase('auto-set-caveats', Store::as('CAVEATS', '[] unless user mentioned migration risks during reason prompt'));
 
-        // SHARED PROPOSAL PIPELINE
+        // SHARED DIRECT-WRITE PIPELINE
         $this->appendProposalWorkflow();
     }
 }
